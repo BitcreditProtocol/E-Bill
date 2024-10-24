@@ -1,11 +1,3 @@
-use chrono::prelude::*;
-use openssl::hash::MessageDigest;
-use openssl::pkey::PKey;
-use openssl::pkey::Private;
-use openssl::rsa::Rsa;
-use openssl::sign::Verifier;
-use serde::{Deserialize, Serialize};
-
 use super::OperationCode;
 use crate::blockchain::calculate_hash;
 use crate::blockchain::OperationCode::{
@@ -15,8 +7,15 @@ use crate::{
     bill::{contacts::IdentityPublicData, read_keys_from_bill_file, BitcreditBill},
     util::rsa::{decrypt_bytes, private_key_from_pem_u8, public_key_from_pem_u8},
 };
+use chrono::prelude::*;
 use log::info;
+use openssl::hash::MessageDigest;
+use openssl::pkey::PKey;
+use openssl::pkey::Private;
+use openssl::rsa::Rsa;
 use openssl::sign::Signer;
+use openssl::sign::Verifier;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Block {
@@ -201,8 +200,6 @@ impl Block {
                 }
             }
             Accept => {
-                let time_of_accept = Utc.timestamp_opt(self.timestamp, 0).unwrap();
-
                 let bill_keys = read_keys_from_bill_file(&self.bill_name);
                 let key: Rsa<Private> =
                     Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
@@ -225,8 +222,6 @@ impl Block {
                 }
             }
             RequestToPay => {
-                let time_of_request_to_pay = Utc.timestamp_opt(self.timestamp, 0).unwrap();
-
                 let bill_keys = read_keys_from_bill_file(&self.bill_name);
                 let key: Rsa<Private> =
                     Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
@@ -280,16 +275,6 @@ impl Block {
                     .unwrap()
                     .to_string();
 
-                let amount: u64 = part_with_seller_and_amount
-                    .clone()
-                    .split(" amount: ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string()
-                    .parse()
-                    .unwrap();
-
                 let part_with_seller = part_with_seller_and_amount
                     .clone()
                     .split(" amount: ")
@@ -319,30 +304,27 @@ impl Block {
     }
 
     pub fn get_history_label(&self, bill: BitcreditBill) -> String {
-        let mut line = String::new();
         match self.operation_code {
             Issue => {
                 let time_of_issue = Utc.timestamp_opt(self.timestamp, 0).unwrap();
                 if !bill.drawer.name.is_empty() {
-                    line = format!(
+                    format!(
                         "Bill issued by {} at {} in {}",
                         bill.drawer.name, time_of_issue, bill.place_of_drawing
-                    );
+                    )
                 } else if bill.to_payee {
-                    line = format!(
+                    format!(
                         "Bill issued by {} at {} in {}",
                         bill.payee.name, time_of_issue, bill.place_of_drawing
-                    );
+                    )
                 } else {
-                    line = format!(
+                    format!(
                         "Bill issued by {} at {} in {}",
                         bill.drawee.name, time_of_issue, bill.place_of_drawing
-                    );
+                    )
                 }
             }
             Endorse => {
-                let time_of_endorse = Utc.timestamp_opt(self.timestamp, 0).unwrap();
-
                 let bill_keys = read_keys_from_bill_file(&self.bill_name);
                 let key: Rsa<Private> =
                     Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
@@ -350,7 +332,7 @@ impl Block {
                 let decrypted_bytes = decrypt_bytes(&bytes, &key);
                 let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
 
-                let mut part_with_endorsee = block_data_decrypted
+                let part_with_endorsee = block_data_decrypted
                     .split("Endorsed to ")
                     .collect::<Vec<&str>>()
                     .get(1)
@@ -365,25 +347,13 @@ impl Block {
                     .unwrap()
                     .to_string();
 
-                part_with_endorsee = part_with_endorsee
-                    .split(" endorsed by ")
-                    .collect::<Vec<&str>>()
-                    .first()
-                    .unwrap()
-                    .to_string();
-
-                let endorsee_bill_u8 = hex::decode(part_with_endorsee).unwrap();
-                let endorsee_bill: IdentityPublicData =
-                    serde_json::from_slice(&endorsee_bill_u8).unwrap();
-
                 let endorser_bill_u8 = hex::decode(part_with_endorsed_by).unwrap();
                 let endorser_bill: IdentityPublicData =
                     serde_json::from_slice(&endorser_bill_u8).unwrap();
-                line = endorser_bill.name + ", " + &endorser_bill.postal_address;
+
+                endorser_bill.name + ", " + &endorser_bill.postal_address
             }
             Mint => {
-                let time_of_mint = Utc.timestamp_opt(self.timestamp, 0).unwrap();
-
                 let bill_keys = read_keys_from_bill_file(&self.bill_name);
                 let key: Rsa<Private> =
                     Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
@@ -391,7 +361,7 @@ impl Block {
                 let decrypted_bytes = decrypt_bytes(&bytes, &key);
                 let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
 
-                let mut part_with_mint = block_data_decrypted
+                let part_with_mint = block_data_decrypted
                     .split("Endorsed to ")
                     .collect::<Vec<&str>>()
                     .get(1)
@@ -406,20 +376,11 @@ impl Block {
                     .unwrap()
                     .to_string();
 
-                part_with_mint = part_with_mint
-                    .split(" endorsed by ")
-                    .collect::<Vec<&str>>()
-                    .first()
-                    .unwrap()
-                    .to_string();
-
-                let mint_bill_u8 = hex::decode(part_with_mint).unwrap();
-                let mint_bill: IdentityPublicData = serde_json::from_slice(&mint_bill_u8).unwrap();
-
                 let minter_bill_u8 = hex::decode(part_with_minter).unwrap();
                 let minter_bill: IdentityPublicData =
                     serde_json::from_slice(&minter_bill_u8).unwrap();
-                line = minter_bill.name + ", " + &minter_bill.postal_address;
+
+                minter_bill.name + ", " + &minter_bill.postal_address
             }
             RequestToAccept => {
                 let time_of_request_to_accept = Utc.timestamp_opt(self.timestamp, 0).unwrap();
@@ -440,12 +401,13 @@ impl Block {
                 let requester_to_accept_bill_u8 = hex::decode(part_with_identity).unwrap();
                 let requester_to_accept_bill: IdentityPublicData =
                     serde_json::from_slice(&requester_to_accept_bill_u8).unwrap();
-                line = format!(
+
+                format!(
                     "Bill requested to accept by {} at {} in {}",
                     requester_to_accept_bill.name,
                     time_of_request_to_accept,
                     requester_to_accept_bill.postal_address
-                );
+                )
             }
             Accept => {
                 let time_of_accept = Utc.timestamp_opt(self.timestamp, 0).unwrap();
@@ -466,10 +428,11 @@ impl Block {
                 let accepter_bill_u8 = hex::decode(part_with_identity).unwrap();
                 let accepter_bill: IdentityPublicData =
                     serde_json::from_slice(&accepter_bill_u8).unwrap();
-                line = format!(
+
+                format!(
                     "Bill accepted by {} at {} in {}",
                     accepter_bill.name, time_of_accept, accepter_bill.postal_address
-                );
+                )
             }
             RequestToPay => {
                 let time_of_request_to_pay = Utc.timestamp_opt(self.timestamp, 0).unwrap();
@@ -490,16 +453,14 @@ impl Block {
                 let requester_to_pay_bill_u8 = hex::decode(part_with_identity).unwrap();
                 let requester_to_pay_bill: IdentityPublicData =
                     serde_json::from_slice(&requester_to_pay_bill_u8).unwrap();
-                line = format!(
+                format!(
                     "Bill requested to pay by {} at {} in {}",
                     requester_to_pay_bill.name,
                     time_of_request_to_pay,
                     requester_to_pay_bill.postal_address
-                );
+                )
             }
             Sell => {
-                let time_of_selling = Utc.timestamp_opt(self.timestamp, 0).unwrap();
-
                 let bill_keys = read_keys_from_bill_file(&self.bill_name);
                 let key: Rsa<Private> =
                     Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
@@ -514,13 +475,6 @@ impl Block {
                     .unwrap()
                     .to_string();
 
-                let part_with_buyer = part_without_sold_to
-                    .split(" sold by ")
-                    .collect::<Vec<&str>>()
-                    .first()
-                    .unwrap()
-                    .to_string();
-
                 let part_with_seller_and_amount = part_without_sold_to
                     .clone()
                     .split(" sold by ")
@@ -528,16 +482,6 @@ impl Block {
                     .get(1)
                     .unwrap()
                     .to_string();
-
-                let amount: u64 = part_with_seller_and_amount
-                    .clone()
-                    .split(" amount: ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string()
-                    .parse()
-                    .unwrap();
 
                 let part_with_seller = part_with_seller_and_amount
                     .clone()
@@ -547,18 +491,13 @@ impl Block {
                     .unwrap()
                     .to_string();
 
-                let buyer_bill_u8 = hex::decode(part_with_buyer).unwrap();
-                let buyer_bill: IdentityPublicData =
-                    serde_json::from_slice(&buyer_bill_u8).unwrap();
-
                 let seller_bill_u8 = hex::decode(part_with_seller).unwrap();
                 let seller_bill: IdentityPublicData =
                     serde_json::from_slice(&seller_bill_u8).unwrap();
 
-                line = seller_bill.name + ", " + &seller_bill.postal_address;
+                seller_bill.name + ", " + &seller_bill.postal_address
             }
         }
-        line
     }
 
     pub fn verifier(&self) -> bool {

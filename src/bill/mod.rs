@@ -175,50 +175,6 @@ impl BitcreditBill {
     }
 }
 
-impl BitcreditBillToReturn {
-    pub fn new_empty() -> Self {
-        Self {
-            name: "".to_string(),
-            to_payee: false,
-            bill_jurisdiction: "".to_string(),
-            timestamp_at_drawing: 0,
-            drawee: IdentityPublicData::new_empty(),
-            drawer: IdentityPublicData::new_empty(),
-            payee: IdentityPublicData::new_empty(),
-            endorsee: IdentityPublicData::new_empty(),
-            place_of_drawing: "".to_string(),
-            currency_code: "".to_string(),
-            amount_numbers: 0,
-            amounts_letters: "".to_string(),
-            maturity_date: "".to_string(),
-            date_of_issue: "".to_string(),
-            compounding_interest_rate: 0,
-            type_of_interest_calculation: false,
-            place_of_payment: "".to_string(),
-            public_key: "".to_string(),
-            private_key: "".to_string(),
-            language: "".to_string(),
-            accepted: false,
-            endorsed: false,
-            requested_to_pay: false,
-            requested_to_accept: false,
-            payed: false,
-            waited_for_payment: false,
-            address_for_selling: String::new(),
-            amount_for_selling: 0,
-            buyer: IdentityPublicData::new_empty(),
-            seller: IdentityPublicData::new_empty(),
-            link_for_buy: "".to_string(),
-            link_to_pay: "".to_string(),
-            address_to_pay: "".to_string(),
-            pr_key_bill: "".to_string(),
-            number_of_confirmations: 0,
-            pending: false,
-            chain_of_blocks: ChainToReturn { blocks: vec![] },
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BillKeys {
     pub private_key_pem: String,
@@ -559,7 +515,7 @@ pub fn get_bills_for_list() -> Vec<BitcreditBillToReturn> {
 }
 
 pub fn endorse_bitcredit_bill(
-    bill_name: &String,
+    bill_name: &str,
     endorsee: IdentityPublicData,
     timestamp: i64,
 ) -> bool {
@@ -609,7 +565,7 @@ pub fn endorse_bitcredit_bill(
             last_block.id + 1,
             last_block.hash.clone(),
             data_for_new_block_encrypted_in_string_format,
-            bill_name.clone(),
+            bill_name.to_owned(),
             identity.identity.public_key_pem.clone(),
             OperationCode::Endorse,
             identity.identity.private_key_pem.clone(),
@@ -629,7 +585,7 @@ pub fn endorse_bitcredit_bill(
 }
 
 pub async fn mint_bitcredit_bill(
-    bill_name: &String,
+    bill_name: &str,
     mintnode: IdentityPublicData,
     timestamp: i64,
 ) -> bool {
@@ -679,7 +635,7 @@ pub async fn mint_bitcredit_bill(
             last_block.id + 1,
             last_block.hash.clone(),
             data_for_new_block_encrypted_in_string_format,
-            bill_name.clone(),
+            bill_name.to_owned(),
             identity.identity.public_key_pem.clone(),
             OperationCode::Mint,
             identity.identity.private_key_pem.clone(),
@@ -702,7 +658,7 @@ pub async fn mint_bitcredit_bill(
 }
 
 pub fn sell_bitcredit_bill(
-    bill_name: &String,
+    bill_name: &str,
     buyer: IdentityPublicData,
     timestamp: i64,
     amount_numbers: u64,
@@ -751,7 +707,7 @@ pub fn sell_bitcredit_bill(
             last_block.id + 1,
             last_block.hash.clone(),
             data_for_new_block_encrypted_in_string_format,
-            bill_name.clone(),
+            bill_name.to_owned(),
             identity.identity.public_key_pem.clone(),
             OperationCode::Sell,
             identity.identity.private_key_pem.clone(),
@@ -770,7 +726,7 @@ pub fn sell_bitcredit_bill(
     }
 }
 
-pub fn request_pay(bill_name: &String, timestamp: i64) -> bool {
+pub fn request_pay(bill_name: &str, timestamp: i64) -> bool {
     let my_peer_id = read_peer_id_from_file().to_string();
     let bill = read_bill_from_file(bill_name);
 
@@ -814,7 +770,7 @@ pub fn request_pay(bill_name: &String, timestamp: i64) -> bool {
             last_block.id + 1,
             last_block.hash.clone(),
             data_for_new_block_encrypted_in_string_format,
-            bill_name.clone(),
+            bill_name.to_owned(),
             identity.identity.public_key_pem.clone(),
             OperationCode::RequestToPay,
             identity.identity.private_key_pem.clone(),
@@ -833,7 +789,7 @@ pub fn request_pay(bill_name: &String, timestamp: i64) -> bool {
     }
 }
 
-pub fn request_acceptance(bill_name: &String, timestamp: i64) -> bool {
+pub fn request_acceptance(bill_name: &str, timestamp: i64) -> bool {
     let my_peer_id = read_peer_id_from_file().to_string();
     let bill = read_bill_from_file(bill_name);
 
@@ -877,7 +833,7 @@ pub fn request_acceptance(bill_name: &String, timestamp: i64) -> bool {
             last_block.id + 1,
             last_block.hash.clone(),
             data_for_new_block_encrypted_in_string_format,
-            bill_name.clone(),
+            bill_name.to_owned(),
             identity.identity.public_key_pem.clone(),
             OperationCode::RequestToAccept,
             identity.identity.private_key_pem.clone(),
@@ -896,7 +852,7 @@ pub fn request_acceptance(bill_name: &String, timestamp: i64) -> bool {
     }
 }
 
-pub fn accept_bill(bill_name: &String, timestamp: i64) -> bool {
+pub fn accept_bill(bill_name: &str, timestamp: i64) -> bool {
     let my_peer_id = read_peer_id_from_file().to_string();
     let bill = read_bill_from_file(bill_name);
 
@@ -929,7 +885,7 @@ pub fn accept_bill(bill_name: &String, timestamp: i64) -> bool {
                 last_block.id + 1,
                 last_block.hash.clone(),
                 data_for_new_block_encrypted_in_string_format,
-                bill_name.clone(),
+                bill_name.to_owned(),
                 identity.identity.public_key_pem.clone(),
                 OperationCode::Accept,
                 identity.identity.private_key_pem.clone(),
@@ -952,7 +908,7 @@ pub fn accept_bill(bill_name: &String, timestamp: i64) -> bool {
 }
 
 #[tokio::main]
-async fn read_bill_with_chain_from_file(id: &String) -> BitcreditBillToReturn {
+async fn read_bill_with_chain_from_file(id: &str) -> BitcreditBillToReturn {
     let bill: BitcreditBill = read_bill_from_file(id);
     let chain = Chain::read_chain_from_file(&bill.name);
     let drawer = chain.get_drawer();
@@ -1007,7 +963,7 @@ async fn read_bill_with_chain_from_file(id: &String) -> BitcreditBillToReturn {
     }
 }
 
-pub fn read_bill_from_file(bill_name: &String) -> BitcreditBill {
+pub fn read_bill_from_file(bill_name: &str) -> BitcreditBill {
     let chain = Chain::read_chain_from_file(bill_name);
     chain.get_last_version_bill()
 }

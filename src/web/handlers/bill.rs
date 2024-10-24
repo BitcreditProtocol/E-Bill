@@ -6,11 +6,8 @@ use super::super::data::{
 use crate::bill::{
     accept_bill,
     contacts::{get_current_payee_private_key, get_identity_public_data, IdentityPublicData},
-    endorse_bitcredit_bill, get_bills, get_bills_for_list,
-    identity::{
-        get_whole_identity, read_identity_from_file, read_peer_id_from_file, Identity,
-        IdentityWithAll,
-    },
+    endorse_bitcredit_bill, get_bills_for_list,
+    identity::{get_whole_identity, read_peer_id_from_file, IdentityWithAll},
     issue_new_bill, issue_new_bill_drawer_is_drawee, issue_new_bill_drawer_is_payee,
     mint_bitcredit_bill, read_bill_from_file, request_acceptance, request_pay, sell_bitcredit_bill,
     BitcreditBill, BitcreditBillToReturn,
@@ -107,13 +104,12 @@ pub async fn return_bill(id: String) -> Json<BitcreditBillToReturn> {
     let requested_to_accept = chain.exist_block_with_operation_code(OperationCode::RequestToAccept);
     let address_to_pay = external::bitcoin::get_address_to_pay(bill.clone());
     //TODO: add last_sell_block_paid
-    let check_if_already_paid =
-        external::bitcoin::check_if_paid(address_to_pay.clone(), bill.amount_numbers).await;
+    // let check_if_already_paid =
+    //     external::bitcoin::check_if_paid(address_to_pay.clone(), bill.amount_numbers).await;
     let mut check_if_already_paid = (false, 0u64);
     if requested_to_pay {
         check_if_already_paid =
-            external::bitcoin::check_if_paid(address_to_pay.clone(), bill.amount_numbers.clone())
-                .await;
+            external::bitcoin::check_if_paid(address_to_pay.clone(), bill.amount_numbers).await;
     }
     let payed = check_if_already_paid.0;
     let mut number_of_confirmations: u64 = 0;
@@ -121,9 +117,9 @@ pub async fn return_bill(id: String) -> Json<BitcreditBillToReturn> {
     if payed && check_if_already_paid.1.eq(&0) {
         pending = true;
     } else if payed && !check_if_already_paid.1.eq(&0) {
-        let transaction = external::bitcoin::get_transactions_testet(address_to_pay.clone()).await;
+        let transaction = external::bitcoin::get_transactions(address_to_pay.clone()).await;
         let txid = external::bitcoin::Txid::get_first_transaction(transaction.clone()).await;
-        let height = external::bitcoin::get_testnet_last_block_height().await;
+        let height = external::bitcoin::get_last_block_height().await;
         number_of_confirmations = height - txid.status.block_height + 1;
     }
     let address_to_pay = external::bitcoin::get_address_to_pay(bill.clone());
@@ -135,19 +131,17 @@ pub async fn return_bill(id: String) -> Json<BitcreditBillToReturn> {
     )
     .await;
     let mut pr_key_bill = String::new();
-    if !endorsed
+    if (!endorsed
         && bill
             .payee
             .bitcoin_public_key
             .clone()
-            .eq(&identity.identity.bitcoin_public_key)
-    {
-        pr_key_bill = get_current_payee_private_key(identity.identity.clone(), bill.clone());
-    } else if endorsed
-        && bill
-            .endorsee
-            .bitcoin_public_key
-            .eq(&identity.identity.bitcoin_public_key)
+            .eq(&identity.identity.bitcoin_public_key))
+        || (endorsed
+            && bill
+                .endorsee
+                .bitcoin_public_key
+                .eq(&identity.identity.bitcoin_public_key))
     {
         pr_key_bill = get_current_payee_private_key(identity.identity.clone(), bill.clone());
     }
@@ -419,9 +413,6 @@ pub async fn endorse_bill(
                     .await;
             }
 
-            let bills = get_bills();
-            let identity: Identity = read_identity_from_file();
-
             Status::Ok
         } else {
             Status::NotAcceptable
@@ -578,7 +569,7 @@ pub async fn request_to_mint_bill(
 //This is function for mint software
 #[put("/accept_mint", data = "<accept_mint_bill_form>")]
 pub async fn accept_mint_bill(
-    state: &State<Client>,
+    _state: &State<Client>,
     accept_mint_bill_form: Form<AcceptMintBitcreditBillForm>,
 ) -> Status {
     let bill = read_bill_from_file(&accept_mint_bill_form.bill_name.clone());

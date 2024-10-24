@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 use openssl::pkey::{Private, Public};
 use openssl::rsa;
 use openssl::rsa::{Padding, Rsa};
@@ -57,14 +58,7 @@ pub fn encrypt_bytes_with_public_key(bytes: &[u8], public_key: String) -> Vec<u8
         temp_buff = vec![0; remainder];
 
         let position: usize = key_size * number_of_key_size_in_whole_bill;
-        let mut index_in_temp_buff: usize = 0;
-
-        for i in position..bytes.len() {
-            temp_buff[index_in_temp_buff] = bytes[i];
-            index_in_temp_buff += 1;
-        }
-
-        index_in_temp_buff = 0;
+        temp_buff[..(bytes.len() - position)].copy_from_slice(&bytes[position..]);
 
         let _encrypted_len: usize = public_key
             .public_encrypt(&temp_buff, &mut temp_buff_encrypted, Padding::PKCS1)
@@ -157,14 +151,7 @@ pub fn encrypt_bytes(bytes: &[u8], rsa_key: &Rsa<Private>) -> Vec<u8> {
         temp_buff = vec![0; remainder];
 
         let position: usize = key_size * number_of_key_size_in_whole_bill;
-        let mut index_in_temp_buff: usize = 0;
-
-        for i in position..bytes.len() {
-            temp_buff[index_in_temp_buff] = bytes[i];
-            index_in_temp_buff += 1;
-        }
-
-        index_in_temp_buff = 0;
+        temp_buff[..(bytes.len() - position)].copy_from_slice(&bytes[position..]);
 
         let _encrypted_len: usize = rsa_key
             .public_encrypt(&temp_buff, &mut temp_buff_encrypted, Padding::PKCS1)

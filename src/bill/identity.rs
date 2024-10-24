@@ -28,6 +28,7 @@ impl NodeId {
 pub struct IdentityWithAll {
     pub identity: Identity,
     pub peer_id: PeerId,
+    #[allow(dead_code)]
     pub key_pair: Keypair,
 }
 

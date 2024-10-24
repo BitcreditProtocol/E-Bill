@@ -172,39 +172,9 @@ impl Chain {
                     .unwrap()
                     .to_string();
 
-                let part_with_seller_and_amount = part_without_sold_to
-                    .clone()
-                    .split(" sold by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                let amount: u64 = part_with_seller_and_amount
-                    .clone()
-                    .split(" amount: ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string()
-                    .parse()
-                    .unwrap();
-
-                let part_with_seller = part_with_seller_and_amount
-                    .clone()
-                    .split(" amount: ")
-                    .collect::<Vec<&str>>()
-                    .first()
-                    .unwrap()
-                    .to_string();
-
                 let buyer_bill_u8 = hex::decode(part_with_buyer).unwrap();
                 let buyer_bill: IdentityPublicData =
                     serde_json::from_slice(&buyer_bill_u8).unwrap();
-
-                let seller_bill_u8 = hex::decode(part_with_seller).unwrap();
-                let seller_bill: IdentityPublicData =
-                    serde_json::from_slice(&seller_bill_u8).unwrap();
 
                 last_endorsee = buyer_bill.clone();
             } else if self.exist_block_with_operation_code(Endorse.clone())
@@ -418,13 +388,6 @@ impl Chain {
                 .unwrap()
                 .to_string();
 
-            let part_with_buyer = part_without_sold_to
-                .split(" sold by ")
-                .collect::<Vec<&str>>()
-                .first()
-                .unwrap()
-                .to_string();
-
             let part_with_seller_and_amount = part_without_sold_to
                 .clone()
                 .split(" sold by ")
@@ -442,20 +405,6 @@ impl Chain {
                 .to_string()
                 .parse()
                 .unwrap();
-
-            let part_with_seller = part_with_seller_and_amount
-                .clone()
-                .split(" amount: ")
-                .collect::<Vec<&str>>()
-                .first()
-                .unwrap()
-                .to_string();
-
-            let buyer_bill_u8 = hex::decode(part_with_buyer).unwrap();
-            let buyer_bill: IdentityPublicData = serde_json::from_slice(&buyer_bill_u8).unwrap();
-
-            let seller_bill_u8 = hex::decode(part_with_seller).unwrap();
-            let seller_bill: IdentityPublicData = serde_json::from_slice(&seller_bill_u8).unwrap();
 
             let bill = self.get_first_version_bill();
 
@@ -490,13 +439,6 @@ impl Chain {
             .unwrap()
             .to_string();
 
-        let part_with_buyer = part_without_sold_to
-            .split(" sold by ")
-            .collect::<Vec<&str>>()
-            .first()
-            .unwrap()
-            .to_string();
-
         let part_with_seller_and_amount = part_without_sold_to
             .clone()
             .split(" sold by ")
@@ -504,16 +446,6 @@ impl Chain {
             .get(1)
             .unwrap()
             .to_string();
-
-        let amount: u64 = part_with_seller_and_amount
-            .clone()
-            .split(" amount: ")
-            .collect::<Vec<&str>>()
-            .get(1)
-            .unwrap()
-            .to_string()
-            .parse()
-            .unwrap();
 
         let part_with_seller = part_with_seller_and_amount
             .clone()
@@ -535,13 +467,13 @@ impl Chain {
             .unwrap();
         let pub_key_bill = bitcoin::PublicKey::new(public_key_bill);
 
-        bitcoin::Address::p2pkh(&pub_key_bill, USEDNET).to_string()
+        bitcoin::Address::p2pkh(pub_key_bill, USEDNET).to_string()
     }
 
     #[tokio::main]
     async fn check_if_paid(address: String, amount: u64) -> bool {
         let info_about_address =
-            external::bitcoin::AddressInfo::get_testnet_address_info(address.clone()).await;
+            external::bitcoin::AddressInfo::get_address_info(address.clone()).await;
         let received_summ = info_about_address.chain_stats.funded_txo_sum;
         let spent_summ = info_about_address.chain_stats.spent_txo_sum;
         // let received_summ_mempool = info_about_address.mempool_stats.funded_txo_sum;
@@ -577,7 +509,7 @@ impl Chain {
         block
     }
 
-    pub fn compare_chain(&mut self, other_chain: Chain, bill_name: &String) {
+    pub fn compare_chain(&mut self, other_chain: Chain, bill_name: &str) {
         let local_chain_last_id = self.get_latest_block().id;
         let other_chain_last_id = other_chain.get_latest_block().id;
         if local_chain_last_id.eq(&other_chain_last_id) {
@@ -612,21 +544,6 @@ impl Chain {
         nodes
     }
 
-    pub fn get_bill_history(&self) -> Vec<BlockForHistory> {
-        let mut history: Vec<BlockForHistory> = Vec::new();
-
-        for block in &self.blocks {
-            let bill = self.get_first_version_bill();
-            let line = block.get_history_label(bill);
-            history.push(BlockForHistory {
-                id: block.id,
-                text: line,
-                bill_name: block.bill_name.clone(),
-            });
-        }
-        history
-    }
-
     pub fn get_drawer(&self) -> IdentityPublicData {
         let drawer: IdentityPublicData;
         let bill = self.get_first_version_bill();
@@ -645,11 +562,10 @@ impl Chain {
             match block.operation_code {
                 Issue => {
                     let bill = self.get_first_version_bill();
-                    if bill.drawer.peer_id.eq(&request_node_id) {
-                        return true;
-                    } else if bill.drawee.peer_id.eq(&request_node_id) {
-                        return true;
-                    } else if bill.payee.peer_id.eq(&request_node_id) {
+                    if bill.drawer.peer_id.eq(&request_node_id)
+                        || bill.drawee.peer_id.eq(&request_node_id)
+                        || bill.payee.peer_id.eq(&request_node_id)
+                    {
                         return true;
                     }
                 }
@@ -693,9 +609,9 @@ impl Chain {
                     let endorser_bill: IdentityPublicData =
                         serde_json::from_slice(&endorser_bill_u8).unwrap();
 
-                    if endorsee_bill.peer_id.eq(&request_node_id) {
-                        return true;
-                    } else if endorser_bill.peer_id.eq(&request_node_id) {
+                    if endorsee_bill.peer_id.eq(&request_node_id)
+                        || endorser_bill.peer_id.eq(&request_node_id)
+                    {
                         return true;
                     }
                 }
@@ -739,9 +655,9 @@ impl Chain {
                     let mint_bill: IdentityPublicData =
                         serde_json::from_slice(&mint_bill_u8).unwrap();
 
-                    if minter_bill.peer_id.eq(&request_node_id) {
-                        return true;
-                    } else if mint_bill.peer_id.eq(&request_node_id) {
+                    if minter_bill.peer_id.eq(&request_node_id)
+                        || mint_bill.peer_id.eq(&request_node_id)
+                    {
                         return true;
                     }
                 }
@@ -849,16 +765,6 @@ impl Chain {
                         .unwrap()
                         .to_string();
 
-                    let amount: u64 = part_with_seller_and_amount
-                        .clone()
-                        .split(" amount: ")
-                        .collect::<Vec<&str>>()
-                        .get(1)
-                        .unwrap()
-                        .to_string()
-                        .parse()
-                        .unwrap();
-
                     let part_with_seller = part_with_seller_and_amount
                         .clone()
                         .split(" amount: ")
@@ -875,9 +781,9 @@ impl Chain {
                     let seller_bill: IdentityPublicData =
                         serde_json::from_slice(&seller_bill_u8).unwrap();
 
-                    if buyer_bill.peer_id.eq(&request_node_id) {
-                        return true;
-                    } else if seller_bill.peer_id.eq(&request_node_id) {
+                    if buyer_bill.peer_id.eq(&request_node_id)
+                        || seller_bill.peer_id.eq(&request_node_id)
+                    {
                         return true;
                     }
                 }

@@ -60,18 +60,6 @@ impl OperationCode {
             Mint,
         ]
     }
-
-    pub fn get_string_from_operation_code(self) -> String {
-        match self {
-            Issue => "Issue".to_string(),
-            Accept => "Accept".to_string(),
-            Endorse => "Endorse".to_string(),
-            RequestToAccept => "RequestToAccept".to_string(),
-            RequestToPay => "RequestToPay".to_string(),
-            Sell => "Sell".to_string(),
-            Mint => "Mint".to_string(),
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

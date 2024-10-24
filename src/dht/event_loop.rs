@@ -22,16 +22,19 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::iter;
 
+type PendingDial = HashMap<PeerId, oneshot::Sender<Result<(), Box<dyn Error + Send>>>>;
+type PendingRequestFile =
+    HashMap<RequestId, oneshot::Sender<Result<Vec<u8>, Box<dyn Error + Send>>>>;
+
 pub struct EventLoop {
     swarm: Swarm<MyBehaviour>,
     command_receiver: Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
-    pending_dial: HashMap<PeerId, oneshot::Sender<Result<(), Box<dyn Error + Send>>>>,
+    pending_dial: PendingDial,
     pending_start_providing: HashMap<QueryId, oneshot::Sender<()>>,
     pending_get_providers: HashMap<QueryId, oneshot::Sender<HashSet<PeerId>>>,
     pending_get_records: HashMap<QueryId, oneshot::Sender<Record>>,
-    pending_request_file:
-        HashMap<RequestId, oneshot::Sender<Result<Vec<u8>, Box<dyn Error + Send>>>>,
+    pending_request_file: PendingRequestFile,
 }
 
 impl EventLoop {
@@ -70,7 +73,7 @@ impl EventLoop {
             SwarmEvent::Behaviour(ComposedEvent::Kademlia(
                 KademliaEvent::OutboundQueryProgressed { result, id, .. },
             )) => match result {
-                QueryResult::StartProviding(Ok(kad::AddProviderOk { key })) => {
+                QueryResult::StartProviding(Ok(kad::AddProviderOk { key: _ })) => {
                     let sender: oneshot::Sender<()> = self
                         .pending_start_providing
                         .remove(&id)

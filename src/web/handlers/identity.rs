@@ -1,10 +1,7 @@
 use super::super::data::IdentityForm;
-use crate::bill::{
-    get_bills,
-    identity::{
-        create_whole_identity, get_whole_identity, read_identity_from_file, read_peer_id_from_file,
-        write_identity_to_file, Identity, IdentityWithAll, NodeId,
-    },
+use crate::bill::identity::{
+    create_whole_identity, get_whole_identity, read_identity_from_file, read_peer_id_from_file,
+    write_identity_to_file, Identity, IdentityWithAll, NodeId,
 };
 use crate::constants::IDENTITY_FILE_PATH;
 use crate::dht::Client;
@@ -48,8 +45,6 @@ pub async fn create_identity(identity_form: Form<IdentityForm>, state: &State<Cl
     );
 
     let mut client = state.inner().clone();
-    let identity: IdentityWithAll = get_whole_identity();
-    let bills = get_bills();
     client.put_identity_public_data_in_dht().await;
 
     Status::Ok

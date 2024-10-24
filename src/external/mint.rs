@@ -9,7 +9,7 @@ use std::{fs, path::PathBuf};
 use url::Url;
 
 use crate::bill::{
-    identity::{read_identity_from_file, read_peer_id_from_file, Identity},
+    identity::read_peer_id_from_file,
     quotes::{
         add_bitcredit_quote_and_amount_in_quotes_map, add_bitcredit_token_in_quotes_map,
         add_in_quotes_map, get_quote_from_map, read_quotes_map,
@@ -31,9 +31,6 @@ pub async fn accept_mint_bitcredit(
         .expect("Cannot parse local store");
 
     let mint_url = Url::parse("http://127.0.0.1:3338").expect("Invalid url");
-
-    let identity: Identity = read_identity_from_file();
-    let bitcoin_key = identity.bitcoin_public_key.clone();
 
     let wallet: Wallet<_, CrossPlatformHttpClient> = Wallet::builder()
         .with_localstore(localstore)
@@ -183,7 +180,7 @@ pub async fn init_wallet() {
     }
     let db_path = dir.join("wallet.db").to_str().unwrap().to_string();
 
-    let localstore = SqliteLocalStore::with_path(db_path.clone())
+    let _localstore = SqliteLocalStore::with_path(db_path.clone())
         .await
         .expect("Cannot parse local store");
 
