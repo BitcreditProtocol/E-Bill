@@ -16,23 +16,22 @@ use rocket_dyn_templates::{context, handlebars, Template};
 
 use crate::blockchain::{Chain, ChainToReturn, GossipsubEvent, GossipsubEventId, OperationCode};
 use crate::constants::{BILLS_FOLDER_PATH, BILL_VALIDITY_PERIOD, IDENTITY_FILE_PATH, USEDNET};
-use crate::dht::network::Client;
+use crate::service::ServiceContext;
+use crate::service::{contact_service::*, Error};
 use crate::work_with_mint::{
     accept_mint_bitcredit, check_bitcredit_quote, client_accept_bitcredit_quote,
     request_to_mint_bitcredit,
 };
 use crate::{
-    accept_bill, add_in_contacts_map, api, blockchain, change_contact_data_from_dht,
-    change_contact_name_from_contacts_map, create_whole_identity, delete_from_contacts_map,
-    endorse_bitcredit_bill, get_bills, get_bills_for_list, get_contact_from_map, get_contacts_vec,
-    get_quote_from_map, get_whole_identity, issue_new_bill, issue_new_bill_drawer_is_drawee,
-    issue_new_bill_drawer_is_payee, mint_bitcredit_bill, read_bill_from_file, read_contacts_map,
-    read_identity_from_file, read_peer_id_from_file, request_acceptance, request_pay,
-    sell_bitcredit_bill, write_identity_to_file, AcceptBitcreditBillForm,
+    accept_bill, api, blockchain, create_whole_identity, endorse_bitcredit_bill, get_bills,
+    get_bills_for_list, get_quote_from_map, get_whole_identity, issue_new_bill,
+    issue_new_bill_drawer_is_drawee, issue_new_bill_drawer_is_payee, mint_bitcredit_bill,
+    read_bill_from_file, read_identity_from_file, read_peer_id_from_file, request_acceptance,
+    request_pay, sell_bitcredit_bill, write_identity_to_file, AcceptBitcreditBillForm,
     AcceptMintBitcreditBillForm, BitcreditBill, BitcreditBillForm, BitcreditBillToReturn,
-    BitcreditEbillQuote, Contact, DeleteContactForm, EditContactForm, EndorseBitcreditBillForm,
-    Identity, IdentityForm, IdentityPublicData, IdentityWithAll, MintBitcreditBillForm,
-    NewContactForm, NodeId, RequestToAcceptBitcreditBillForm, RequestToMintBitcreditBillForm,
+    BitcreditEbillQuote, DeleteContactForm, EditContactForm, EndorseBitcreditBillForm, Identity,
+    IdentityForm, IdentityPublicData, IdentityWithAll, MintBitcreditBillForm, NewContactForm,
+    NodeId, RequestToAcceptBitcreditBillForm, RequestToMintBitcreditBillForm,
     RequestToPayBitcreditBillForm, SellBitcreditBillForm,
 };
 
@@ -62,8 +61,12 @@ pub async fn return_peer_id() -> Json<NodeId> {
 }
 
 #[get("/return")]
-pub async fn return_contacts() -> Json<Vec<Contact>> {
-    let contacts: Vec<Contact> = get_contacts_vec();
+pub async fn return_contacts(state: &State<ServiceContext>) -> Json<Vec<Contact>> {
+    let contacts: Vec<Contact> = state
+        .contact_service
+        .get_contacts()
+        .await
+        .expect("Can not get contacts.");
     Json(contacts)
 }
 
@@ -82,7 +85,10 @@ pub async fn return_bills_list() -> Json<Vec<BitcreditBillToReturn>> {
 }
 
 #[post("/create", data = "<identity_form>")]
-pub async fn create_identity(identity_form: Form<IdentityForm>, state: &State<Client>) -> Status {
+pub async fn create_identity(
+    identity_form: Form<IdentityForm>,
+    state: &State<ServiceContext>,
+) -> Status {
     println!("Create identity");
     let identity: IdentityForm = identity_form.into_inner();
     create_whole_identity(
@@ -95,16 +101,19 @@ pub async fn create_identity(identity_form: Form<IdentityForm>, state: &State<Cl
         identity.postal_address,
     );
 
-    let mut client = state.inner().clone();
-    let identity: IdentityWithAll = get_whole_identity();
-    let bills = get_bills();
+    let mut client = state.dht_client();
+    let _: IdentityWithAll = get_whole_identity();
+    let _ = get_bills();
     client.put_identity_public_data_in_dht().await;
 
     Status::Ok
 }
 
 #[put("/change", data = "<identity_form>")]
-pub async fn change_identity(identity_form: Form<IdentityForm>, state: &State<Client>) -> Status {
+pub async fn change_identity(
+    identity_form: Form<IdentityForm>,
+    state: &State<ServiceContext>,
+) -> Status {
     println!("Change identity");
 
     let identity_form: IdentityForm = identity_form.into_inner();
@@ -126,7 +135,7 @@ pub async fn change_identity(identity_form: Form<IdentityForm>, state: &State<Cl
     my_identity.update_from(&identity_changes);
 
     write_identity_to_file(&my_identity);
-    let mut client = state.inner().clone();
+    let mut client = state.dht_client();
     client.put_identity_public_data_in_dht().await;
 
     Status::Ok
@@ -179,8 +188,8 @@ pub async fn return_operation_codes() -> Json<Vec<OperationCode>> {
 // }
 
 #[get("/find/<bill_id>")]
-pub async fn find_bill_in_dht(state: &State<Client>, bill_id: String) {
-    let mut client = state.inner().clone();
+pub async fn find_bill_in_dht(state: &State<ServiceContext>, bill_id: String) {
+    let mut client = state.dht_client();
     let bill_bytes = client.get_bill(bill_id.to_string().clone()).await;
     if !bill_bytes.is_empty() {
         let path = BILLS_FOLDER_PATH.to_string() + "/" + &bill_id + ".json";
@@ -192,12 +201,15 @@ pub async fn find_bill_in_dht(state: &State<Client>, bill_id: String) {
 //TODO: add try_mint_bill here?
 #[put("/request_to_mint", data = "<request_to_mint_bill_form>")]
 pub async fn request_to_mint_bill(
-    state: &State<Client>,
+    state: &State<ServiceContext>,
     request_to_mint_bill_form: Form<RequestToMintBitcreditBillForm>,
 ) -> Status {
-    let mut client = state.inner().clone();
-    let public_mint_node =
-        get_identity_public_data(request_to_mint_bill_form.mint_node.clone(), client.clone()).await;
+    let mut client = state.dht_client();
+    let public_mint_node = state
+        .contact_service
+        .get_identity_by_name(&request_to_mint_bill_form.mint_node)
+        .await
+        .expect("Can not get mint node identity.");
     if !public_mint_node.name.is_empty() {
         client
             .add_bill_to_dht_for_node(
@@ -215,10 +227,7 @@ pub async fn request_to_mint_bill(
 
 //This is function for mint software
 #[put("/accept_mint", data = "<accept_mint_bill_form>")]
-pub async fn accept_mint_bill(
-    state: &State<Client>,
-    accept_mint_bill_form: Form<AcceptMintBitcreditBillForm>,
-) -> Status {
+pub async fn accept_mint_bill(accept_mint_bill_form: Form<AcceptMintBitcreditBillForm>) -> Status {
     let bill = read_bill_from_file(&accept_mint_bill_form.bill_name.clone());
     let bill_amount = bill.amount_numbers;
     let holder_node_id = bill.payee.peer_id.clone();
@@ -240,18 +249,21 @@ pub async fn accept_mint_bill(
 //After accept mint on client side
 #[put("/mint", data = "<mint_bill_form>")]
 pub async fn mint_bill(
-    state: &State<Client>,
+    state: &State<ServiceContext>,
     mint_bill_form: Form<MintBitcreditBillForm>,
 ) -> Status {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
         Status::NotAcceptable
     } else {
-        let mut client = state.inner().clone();
+        let mut client = state.dht_client();
 
         let timestamp = api::TimeApi::get_atomic_time().await.timestamp;
 
-        let public_mint_node =
-            get_identity_public_data(mint_bill_form.mint_node.clone(), client.clone()).await;
+        let public_mint_node = state
+            .contact_service
+            .get_identity_by_name(&mint_bill_form.mint_node)
+            .await
+            .expect("Can not get mint node identity.");
 
         if !public_mint_node.name.is_empty() {
             let correct = mint_bitcredit_bill(
@@ -304,12 +316,15 @@ pub async fn return_quote(id: String) -> Json<BitcreditEbillQuote> {
 }
 
 #[put("/accept/<id>")]
-pub async fn accept_quote(state: &State<Client>, id: String) -> Json<BitcreditEbillQuote> {
+pub async fn accept_quote(state: &State<ServiceContext>, id: String) -> Json<BitcreditEbillQuote> {
     let mut quote = get_quote_from_map(&id);
-    let client = state.inner().clone();
 
-    let public_data_endorsee =
-        get_identity_public_data(quote.mint_node_id.clone(), client.clone()).await;
+    let public_data_endorsee = state
+        .contact_service
+        .get_identity_by_name(&quote.mint_node_id)
+        .await
+        .expect("Could not get endorsee public data");
+
     if !public_data_endorsee.name.is_empty() {
         let timestamp = api::TimeApi::get_atomic_time().await.timestamp;
         endorse_bitcredit_bill(&quote.bill_id, public_data_endorsee.clone(), timestamp);
@@ -502,11 +517,11 @@ fn get_current_payee_private_key(identity: Identity, bill: BitcreditBill) -> Str
 }
 
 #[get("/dht")]
-pub async fn search_bill(state: &State<Client>) -> Status {
+pub async fn search_bill(state: &State<ServiceContext>) -> Status {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
         Status::NotAcceptable
     } else {
-        let mut client = state.inner().clone();
+        let mut client = state.dht_client();
         let local_peer_id = read_peer_id_from_file();
         client.check_new_bills(local_peer_id.to_string()).await;
 
@@ -515,7 +530,10 @@ pub async fn search_bill(state: &State<Client>) -> Status {
 }
 
 #[post("/issue", data = "<bill_form>")]
-pub async fn issue_bill(state: &State<Client>, bill_form: Form<BitcreditBillForm>) -> Status {
+pub async fn issue_bill(
+    state: &State<ServiceContext>,
+    bill_form: Form<BitcreditBillForm>,
+) -> Status {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
         Status::NotAcceptable
     } else {
@@ -523,13 +541,16 @@ pub async fn issue_bill(state: &State<Client>, bill_form: Form<BitcreditBillForm
 
         let form_bill = bill_form.into_inner();
         let drawer = get_whole_identity();
-        let mut client = state.inner().clone();
+        let mut client = state.dht_client();
         let timestamp = api::TimeApi::get_atomic_time().await.timestamp;
         let mut bill = BitcreditBill::new_empty();
 
         if form_bill.drawer_is_payee {
-            let public_data_drawee =
-                get_identity_public_data(form_bill.drawee_name, client.clone()).await;
+            let public_data_drawee = state
+                .contact_service
+                .get_identity_by_name(&form_bill.drawee_name)
+                .await
+                .expect("Can not get drawee identity.");
 
             if !public_data_drawee.name.is_empty() {
                 bill = issue_new_bill_drawer_is_payee(
@@ -548,8 +569,11 @@ pub async fn issue_bill(state: &State<Client>, bill_form: Form<BitcreditBillForm
                 status = Status::NotAcceptable
             }
         } else if form_bill.drawer_is_drawee {
-            let public_data_payee =
-                get_identity_public_data(form_bill.payee_name, client.clone()).await;
+            let public_data_payee = state
+                .contact_service
+                .get_identity_by_name(&form_bill.payee_name)
+                .await
+                .expect("Can not get payee identity.");
 
             if !public_data_payee.name.is_empty() {
                 bill = issue_new_bill_drawer_is_drawee(
@@ -568,11 +592,17 @@ pub async fn issue_bill(state: &State<Client>, bill_form: Form<BitcreditBillForm
                 status = Status::NotAcceptable
             }
         } else {
-            let public_data_drawee =
-                get_identity_public_data(form_bill.drawee_name, client.clone()).await;
+            let public_data_drawee = state
+                .contact_service
+                .get_identity_by_name(&form_bill.drawee_name)
+                .await
+                .expect("Can not get drawee identity.");
 
-            let public_data_payee =
-                get_identity_public_data(form_bill.payee_name, client.clone()).await;
+            let public_data_payee = state
+                .contact_service
+                .get_identity_by_name(&form_bill.payee_name)
+                .await
+                .expect("Can not get payee public data");
 
             if !public_data_payee.name.is_empty() && !public_data_drawee.name.is_empty() {
                 bill = issue_new_bill(
@@ -635,40 +665,21 @@ pub async fn issue_bill(state: &State<Client>, bill_form: Form<BitcreditBillForm
     }
 }
 
-pub async fn get_identity_public_data(
-    identity_real_name: String,
-    mut client: Client,
-) -> IdentityPublicData {
-    let mut identity = get_contact_from_map(&identity_real_name);
-
-    let identity_public_data = client
-        .get_identity_public_data_from_dht(identity.peer_id.clone())
-        .await;
-
-    if !identity_public_data.name.is_empty() {
-        change_contact_data_from_dht(
-            identity_real_name,
-            identity_public_data.clone(),
-            identity.clone(),
-        );
-        identity = identity_public_data;
-    }
-
-    identity
-}
-
 #[put("/sell", data = "<sell_bill_form>")]
 pub async fn sell_bill(
-    state: &State<Client>,
+    state: &State<ServiceContext>,
     sell_bill_form: Form<SellBitcreditBillForm>,
 ) -> Status {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
         Status::NotAcceptable
     } else {
-        let mut client = state.inner().clone();
+        let mut client = state.dht_client();
 
-        let public_data_buyer =
-            get_identity_public_data(sell_bill_form.buyer.clone(), client.clone()).await;
+        let public_data_buyer = state
+            .contact_service
+            .get_identity_by_name(&sell_bill_form.buyer)
+            .await
+            .expect("Can not get buyer identity.");
 
         if !public_data_buyer.name.is_empty() {
             let timestamp = api::TimeApi::get_atomic_time().await.timestamp;
@@ -708,16 +719,19 @@ pub async fn sell_bill(
 
 #[put("/endorse", data = "<endorse_bill_form>")]
 pub async fn endorse_bill(
-    state: &State<Client>,
+    state: &State<ServiceContext>,
     endorse_bill_form: Form<EndorseBitcreditBillForm>,
 ) -> Status {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
         Status::NotAcceptable
     } else {
-        let mut client = state.inner().clone();
+        let mut client = state.dht_client();
 
-        let public_data_endorsee =
-            get_identity_public_data(endorse_bill_form.endorsee.clone(), client.clone()).await;
+        let public_data_endorsee = state
+            .contact_service
+            .get_identity_by_name(&endorse_bill_form.endorsee)
+            .await
+            .expect("Can not get endorsee identity.");
 
         if !public_data_endorsee.name.is_empty() {
             let timestamp = api::TimeApi::get_atomic_time().await.timestamp;
@@ -748,8 +762,8 @@ pub async fn endorse_bill(
                     .await;
             }
 
-            let bills = get_bills();
-            let identity: Identity = read_identity_from_file();
+            let _ = get_bills();
+            let _: Identity = read_identity_from_file();
 
             Status::Ok
         } else {
@@ -760,13 +774,13 @@ pub async fn endorse_bill(
 
 #[put("/request_to_pay", data = "<request_to_pay_bill_form>")]
 pub async fn request_to_pay_bill(
-    state: &State<Client>,
+    state: &State<ServiceContext>,
     request_to_pay_bill_form: Form<RequestToPayBitcreditBillForm>,
 ) -> Status {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
         Status::NotAcceptable
     } else {
-        let mut client = state.inner().clone();
+        let mut client = state.dht_client();
 
         let timestamp = api::TimeApi::get_atomic_time().await.timestamp;
 
@@ -790,13 +804,13 @@ pub async fn request_to_pay_bill(
 
 #[put("/request_to_accept", data = "<request_to_accept_bill_form>")]
 pub async fn request_to_accept_bill(
-    state: &State<Client>,
+    state: &State<ServiceContext>,
     request_to_accept_bill_form: Form<RequestToAcceptBitcreditBillForm>,
 ) -> Status {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
         Status::NotAcceptable
     } else {
-        let mut client = state.inner().clone();
+        let mut client = state.dht_client();
 
         let timestamp = api::TimeApi::get_atomic_time().await.timestamp;
 
@@ -820,13 +834,13 @@ pub async fn request_to_accept_bill(
 
 #[put("/accept", data = "<accept_bill_form>")]
 pub async fn accept_bill_form(
-    state: &State<Client>,
+    state: &State<ServiceContext>,
     accept_bill_form: Form<AcceptBitcreditBillForm>,
 ) -> Status {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
         Status::NotAcceptable
     } else {
-        let mut client = state.inner().clone();
+        let mut client = state.dht_client();
 
         let timestamp = api::TimeApi::get_atomic_time().await.timestamp;
 
@@ -849,48 +863,62 @@ pub async fn accept_bill_form(
 }
 
 #[delete("/remove", data = "<remove_contact_form>")]
-pub async fn remove_contact(remove_contact_form: Form<DeleteContactForm>) -> Status {
+pub async fn remove_contact(
+    remove_contact_form: Form<DeleteContactForm>,
+    state: &State<ServiceContext>,
+) -> Status {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
         Status::NotAcceptable
     } else {
-        delete_from_contacts_map(remove_contact_form.name.clone());
-
+        state
+            .contact_service
+            .delete_identity_by_name(&remove_contact_form.name)
+            .await
+            .unwrap_or(());
         Status::Ok
     }
 }
 
 #[post("/new", data = "<new_contact_form>")]
 pub async fn new_contact(
-    state: &State<Client>,
+    state: &State<ServiceContext>,
     new_contact_form: Form<NewContactForm>,
-) -> Result<Json<Vec<Contact>>, Status> {
-    if !Path::new(IDENTITY_FILE_PATH).exists() {
-        Err(Status::NotAcceptable)
-    } else {
-        add_in_contacts_map(
-            new_contact_form.name.clone(),
-            new_contact_form.node_id.clone(),
-            state.inner().clone(),
-        )
+) -> Result<Json<Vec<Contact>>, Error> {
+    let mut client = state.dht_client();
+    let dht_identity = client
+        .get_identity_public_data_from_dht(new_contact_form.node_id.clone())
         .await;
 
-        Ok(Json(get_contacts_vec()))
-    }
+    let identity = if dht_identity.name.is_empty() {
+        IdentityPublicData::new_only_peer_id(new_contact_form.node_id.clone())
+    } else {
+        dht_identity.to_owned()
+    };
+
+    state
+        .contact_service
+        .create_identity(&new_contact_form.name, identity)
+        .await?;
+    let result = state.contact_service.get_contacts().await?;
+    Ok(Json(result))
 }
 
 #[put("/edit", data = "<edit_contact_form>")]
 pub async fn edit_contact(
     edit_contact_form: Form<EditContactForm>,
-) -> Result<Json<Vec<Contact>>, Status> {
+    state: &State<ServiceContext>,
+) -> Result<Json<Vec<Contact>>, Error> {
     if !Path::new(IDENTITY_FILE_PATH).exists() {
-        Err(Status::NotAcceptable)
+        Err(Error::PreconditionFailed)
     } else {
-        change_contact_name_from_contacts_map(
-            edit_contact_form.old_name.clone(),
-            edit_contact_form.name.clone(),
-        );
+        state
+            .contact_service
+            .update_identity_name(&edit_contact_form.old_name, &edit_contact_form.name)
+            .await?;
 
-        Ok(Json(get_contacts_vec()))
+        let contacts = state.contact_service.get_contacts().await?;
+
+        Ok(Json(contacts))
     }
 }
 

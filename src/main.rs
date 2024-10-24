@@ -5,8 +5,9 @@ extern crate rocket;
 use std::collections::HashMap;
 use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
-use std::{env, fs, mem, path, thread};
+use std::{env, fs, mem, thread};
 
+use anyhow::Result;
 use bitcoin::PublicKey;
 use borsh::{self, BorshDeserialize, BorshSerialize};
 use chrono::Utc;
@@ -24,15 +25,17 @@ use rocket::fs::FileServer;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::yansi::Paint;
 use rocket::{Build, Rocket};
+use service::contact_service::IdentityPublicData;
+use service::{create_service_context, ServiceContext};
 
 use crate::blockchain::{
     start_blockchain_for_new_bill, Block, Chain, ChainToReturn, OperationCode,
 };
 use crate::constants::{
     BILLS_FOLDER_PATH, BILLS_KEYS_FOLDER_PATH, BOOTSTRAP_FOLDER_PATH,
-    COMPOUNDING_INTEREST_RATE_ZERO, CONTACT_MAP_FILE_PATH, CONTACT_MAP_FOLDER_PATH,
-    IDENTITY_ED_25529_KEYS_FILE_PATH, IDENTITY_FILE_PATH, IDENTITY_FOLDER_PATH,
-    IDENTITY_PEER_ID_FILE_PATH, QUOTES_MAP_FOLDER_PATH, QUOTE_MAP_FILE_PATH, USEDNET,
+    COMPOUNDING_INTEREST_RATE_ZERO, IDENTITY_ED_25529_KEYS_FILE_PATH, IDENTITY_FILE_PATH,
+    IDENTITY_FOLDER_PATH, IDENTITY_PEER_ID_FILE_PATH, QUOTES_MAP_FOLDER_PATH, QUOTE_MAP_FILE_PATH,
+    USEDNET,
 };
 use crate::dht::network::Client;
 use crate::numbers_to_words::encode;
@@ -42,14 +45,17 @@ mod blockchain;
 mod config;
 mod constants;
 mod dht;
+mod error;
 mod numbers_to_words;
+mod persistence;
+mod service;
 mod test;
 mod web;
 mod work_with_mint;
 
 // MAIN
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     env::set_var("RUST_BACKTRACE", "full");
 
     env_logger::init();
@@ -71,10 +77,14 @@ async fn main() {
     dht.start_provide().await;
     dht.receive_updates_for_all_bills_topics().await;
     dht.put_identity_public_data_in_dht().await;
-    let _rocket = rocket_main(dht, &conf).launch().await.unwrap();
+
+    let service_context = create_service_context(conf.clone(), dht.clone()).await?;
+    let _rocket = rocket_main(service_context).launch().await.unwrap();
+    Ok(())
 }
 
-fn rocket_main(dht: Client, conf: &Config) -> Rocket<Build> {
+fn rocket_main(context: ServiceContext) -> Rocket<Build> {
+    let conf = context.config.clone();
     let rocket = rocket::build()
         .configure(
             rocket::Config::figment()
@@ -82,7 +92,7 @@ fn rocket_main(dht: Client, conf: &Config) -> Rocket<Build> {
                 .merge(("address", conf.http_address.to_owned())),
         )
         .register("/", catchers![web::not_found])
-        .manage(dht)
+        .manage(context)
         .mount("/exit", routes![web::exit])
         .mount("/opcodes", routes![web::return_operation_codes])
         .mount(
@@ -139,9 +149,6 @@ fn rocket_main(dht: Client, conf: &Config) -> Rocket<Build> {
 }
 
 fn init_folders() {
-    if !Path::new(CONTACT_MAP_FOLDER_PATH).exists() {
-        fs::create_dir(CONTACT_MAP_FOLDER_PATH).expect("Can't create folder contacts.");
-    }
     if !Path::new(QUOTES_MAP_FOLDER_PATH).exists() {
         fs::create_dir(QUOTES_MAP_FOLDER_PATH).expect("Can't create folder quotes.");
     }
@@ -257,158 +264,6 @@ pub fn add_bitcredit_token_in_quotes_map(token: String, bill_id: String) {
     write_quotes_map(quotes);
 }
 
-//-------------------------Contacts map-------------------------
-#[derive(Serialize)]
-#[serde(crate = "rocket::serde")]
-struct Contact {
-    name: String,
-    peer_id: String,
-}
-
-fn get_contacts_vec() -> Vec<Contact> {
-    if !Path::new(CONTACT_MAP_FILE_PATH).exists() {
-        create_contacts_map();
-    }
-    let data: Vec<u8> = fs::read(CONTACT_MAP_FILE_PATH).expect("Unable to read contacts.");
-    let contacts: HashMap<String, IdentityPublicData> = HashMap::try_from_slice(&data).unwrap();
-    let mut contacts_vec: Vec<Contact> = Vec::new();
-    for (name, public_data) in contacts {
-        contacts_vec.push(Contact {
-            name,
-            peer_id: public_data.peer_id,
-        });
-    }
-    contacts_vec
-}
-
-fn read_contacts_map() -> HashMap<String, IdentityPublicData> {
-    if !Path::new(CONTACT_MAP_FILE_PATH).exists() {
-        create_contacts_map();
-    }
-    let data: Vec<u8> = fs::read(CONTACT_MAP_FILE_PATH).expect("Unable to read contacts.");
-    let contacts: HashMap<String, IdentityPublicData> = HashMap::try_from_slice(&data).unwrap();
-    contacts
-}
-
-fn delete_from_contacts_map(name: String) {
-    if Path::new(CONTACT_MAP_FILE_PATH).exists() {
-        let mut contacts: HashMap<String, IdentityPublicData> = read_contacts_map();
-        contacts.remove(&name);
-        write_contacts_map(contacts);
-    }
-}
-
-async fn add_in_contacts_map(name: String, peer_id: String, mut client: Client) {
-    if !Path::new(CONTACT_MAP_FILE_PATH).exists() {
-        create_contacts_map();
-    }
-
-    let mut identity_public_data = IdentityPublicData::new_only_peer_id(peer_id.clone());
-
-    let identity_public_data_from_dht = client.get_identity_public_data_from_dht(peer_id).await;
-
-    if !identity_public_data.name.is_empty() {
-        identity_public_data = identity_public_data_from_dht;
-    }
-
-    let mut contacts: HashMap<String, IdentityPublicData> = read_contacts_map();
-
-    contacts.insert(name, identity_public_data);
-    write_contacts_map(contacts);
-}
-
-pub fn change_contact_data_from_dht(
-    name: String,
-    dht_data: IdentityPublicData,
-    local_data: IdentityPublicData,
-) {
-    if !dht_data.eq(&local_data) {
-        let mut contacts: HashMap<String, IdentityPublicData> = read_contacts_map();
-        contacts.remove(&name);
-        contacts.insert(name, dht_data);
-        write_contacts_map(contacts);
-    }
-}
-
-fn change_contact_name_from_contacts_map(old_entry_key: String, new_name: String) {
-    let mut contacts: HashMap<String, IdentityPublicData> = read_contacts_map();
-    let peer_info = contacts.get(&old_entry_key).unwrap().clone();
-    contacts.remove(&old_entry_key);
-    contacts.insert(new_name, peer_info);
-    write_contacts_map(contacts);
-}
-
-fn create_contacts_map() {
-    let contacts: HashMap<String, IdentityPublicData> = HashMap::new();
-    write_contacts_map(contacts);
-}
-
-fn write_contacts_map(map: HashMap<String, IdentityPublicData>) {
-    let contacts_byte = map.try_to_vec().unwrap();
-    fs::write(CONTACT_MAP_FILE_PATH, contacts_byte).expect("Unable to write peer id in file.");
-}
-
-fn get_contact_from_map(name: &String) -> IdentityPublicData {
-    let contacts = read_contacts_map();
-    if contacts.contains_key(name) {
-        let data = contacts.get(name).unwrap().clone();
-        data
-    } else {
-        IdentityPublicData::new_empty()
-    }
-}
-
-#[derive(
-    BorshSerialize, BorshDeserialize, FromForm, Debug, Serialize, Deserialize, Clone, Eq, PartialEq,
-)]
-#[serde(crate = "rocket::serde")]
-pub struct IdentityPublicData {
-    peer_id: String,
-    name: String,
-    company: String,
-    bitcoin_public_key: String,
-    postal_address: String,
-    email: String,
-    rsa_public_key_pem: String,
-}
-
-impl IdentityPublicData {
-    pub fn new(identity: Identity, peer_id: String) -> Self {
-        Self {
-            peer_id,
-            name: identity.name,
-            company: identity.company,
-            bitcoin_public_key: identity.bitcoin_public_key,
-            postal_address: identity.postal_address,
-            email: identity.email,
-            rsa_public_key_pem: identity.public_key_pem,
-        }
-    }
-
-    pub fn new_empty() -> Self {
-        Self {
-            peer_id: "".to_string(),
-            name: "".to_string(),
-            company: "".to_string(),
-            bitcoin_public_key: "".to_string(),
-            postal_address: "".to_string(),
-            email: "".to_string(),
-            rsa_public_key_pem: "".to_string(),
-        }
-    }
-
-    pub fn new_only_peer_id(peer_id: String) -> Self {
-        Self {
-            peer_id,
-            name: "".to_string(),
-            company: "".to_string(),
-            bitcoin_public_key: "".to_string(),
-            postal_address: "".to_string(),
-            email: "".to_string(),
-            rsa_public_key_pem: "".to_string(),
-        }
-    }
-}
 //--------------------------------------------------------------
 
 //-------------------------RSA----------------------------------

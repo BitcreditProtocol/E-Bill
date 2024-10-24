@@ -63,10 +63,11 @@ pub mod network {
         RELAY_BOOTSTRAP_NODE_ONE_IP, RELAY_BOOTSTRAP_NODE_ONE_PEER_ID,
         RELAY_BOOTSTRAP_NODE_ONE_TCP,
     };
+    use crate::service::contact_service::IdentityPublicData;
     use crate::{
         config, decrypt_bytes_with_private_key, encrypt_bytes_with_public_key, generate_dht_logic,
         get_bills, get_whole_identity, is_not_hidden, read_ed25519_keypair_from_file,
-        read_peer_id_from_file, IdentityPublicData, IdentityWithAll,
+        read_peer_id_from_file, IdentityWithAll,
     };
 
     use super::*;

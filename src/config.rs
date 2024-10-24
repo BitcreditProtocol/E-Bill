@@ -8,7 +8,7 @@ use libp2p::Multiaddr;
 /// Configuration for the bitcredit application
 /// Allows to set the ports and addresses for the http and p2p connections
 /// either via command line or environment variables
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 #[command(version, about, long_about = None)]
 pub struct Config {
     #[arg(default_value_t = 1908, long, env = "P2P_PORT")]
@@ -19,6 +19,8 @@ pub struct Config {
     pub http_port: u16,
     #[arg(default_value_t = String::from("127.0.0.1"), long, env = "HTTP_ADDRESS")]
     pub http_address: String,
+    #[arg(default_value_t = String::from("./"), long, env = "DATA_DIR")]
+    pub data_dir: String,
 }
 
 impl Config {
