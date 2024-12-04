@@ -19,12 +19,15 @@ pub fn get_path_for_bill_keys(key_name: &str) -> PathBuf {
     path
 }
 
-pub fn bill_from_byte_array(bill: &[u8]) -> BitcreditBill {
-    BitcreditBill::try_from_slice(bill).unwrap()
+pub fn bill_from_byte_array(bill: &[u8]) -> Result<BitcreditBill, borsh::maybestd::io::Error> {
+    BitcreditBill::try_from_slice(bill)
 }
 
-pub fn read_keys_from_bill_file(bill_name: &str) -> BillKeys {
+pub fn read_keys_from_bill_file(bill_name: &str) -> Result<BillKeys, std::io::Error> {
     let input_path = get_path_for_bill_keys(bill_name);
-    let blockchain_from_file = fs::read(input_path.clone()).expect("file not found");
-    serde_json::from_slice(blockchain_from_file.as_slice()).unwrap()
+    let blockchain_from_file = fs::read(&input_path)
+        .map_err(|e| std::io::Error::new(e.kind(), format!("Failed to read file at {}: {}", input_path.display(), e)))?;
+    let bill_keys: BillKeys = serde_json::from_slice(blockchain_from_file.as_slice())
+        .map_err(|e| std::io::Error::new(e.kind(), format!("Failed to deserialize BillKeys from file at {}: {}", input_path.display(), e)))?;
+    Ok(bill_keys)
 }
