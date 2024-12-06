@@ -1,10 +1,11 @@
 use super::behaviour::{Command, ComposedEvent, Event, MyBehaviour};
-use crate::blockchain::{Chain, GossipsubEvent, GossipsubEventId};
+use super::{GossipsubEvent, GossipsubEventId};
 use crate::constants::{
     BILL_PREFIX, COMPANY_PREFIX, RELAY_BOOTSTRAP_NODE_ONE_IP, RELAY_BOOTSTRAP_NODE_ONE_PEER_ID,
     RELAY_BOOTSTRAP_NODE_ONE_TCP,
 };
 use crate::dht::behaviour::{CompanyEvent, FileRequest, FileResponse};
+use crate::persistence::bill::BillStoreApi;
 use anyhow::Result;
 use futures::channel::mpsc::Receiver;
 use futures::channel::{mpsc, oneshot};
@@ -23,6 +24,7 @@ use libp2p::{gossipsub, relay, PeerId};
 use log::{error, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::iter;
+use std::sync::Arc;
 use tokio::sync::broadcast;
 
 type PendingDial = HashMap<PeerId, oneshot::Sender<Result<()>>>;
@@ -32,6 +34,7 @@ pub struct EventLoop {
     swarm: Swarm<MyBehaviour>,
     command_receiver: Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
+    bill_store: Arc<dyn BillStoreApi>,
     pending_dial: PendingDial,
     pending_start_providing: HashMap<QueryId, oneshot::Sender<()>>,
     pending_get_providers: HashMap<QueryId, oneshot::Sender<HashSet<PeerId>>>,
@@ -44,11 +47,13 @@ impl EventLoop {
         swarm: Swarm<MyBehaviour>,
         command_receiver: Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
+        bill_store: Arc<dyn BillStoreApi>,
     ) -> Self {
         Self {
             swarm,
             command_receiver,
             event_sender,
+            bill_store,
             pending_dial: Default::default(),
             pending_start_providing: Default::default(),
             pending_get_providers: Default::default(),
@@ -267,7 +272,7 @@ impl EventLoop {
                 );
                 if message.topic.as_str().starts_with(COMPANY_PREFIX) {
                     if let Some(company_id) = message.topic.as_str().strip_prefix(COMPANY_PREFIX) {
-                        let event = GossipsubEvent::from_byte_array(&message.data);
+                        let event = GossipsubEvent::from_byte_array(&message.data).unwrap();
 
                         match event.id {
                             GossipsubEventId::AddSignatoryFromCompany => {
@@ -307,37 +312,72 @@ impl EventLoop {
                     }
                 } else if message.topic.as_str().starts_with(BILL_PREFIX) {
                     if let Some(bill_name) = message.topic.as_str().strip_prefix(BILL_PREFIX) {
-                        let event = GossipsubEvent::from_byte_array(&message.data);
+                        let event = GossipsubEvent::from_byte_array(&message.data).unwrap();
 
                         match event.id {
                             GossipsubEventId::Block => {
                                 if let Ok(block) = serde_json::from_slice(&event.message) {
-                                    let mut chain: Chain = Chain::read_chain_from_file(bill_name);
-                                    chain.try_add_block(block);
-                                    if chain.is_chain_valid() {
-                                        chain.write_chain_to_file(bill_name);
+                                    if let Ok(mut chain) =
+                                        self.bill_store.read_bill_chain_from_file(bill_name).await
+                                    {
+                                        chain.try_add_block(block);
+                                        if chain.is_chain_valid() {
+                                            if let Ok(chain_json) = chain.to_pretty_printed_json() {
+                                                if let Err(e) = self
+                                                    .bill_store
+                                                    .write_blockchain_to_file(bill_name, chain_json)
+                                                    .await
+                                                {
+                                                    error!("Could not persist chain for bill {bill_name}: {e}");
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                             GossipsubEventId::Chain => {
                                 if let Ok(receive_chain) = serde_json::from_slice(&event.message) {
-                                    let mut local_chain = Chain::read_chain_from_file(bill_name);
-                                    local_chain.compare_chain(receive_chain, bill_name);
+                                    if let Ok(mut local_chain) =
+                                        self.bill_store.read_bill_chain_from_file(bill_name).await
+                                    {
+                                        let should_persist =
+                                            local_chain.compare_chain(&receive_chain);
+                                        if should_persist && local_chain.is_chain_valid() {
+                                            if let Ok(chain_json) =
+                                                local_chain.to_pretty_printed_json()
+                                            {
+                                                if let Err(e) = self
+                                                    .bill_store
+                                                    .write_blockchain_to_file(bill_name, chain_json)
+                                                    .await
+                                                {
+                                                    error!("Could not persist chain for bill {bill_name}: {e}");
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             GossipsubEventId::CommandGetChain => {
-                                let chain = Chain::read_chain_from_file(bill_name);
-                                if let Ok(chain_bytes) = serde_json::to_vec(&chain) {
-                                    let event =
-                                        GossipsubEvent::new(GossipsubEventId::Chain, chain_bytes);
-                                    let message = event.to_byte_array();
-                                    if let Err(e) = self
-                                        .swarm
-                                        .behaviour_mut()
-                                        .gossipsub
-                                        .publish(gossipsub::IdentTopic::new(bill_name), message)
-                                    {
-                                        error!("Could not publish event: {event:?}: {e}");
+                                if let Ok(chain) =
+                                    self.bill_store.read_bill_chain_from_file(bill_name).await
+                                {
+                                    if let Ok(chain_bytes) = serde_json::to_vec(&chain) {
+                                        let event = GossipsubEvent::new(
+                                            GossipsubEventId::Chain,
+                                            chain_bytes,
+                                        );
+                                        let message = event.to_byte_array().unwrap();
+                                        if let Err(e) =
+                                            self.swarm.behaviour_mut().gossipsub.publish(
+                                                gossipsub::IdentTopic::new(format!(
+                                                    "{BILL_PREFIX}{bill_name}"
+                                                )),
+                                                message,
+                                            )
+                                        {
+                                            error!("Could not publish event: {event:?}: {e}");
+                                        }
                                     }
                                 }
                             }

@@ -1,11 +1,10 @@
 use super::Result;
-use crate::USERNETWORK;
+use crate::CONFIG;
 use crate::{dht::Client, persistence::identity::IdentityStoreApi, util};
 use async_trait::async_trait;
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use libp2p::identity::Keypair;
 use libp2p::PeerId;
-use openssl::{pkey::Private, rsa::Rsa};
 use rocket::serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -88,10 +87,7 @@ impl IdentityServiceApi for IdentityService {
         email: String,
         postal_address: String,
     ) -> Result<()> {
-        let rsa: Rsa<Private> = util::rsa::generation_rsa_key();
-        let private_key_pem: String = util::rsa::pem_private_key_from_rsa(&rsa)
-            .map_err(|e| super::Error::Cryptography(e.to_string()))?;
-        let public_key_pem: String = util::rsa::pem_public_key_from_rsa(&rsa)
+        let (private_key_pem, public_key_pem) = util::rsa::create_rsa_key_pair()
             .map_err(|e| super::Error::Cryptography(e.to_string()))?;
 
         let s = bitcoin::secp256k1::Secp256k1::new();
@@ -99,7 +95,7 @@ impl IdentityServiceApi for IdentityService {
         let private_key = bitcoin::PrivateKey::new(
             s.generate_keypair(&mut bitcoin::secp256k1::rand::thread_rng())
                 .0,
-            *USERNETWORK,
+            CONFIG.bitcoin_network(),
         );
         let public_key = private_key.public_key(&s).to_string();
         let private_key = private_key.to_string();

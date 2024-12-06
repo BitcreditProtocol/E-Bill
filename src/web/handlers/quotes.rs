@@ -1,6 +1,7 @@
-use crate::bill::quotes::get_quote_from_map;
 use crate::external;
-use crate::external::mint::{check_bitcredit_quote, client_accept_bitcredit_quote};
+use crate::external::mint::{
+    check_bitcredit_quote, client_accept_bitcredit_quote, get_quote_from_map,
+};
 use crate::service::{bill_service::BitcreditEbillQuote, Result, ServiceContext};
 use rocket::serde::json::Json;
 use rocket::{get, put, State};

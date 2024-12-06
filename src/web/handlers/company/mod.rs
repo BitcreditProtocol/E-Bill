@@ -1,5 +1,5 @@
 use crate::{
-    blockchain::{GossipsubEvent, GossipsubEventId},
+    dht::{GossipsubEvent, GossipsubEventId},
     service::{
         self,
         company_service::{CompanyPublicData, CompanyToReturn},
@@ -175,7 +175,7 @@ pub async fn add_signatory(
                 GossipsubEventId::AddSignatoryFromCompany,
                 payload.signatory_node_id.into_bytes(),
             )
-            .to_byte_array(),
+            .to_byte_array()?,
             &payload.id,
         )
         .await?;
@@ -208,7 +208,7 @@ pub async fn remove_signatory(
                 GossipsubEventId::RemoveSignatoryFromCompany,
                 payload.signatory_node_id.clone().into_bytes(),
             )
-            .to_byte_array(),
+            .to_byte_array()?,
             &payload.id,
         )
         .await?;

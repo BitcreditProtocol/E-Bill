@@ -1,6 +1,6 @@
 use super::Result;
 use crate::persistence::company::CompanyStoreApi;
-use crate::USERNETWORK;
+use crate::CONFIG;
 use crate::{
     error,
     persistence::{file_upload::FileUploadStoreApi, identity::IdentityStoreApi, ContactStoreApi},
@@ -152,7 +152,7 @@ impl CompanyServiceApi for CompanyService {
         proof_of_registration_file_upload_id: Option<String>,
         logo_file_upload_id: Option<String>,
     ) -> Result<CompanyToReturn> {
-        let (private_key, public_key) = util::create_bitcoin_keypair(*USERNETWORK);
+        let (private_key, public_key) = util::create_bitcoin_keypair(CONFIG.bitcoin_network());
         let id = util::sha256_hash(&public_key.to_bytes());
 
         let company_keys = CompanyKeys {
@@ -345,8 +345,7 @@ impl CompanyServiceApi for CompanyService {
         private_key: &str,
     ) -> Result<Vec<u8>> {
         let read_file = self.store.open_attached_file(id, file_name).await?;
-        let decrypted =
-            util::rsa::decrypt_bytes_with_private_key(&read_file, private_key.to_owned());
+        let decrypted = util::rsa::decrypt_bytes_with_private_key(&read_file, private_key);
         Ok(decrypted)
     }
 }

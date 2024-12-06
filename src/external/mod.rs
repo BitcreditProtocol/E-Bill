@@ -13,4 +13,8 @@ pub enum Error {
     /// all errors originating from the external time API
     #[error("External Time API error: {0}")]
     ExternalTimeApi(#[from] reqwest::Error),
+
+    /// all errors originating from the external bitcoin API
+    #[error("External Bitcoin API error: {0}")]
+    ExternalBitcoinApi(#[from] bitcoin::Error),
 }

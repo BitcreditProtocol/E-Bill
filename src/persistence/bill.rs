@@ -165,7 +165,8 @@ impl BillStoreApi for FileBasedBillStore {
                     if let Some(file_name_str) = file_name.to_str() {
                         let chain = self.read_bill_chain_from_file(file_name_str).await?;
                         let bill_keys = self.read_bill_keys_from_file(file_name_str).await?;
-                        bills.push(chain.get_last_version_bill(&bill_keys).await);
+                        let bill = chain.get_last_version_bill(&bill_keys)?;
+                        bills.push(bill);
                     }
                 }
             }

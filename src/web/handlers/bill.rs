@@ -87,7 +87,11 @@ pub async fn return_bill(
     state: &State<ServiceContext>,
     id: String,
 ) -> Result<Json<BitcreditBillToReturn>> {
-    let full_bill = state.bill_service.get_full_bill(&id).await?;
+    let current_timestamp = external::time::TimeApi::get_atomic_time().await?.timestamp;
+    let full_bill = state
+        .bill_service
+        .get_full_bill(&id, current_timestamp)
+        .await?;
     Ok(Json(full_bill))
 }
 
@@ -487,12 +491,18 @@ pub async fn request_to_mint_bill(
             )
             .await?;
     }
+    let bill_keys = state
+        .bill_service
+        .get_bill_keys(&request_to_mint_bill_payload.bill_name)
+        .await?;
 
     // Usage of thread::spawn is necessary here, because we spawn a new tokio runtime in the
     // thread, but this logic will be replaced soon
-    thread::spawn(move || request_to_mint_bitcredit(request_to_mint_bill_payload.into_inner()))
-        .join()
-        .expect("Thread panicked");
+    thread::spawn(move || {
+        request_to_mint_bitcredit(request_to_mint_bill_payload.into_inner(), bill_keys)
+    })
+    .join()
+    .expect("Thread panicked");
     Ok(Status::Ok)
 }
 

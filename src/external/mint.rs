@@ -1,3 +1,9 @@
+use crate::constants::QUOTE_MAP_FILE_PATH;
+use crate::service::bill_service::BillKeys as LocalBillKeys;
+use crate::service::bill_service::BitcreditEbillQuote;
+use crate::web::data::RequestToMintBitcreditBillPayload;
+use borsh::{to_vec, BorshDeserialize};
+use moksha_core::primitives::CheckBitcreditQuoteResponse;
 use moksha_core::primitives::{
     BillKeys, CurrencyUnit, PaymentMethod, PostMintQuoteBitcreditResponse,
     PostRequestToMintBitcreditResponse,
@@ -5,20 +11,10 @@ use moksha_core::primitives::{
 use moksha_wallet::http::CrossPlatformHttpClient;
 use moksha_wallet::localstore::sqlite::SqliteLocalStore;
 use moksha_wallet::wallet::Wallet;
+use std::collections::HashMap;
+use std::path::Path;
 use std::{fs, path::PathBuf};
 use url::Url;
-
-use crate::service::bill_service::BitcreditEbillQuote;
-use crate::{
-    bill::{
-        quotes::{
-            add_bitcredit_quote_and_amount_in_quotes_map, add_bitcredit_token_in_quotes_map,
-            add_in_quotes_map, get_quote_from_map, read_quotes_map,
-        },
-        read_keys_from_bill_file,
-    },
-    web::data::RequestToMintBitcreditBillPayload,
-};
 
 // Usage of tokio::main to spawn a new runtime is necessary here, because Wallet is'nt Send - but
 // this logic will be replaced soon
@@ -137,6 +133,7 @@ pub async fn client_accept_bitcredit_quote(bill_id: &String) -> String {
 #[tokio::main]
 pub async fn request_to_mint_bitcredit(
     payload: RequestToMintBitcreditBillPayload,
+    bill_keys: LocalBillKeys,
 ) -> PostRequestToMintBitcreditResponse {
     let dir = PathBuf::from("./data/wallet".to_string());
     let db_path = dir.join("wallet.db").to_str().unwrap().to_string();
@@ -152,7 +149,6 @@ pub async fn request_to_mint_bitcredit(
         .await
         .expect("Could not create wallet");
 
-    let bill_keys = read_keys_from_bill_file(&payload.bill_name.clone());
     let keys: BillKeys = BillKeys {
         private_key_pem: bill_keys.private_key_pem,
         public_key_pem: bill_keys.public_key_pem,
@@ -203,4 +199,82 @@ pub async fn init_wallet() {
     //     .build()
     //     .await
     //     .expect("Could not create wallet");
+}
+
+// ---------------------------------------------
+// Quotes Logic --------------------------------
+// ---------------------------------------------
+
+pub fn read_quotes_map() -> HashMap<String, BitcreditEbillQuote> {
+    if !Path::new(QUOTE_MAP_FILE_PATH).exists() {
+        create_quotes_map();
+    }
+    let data: Vec<u8> = fs::read(QUOTE_MAP_FILE_PATH).expect("Unable to read quotes.");
+    let quotes: HashMap<String, BitcreditEbillQuote> = HashMap::try_from_slice(&data).unwrap();
+    quotes
+}
+
+pub fn create_quotes_map() {
+    let quotes: HashMap<String, BitcreditEbillQuote> = HashMap::new();
+    write_quotes_map(quotes);
+}
+
+pub fn write_quotes_map(map: HashMap<String, BitcreditEbillQuote>) {
+    let quotes_byte = to_vec(&map).unwrap();
+    fs::write(QUOTE_MAP_FILE_PATH, quotes_byte).expect("Unable to write quote in file.");
+}
+
+pub fn add_in_quotes_map(quote: BitcreditEbillQuote) {
+    if !Path::new(QUOTE_MAP_FILE_PATH).exists() {
+        create_quotes_map();
+    }
+
+    let mut quotes: HashMap<String, BitcreditEbillQuote> = read_quotes_map();
+
+    quotes.insert(quote.bill_id.clone(), quote);
+    write_quotes_map(quotes);
+}
+
+pub fn get_quote_from_map(bill_id: &String) -> BitcreditEbillQuote {
+    let quotes = read_quotes_map();
+    if quotes.contains_key(bill_id) {
+        let data = quotes.get(bill_id).unwrap().clone();
+        data
+    } else {
+        BitcreditEbillQuote::new_empty()
+    }
+}
+
+pub fn add_bitcredit_quote_and_amount_in_quotes_map(
+    response: CheckBitcreditQuoteResponse,
+    bill_id: String,
+) {
+    if !Path::new(QUOTE_MAP_FILE_PATH).exists() {
+        create_quotes_map();
+    }
+
+    let mut quotes: HashMap<String, BitcreditEbillQuote> = read_quotes_map();
+    let mut quote = get_quote_from_map(&bill_id);
+
+    quote.amount = response.amount;
+    quote.quote_id = response.quote.clone();
+
+    quotes.remove(&bill_id);
+    quotes.insert(bill_id.clone(), quote);
+    write_quotes_map(quotes);
+}
+
+pub fn add_bitcredit_token_in_quotes_map(token: String, bill_id: String) {
+    if !Path::new(QUOTE_MAP_FILE_PATH).exists() {
+        create_quotes_map();
+    }
+
+    let mut quotes: HashMap<String, BitcreditEbillQuote> = read_quotes_map();
+    let mut quote = get_quote_from_map(&bill_id);
+
+    quote.token = token.clone();
+
+    quotes.remove(&bill_id);
+    quotes.insert(bill_id.clone(), quote);
+    write_quotes_map(quotes);
 }

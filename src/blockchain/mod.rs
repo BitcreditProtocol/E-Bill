@@ -1,7 +1,4 @@
-use borsh::{to_vec, BorshDeserialize};
-use borsh_derive::{BorshDeserialize, BorshSerialize};
-use openssl::pkey::Private;
-use openssl::rsa::Rsa;
+use borsh::to_vec;
 use openssl::sha::Sha256;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -9,11 +6,14 @@ use thiserror::Error;
 use crate::blockchain::OperationCode::{
     Accept, Endorse, Issue, Mint, RequestToAccept, RequestToPay, Sell,
 };
+use crate::constants::SIGNED_BY;
+use crate::external;
 use crate::service::bill_service::{BillKeys, BitcreditBill};
 use crate::service::contact_service::IdentityPublicData;
-use crate::util::rsa::encrypt_bytes;
+use crate::util::rsa;
 pub use block::Block;
 pub use chain::Chain;
+use std::string::FromUtf8Error;
 
 mod block;
 mod chain;
@@ -24,12 +24,38 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Generic error type
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Errors from io handling, or binary serialization/deserialization
+    #[error("io error {0}")]
+    Io(#[from] std::io::Error),
+
     /// If a whole chain is not valid
     #[error("Blockchain is invalid")]
     BlockchainInvalid,
 
+    /// Errors stemming from json deserialization. Most of the time this is a
     #[error("unable to serialize/deserialize to/from JSON {0}")]
     Json(#[from] serde_json::Error),
+
+    /// Errors stemming from cryptography, such as converting keys
+    #[error("Cryptography error: {0}")]
+    Cryptography(#[from] openssl::error::ErrorStack),
+
+    /// Errors stemming from decoding
+    #[error("Decode error: {0}")]
+    Decode(#[from] hex::FromHexError),
+
+    /// Errors stemming from converting from utf-8 strings
+    #[error("UTF-8 error: {0}")]
+    Utf8(#[from] FromUtf8Error),
+
+    /// Errors stemming from dealing with invalid block data, e.g. if within an Endorse block,
+    /// there is no endorsee
+    #[error("Invalid block data error: {0}")]
+    InvalidBlockdata(String),
+
+    /// all errors originating from external APIs
+    #[error("External API error: {0}")]
+    ExternalApi(#[from] external::Error),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -38,23 +64,22 @@ pub struct ChainToReturn {
 }
 
 impl ChainToReturn {
-    /// Creates a new instance of the `Self` type by transforming a given `Chain` into its corresponding representation.
+    /// Creates a new Chain to return by transforming a given `Chain` into its corresponding representation.
     ///
     /// # Parameters
-    /// * `chain` - The `Chain` object to be transformed. It contains the list of blocks and the initial bill version
+    /// * `chain` - The `Chain` to be transformed. It contains the list of blocks and the initial bill version
     ///   necessary for processing.
     /// * `bill_keys` - The keys for the bill
     ///
     /// # Returns
-    /// A new instance of `Self`, with a `blocks` field containing the transformed `BlockToReturn` objects.
+    /// A new instance containing the transformed `BlockToReturn` objects.
     ///
-    pub fn new(chain: Chain, bill_keys: &BillKeys) -> Self {
+    pub fn new(chain: Chain, bill_keys: &BillKeys) -> Result<Self> {
         let mut blocks: Vec<BlockToReturn> = Vec::new();
-        let bill = chain.get_first_version_bill_with_keys(bill_keys);
         for block in chain.blocks {
-            blocks.push(BlockToReturn::new(block, bill.clone()));
+            blocks.push(BlockToReturn::new(block, bill_keys)?);
         }
-        Self { blocks }
+        Ok(Self { blocks })
     }
 }
 
@@ -83,6 +108,19 @@ impl OperationCode {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WaitingForPayment {
+    Yes(Box<PaymentInfo>),
+    No,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PaymentInfo {
+    pub buyer: IdentityPublicData,
+    pub seller: IdentityPublicData,
+    pub amount: u64,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct BlockToReturn {
     pub id: u64,
@@ -98,10 +136,12 @@ pub struct BlockToReturn {
 }
 
 impl BlockToReturn {
-    pub fn new(block: Block, bill: BitcreditBill) -> Self {
-        let label = block.get_history_label(bill);
+    /// Creates a new block to return for the given bill, with an attached history label,
+    /// describing what happened in this block
+    pub fn new(block: Block, bill_keys: &BillKeys) -> Result<Self> {
+        let label = block.get_history_label(bill_keys)?;
 
-        Self {
+        Ok(Self {
             id: block.id,
             bill_name: block.bill_name,
             hash: block.hash,
@@ -112,83 +152,44 @@ impl BlockToReturn {
             public_key: block.public_key,
             operation_code: block.operation_code,
             label,
-        }
+        })
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
-pub struct GossipsubEvent {
-    pub id: GossipsubEventId,
-    pub message: Vec<u8>,
-}
-
-impl GossipsubEvent {
-    pub fn new(id: GossipsubEventId, message: Vec<u8>) -> Self {
-        Self { id, message }
-    }
-
-    pub fn to_byte_array(&self) -> Vec<u8> {
-        to_vec(self).expect("Failed to serialize event")
-    }
-
-    pub fn from_byte_array(bytes: &[u8]) -> Self {
-        Self::try_from_slice(bytes).expect("Failed to deserialize event")
-    }
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
-pub enum GossipsubEventId {
-    Block,
-    Chain,
-    CommandGetChain,
-    AddSignatoryFromCompany,
-    RemoveSignatoryFromCompany,
-}
-
-#[cfg(test)]
-pub fn start_blockchain_for_new_bill(
-    _bill: &BitcreditBill,
-    _operation_code: OperationCode,
-    _drawer: IdentityPublicData,
-    _public_key: String,
-    _private_key: String,
-    _private_key_pem: String,
-    _timestamp: i64,
-) {
-}
-#[cfg(not(test))]
+/// Creates a new blockchain for the given bill, encrypting the metadata using the bill's public
+/// key
 pub fn start_blockchain_for_new_bill(
     bill: &BitcreditBill,
     operation_code: OperationCode,
     drawer: IdentityPublicData,
-    public_key: String,
-    private_key: String,
-    private_key_pem: String,
+    drawer_public_key: String,
+    drawer_private_key: String,
+    bill_public_key_pem: String,
     timestamp: i64,
-) {
-    use crate::bill::get_path_for_bill;
-
-    let data_for_new_block_in_bytes = serde_json::to_vec(&drawer).unwrap();
-    let data_for_new_block = "Signed by ".to_string() + &hex::encode(data_for_new_block_in_bytes);
+) -> Result<Chain> {
+    let drawer_bytes = serde_json::to_vec(&drawer)?;
+    let data_for_new_block = format!("{}{}", SIGNED_BY, hex::encode(drawer_bytes));
 
     let genesis_hash: String = hex::encode(data_for_new_block.as_bytes());
 
-    let bill_data: String = encrypted_hash_data_from_bill(bill, private_key_pem);
+    let encrypted_and_hashed_bill_data = hex::encode(rsa::encrypt_bytes_with_public_key(
+        &to_vec(bill)?,
+        &bill_public_key_pem,
+    ));
 
     let first_block = Block::new(
         1,
         genesis_hash,
-        bill_data,
+        encrypted_and_hashed_bill_data,
         bill.name.clone(),
-        public_key,
+        drawer_public_key,
         operation_code,
-        private_key,
+        drawer_private_key,
         timestamp,
-    );
+    )?;
 
     let chain = Chain::new(first_block);
-    let output_path = get_path_for_bill(&bill.name);
-    std::fs::write(output_path, serde_json::to_string_pretty(&chain).unwrap()).unwrap();
+    Ok(chain)
 }
 
 fn calculate_hash(
@@ -214,11 +215,104 @@ fn calculate_hash(
     hasher.finish().to_vec()
 }
 
-#[cfg_attr(test, allow(dead_code))]
-fn encrypted_hash_data_from_bill(bill: &BitcreditBill, private_key_pem: String) -> String {
-    let bytes = to_vec(bill).unwrap();
-    let key: Rsa<Private> = Rsa::private_key_from_pem(private_key_pem.as_bytes()).unwrap();
-    let encrypted_bytes = encrypt_bytes(&bytes, &key);
+fn extract_after_phrase(input: &str, phrase: &str) -> Option<String> {
+    if let Some(start) = input.find(phrase) {
+        let start_idx = start + phrase.len();
+        if let Some(remaining) = input.get(start_idx..) {
+            if let Some(end_idx) = remaining.find(' ') {
+                return Some(remaining[..end_idx].to_string());
+            } else {
+                return Some(remaining.to_string());
+            }
+        }
+    }
+    None
+}
 
-    hex::encode(encrypted_bytes)
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        service::identity_service::{Identity, IdentityWithAll},
+        tests::test::{TEST_PRIVATE_KEY, TEST_PUB_KEY},
+    };
+    use libp2p::{identity::Keypair, PeerId};
+
+    pub fn get_baseline_identity() -> IdentityWithAll {
+        let mut identity = Identity::new_empty();
+        identity.name = "drawer".to_owned();
+        identity.public_key_pem = TEST_PUB_KEY.to_owned();
+        identity.private_key_pem = TEST_PRIVATE_KEY.to_owned();
+        IdentityWithAll {
+            identity,
+            peer_id: PeerId::random(),
+            key_pair: Keypair::generate_ed25519(),
+        }
+    }
+
+    #[test]
+    fn start_blockchain_for_new_bill_baseline() {
+        let bill = BitcreditBill::new_empty();
+        let identity = get_baseline_identity();
+
+        let result = start_blockchain_for_new_bill(
+            &bill,
+            OperationCode::Issue,
+            IdentityPublicData::new(identity.identity.clone(), identity.peer_id.to_string()),
+            identity.identity.public_key_pem,
+            identity.identity.private_key_pem,
+            TEST_PUB_KEY.to_owned(),
+            1731593928,
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(result.as_ref().unwrap().blocks.len(), 1);
+    }
+
+    #[test]
+    fn start_blockchain_for_new_bill_baseline_fails_with_invalid_keys() {
+        let bill = BitcreditBill::new_empty();
+        let identity = get_baseline_identity();
+
+        let result = start_blockchain_for_new_bill(
+            &bill,
+            OperationCode::Issue,
+            IdentityPublicData::new(identity.identity.clone(), identity.peer_id.to_string()),
+            identity.identity.private_key_pem, // swapped private and public
+            identity.identity.public_key_pem,
+            TEST_PUB_KEY.to_owned(),
+            1731593928,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_after_phrase_basic() {
+        assert_eq!(
+            extract_after_phrase(
+                "Endorsed by 123 endorsed to 456 amount: 5000",
+                "Endorsed by "
+            ),
+            Some(String::from("123"))
+        );
+        assert_eq!(
+            extract_after_phrase(
+                "Endorsed by 123 endorsed to 456 amount: 5000",
+                " endorsed to "
+            ),
+            Some(String::from("456"))
+        );
+        assert_eq!(
+            extract_after_phrase("Endorsed by 123 endorsed to 456 amount: 5000", " amount: "),
+            Some(String::from("5000"))
+        );
+        assert_eq!(
+            extract_after_phrase(
+                "Endorsed by 123 endorsed to 456 amount: 5000",
+                " weird stuff "
+            ),
+            None
+        );
+    }
 }

@@ -40,12 +40,15 @@ pub enum Error {
     #[allow(dead_code)]
     #[error("Failed to convert integer {0}")]
     FromInt(#[from] std::num::TryFromIntError),
+
+    #[error("Blockchain error: {0}")]
+    Blockchain(#[from] blockchain::Error),
 }
 
 pub use contact::ContactStoreApi;
 pub use nostr::{NostrEventOffset, NostrEventOffsetStoreApi};
 
-use crate::config::Config;
+use crate::{blockchain, config::Config};
 use company::FileBasedCompanyStore;
 use file_upload::FileUploadStore;
 

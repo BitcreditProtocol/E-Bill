@@ -6,6 +6,7 @@ pub mod identity_service;
 pub mod notification_service;
 
 use super::{dht::Client, Config};
+use crate::external::bitcoin::BitcoinClient;
 use crate::persistence::DbContext;
 use crate::persistence::{self};
 use crate::{dht, external};
@@ -177,11 +178,13 @@ pub async fn create_service_context(
     db: DbContext,
 ) -> Result<ServiceContext> {
     let contact_service = ContactService::new(client.clone(), db.contact_store.clone());
+    let bitcoin_client = Arc::new(BitcoinClient::new());
     let bill_service = BillService::new(
         client.clone(),
         db.bill_store,
         db.identity_store.clone(),
         db.file_upload_store.clone(),
+        bitcoin_client,
     );
     let identity_service = IdentityService::new(client.clone(), db.identity_store.clone());
 

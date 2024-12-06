@@ -3,7 +3,7 @@ pub mod file;
 pub mod numbers_to_words;
 pub mod rsa;
 pub mod terminal;
-use crate::USERNETWORK;
+use crate::CONFIG;
 use crate::{service::bill_service::BitcreditBill, service::identity_service::Identity};
 use bitcoin::{secp256k1::Scalar, Network, PrivateKey, PublicKey};
 use openssl::sha::sha256;
@@ -47,5 +47,5 @@ pub fn get_current_payee_private_key(identity: Identity, bill: BitcreditBill) ->
         .inner
         .add_tweak(&Scalar::from(private_key_bill_holder.inner))
         .unwrap();
-    bitcoin::PrivateKey::new(privat_key_bill, *USERNETWORK).to_string()
+    bitcoin::PrivateKey::new(privat_key_bill, CONFIG.bitcoin_network()).to_string()
 }

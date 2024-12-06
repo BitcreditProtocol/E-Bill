@@ -3,6 +3,8 @@ use crate::constants::{
     RELAY_BOOTSTRAP_NODE_ONE_IP, RELAY_BOOTSTRAP_NODE_ONE_PEER_ID, RELAY_BOOTSTRAP_NODE_ONE_TCP,
 };
 use behaviour::{ComposedEvent, Event, MyBehaviour};
+use borsh::{to_vec, BorshDeserialize};
+use borsh_derive::{BorshDeserialize, BorshSerialize};
 use event_loop::EventLoop;
 use futures::channel::mpsc;
 use futures::channel::mpsc::Receiver;
@@ -17,14 +19,14 @@ use libp2p::swarm::{SwarmBuilder, SwarmEvent};
 use libp2p::{identify, noise, relay, tcp, yamux, PeerId, Transport};
 use tokio::{spawn, sync::broadcast};
 
-mod behaviour;
+pub mod behaviour;
 mod client;
 mod event_loop;
 
 use crate::persistence::bill::BillStoreApi;
 use crate::persistence::company::CompanyStoreApi;
 use crate::persistence::identity::IdentityStoreApi;
-use crate::{persistence, util};
+use crate::{blockchain, persistence, util};
 pub use client::Client;
 use libp2p::identity::Keypair;
 use log::{error, info};
@@ -37,7 +39,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Generic error type
 #[derive(Debug, Error)]
 pub enum Error {
-    /// all errors originating from file, or network io
+    /// all errors originating from file, or network io, or binary serialization or deserialization
     #[error("io error {0}")]
     Io(#[from] std::io::Error),
 
@@ -100,6 +102,10 @@ pub enum Error {
     /// error if the listen url is invalid
     #[error("invalid listen p2p url error")]
     ListenP2pUrlInvalid,
+
+    /// errors that stem from interacting with a blockchain
+    #[error("Blockchain error: {0}")]
+    Blockchain(#[from] blockchain::Error),
 }
 
 pub struct Dht {
@@ -285,11 +291,42 @@ async fn new(
 
     let (command_sender, command_receiver) = mpsc::channel(0);
     let (event_sender, event_receiver) = mpsc::channel(0);
-    let event_loop = EventLoop::new(swarm, command_receiver, event_sender);
+    let event_loop = EventLoop::new(swarm, command_receiver, event_sender, bill_store.clone());
 
     Ok((
         Client::new(command_sender, bill_store, company_store, identity_store),
         event_receiver,
         event_loop,
     ))
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+pub struct GossipsubEvent {
+    pub id: GossipsubEventId,
+    pub message: Vec<u8>,
+}
+
+impl GossipsubEvent {
+    pub fn new(id: GossipsubEventId, message: Vec<u8>) -> Self {
+        Self { id, message }
+    }
+
+    pub fn to_byte_array(&self) -> Result<Vec<u8>> {
+        let res = to_vec(self)?;
+        Ok(res)
+    }
+
+    pub fn from_byte_array(bytes: &[u8]) -> Result<Self> {
+        let res = Self::try_from_slice(bytes)?;
+        Ok(res)
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+pub enum GossipsubEventId {
+    Block,
+    Chain,
+    CommandGetChain,
+    AddSignatoryFromCompany,
+    RemoveSignatoryFromCompany,
 }

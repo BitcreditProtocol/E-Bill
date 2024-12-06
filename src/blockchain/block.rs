@@ -1,23 +1,32 @@
+use super::extract_after_phrase;
+use super::Error;
 use super::OperationCode;
+use super::Result;
 use crate::blockchain::calculate_hash;
 use crate::blockchain::OperationCode::{
     Accept, Endorse, Issue, Mint, RequestToAccept, RequestToPay, Sell,
 };
+use crate::constants::ACCEPTED_BY;
+use crate::constants::ENDORSED_BY;
+use crate::constants::ENDORSED_TO;
+use crate::constants::REQ_TO_ACCEPT_BY;
+use crate::constants::REQ_TO_PAY_BY;
+use crate::constants::SOLD_BY;
+use crate::constants::SOLD_TO;
+use crate::service::bill_service::BillKeys;
+use crate::service::bill_service::BitcreditBill;
 use crate::service::contact_service::IdentityPublicData;
-use crate::{
-    bill::read_keys_from_bill_file,
-    service::bill_service::BitcreditBill,
-    util::rsa::{decrypt_bytes, private_key_from_pem_u8, public_key_from_pem_u8},
-};
-use chrono::prelude::*;
-use log::info;
+use crate::util;
+use crate::util::rsa;
+use borsh::from_slice;
+use log::error;
 use openssl::hash::MessageDigest;
 use openssl::pkey::PKey;
-use openssl::pkey::Private;
 use openssl::rsa::Rsa;
 use openssl::sign::Signer;
 use openssl::sign::Verifier;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Block {
@@ -52,7 +61,6 @@ impl Block {
     /// A new instance of the struct populated with the provided data, a calculated block hash,
     /// and a signature.
     ///
-
     pub fn new(
         id: u64,
         previous_hash: String,
@@ -62,8 +70,8 @@ impl Block {
         operation_code: OperationCode,
         private_key: String,
         timestamp: i64,
-    ) -> Self {
-        let hash: String = mine_block(
+    ) -> Result<Self> {
+        let hash = hex::encode(calculate_hash(
             &id,
             &bill_name,
             &previous_hash,
@@ -71,10 +79,10 @@ impl Block {
             &timestamp,
             &public_key,
             &operation_code,
-        );
-        let signature = signature(hash.clone(), private_key.clone());
+        ));
+        let signature = signature(&hash, &private_key)?;
 
-        Self {
+        Ok(Self {
             id,
             bill_name,
             hash,
@@ -84,463 +92,276 @@ impl Block {
             data,
             public_key,
             operation_code,
-        }
+        })
     }
-    /// Extracts the list of unique peer IDs (nodes) involved in a block operation.
-    ///
-    /// This function identifies and returns a list of peer IDs based on the operation code
-    /// associated with the block (`Issue`, `Endorse`, `Mint`, `RequestToAccept`, `Accept`,
-    /// `RequestToPay`, or `Sell`). The extracted peer IDs represent participants involved
-    /// in the operation, such as drawers, payees, endorsers, or buyers.
+
+    /// Decrypts the block data using the bill's private key, returning a String
+    pub fn get_decrypted_block_data(&self, bill_keys: &BillKeys) -> Result<String> {
+        let decrypted_bytes = self.get_decrypted_block_bytes(bill_keys)?;
+        let block_data_decrypted = String::from_utf8(decrypted_bytes)?;
+        Ok(block_data_decrypted)
+    }
+
+    /// Decrypts the block data using the bill's private key, returning the raw bytes
+    pub fn get_decrypted_block_bytes(&self, bill_keys: &BillKeys) -> Result<Vec<u8>> {
+        let bytes = hex::decode(&self.data)?;
+        let decrypted_bytes =
+            rsa::decrypt_bytes_with_private_key(&bytes, &bill_keys.private_key_pem);
+        Ok(decrypted_bytes)
+    }
+
+    /// Extracts a list of unique node IDs involved in a block operation.
     ///
     /// # Parameters
-    /// - `bill`: A `BitcreditBill` instance containing information about the drawer, payee, and drawee
-    ///   as well as metadata needed for decryption and validation.
+    /// - `bill_keys`: The bill's keys
     ///
     /// # Returns
     /// A `Vec<String>` containing the unique peer IDs involved in the block. Peer IDs are included
-    /// only if they are non-empty and not already part of the list.
+    /// only if they are non-empty.
     ///
-    pub fn get_nodes_from_block(&self, bill: BitcreditBill) -> Vec<String> {
-        let mut nodes = Vec::new();
+    pub fn get_nodes_from_block(&self, bill_keys: &BillKeys) -> Result<Vec<String>> {
+        let mut nodes = HashSet::new();
         match self.operation_code {
             Issue => {
-                let drawer_name = bill.drawer.peer_id.clone();
-                if !drawer_name.is_empty() && !nodes.contains(&drawer_name) {
-                    nodes.push(drawer_name);
+                let bill: BitcreditBill = from_slice(&self.get_decrypted_block_bytes(bill_keys)?)?;
+
+                let drawer_name = &bill.drawer.peer_id;
+                if !drawer_name.is_empty() {
+                    nodes.insert(drawer_name.to_owned());
                 }
 
-                let payee_name = bill.payee.peer_id.clone();
-                if !payee_name.is_empty() && !nodes.contains(&payee_name) {
-                    nodes.push(payee_name);
+                let payee_name = &bill.payee.peer_id;
+                if !payee_name.is_empty() {
+                    nodes.insert(payee_name.to_owned());
                 }
 
-                let drawee_name = bill.drawee.peer_id.clone();
-                if !drawee_name.is_empty() && !nodes.contains(&drawee_name) {
-                    nodes.push(drawee_name);
+                let drawee_name = &bill.drawee.peer_id;
+                if !drawee_name.is_empty() {
+                    nodes.insert(drawee_name.to_owned());
                 }
             }
             Endorse => {
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let mut part_with_endorsee = block_data_decrypted
-                    .split("Endorsed to ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                let part_with_endorsed_by = part_with_endorsee
-                    .clone()
-                    .split(" endorsed by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                part_with_endorsee = part_with_endorsee
-                    .split(" endorsed by ")
-                    .collect::<Vec<&str>>()
-                    .first()
-                    .unwrap()
-                    .to_string();
-
-                let endorsee_bill_u8 = hex::decode(part_with_endorsee).unwrap();
-                let endorsee_bill: IdentityPublicData =
-                    serde_json::from_slice(&endorsee_bill_u8).unwrap();
-                let endorsee_bill_name = endorsee_bill.peer_id.clone();
-                if !endorsee_bill_name.is_empty() && !nodes.contains(&endorsee_bill_name) {
-                    nodes.push(endorsee_bill_name);
+                let endorsee: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, ENDORSED_TO).ok_or(
+                        Error::InvalidBlockdata(String::from("Endorse: No endorsee found")),
+                    )?,
+                )?)?;
+                let endorsee_node_id = endorsee.peer_id;
+                if !endorsee_node_id.is_empty() {
+                    nodes.insert(endorsee_node_id);
                 }
 
-                let endorser_bill_u8 = hex::decode(part_with_endorsed_by).unwrap();
-                let endorser_bill: IdentityPublicData =
-                    serde_json::from_slice(&endorser_bill_u8).unwrap();
-                let endorser_bill_name = endorser_bill.peer_id.clone();
-                if !endorser_bill_name.is_empty() && !nodes.contains(&endorser_bill_name) {
-                    nodes.push(endorser_bill_name);
+                let endorser: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, ENDORSED_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Endorse: No endorser found")),
+                    )?,
+                )?)?;
+                let endorser_node_id = endorser.peer_id;
+                if !endorser_node_id.is_empty() {
+                    nodes.insert(endorser_node_id);
                 }
             }
             Mint => {
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let mut part_with_mint = block_data_decrypted
-                    .split("Endorsed to ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                let part_with_minter = part_with_mint
-                    .clone()
-                    .split(" endorsed by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                part_with_mint = part_with_mint
-                    .split(" endorsed by ")
-                    .collect::<Vec<&str>>()
-                    .first()
-                    .unwrap()
-                    .to_string();
-
-                let mint_bill_u8 = hex::decode(part_with_mint).unwrap();
-                let mint_bill: IdentityPublicData = serde_json::from_slice(&mint_bill_u8).unwrap();
-                let mint_bill_name = mint_bill.peer_id.clone();
-                if !mint_bill_name.is_empty() && !nodes.contains(&mint_bill_name) {
-                    nodes.push(mint_bill_name);
+                let mint: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, ENDORSED_TO)
+                        .ok_or(Error::InvalidBlockdata(String::from("Mint: No mint found")))?,
+                )?)?;
+                let mint_node_id = mint.peer_id;
+                if !mint_node_id.is_empty() {
+                    nodes.insert(mint_node_id);
                 }
 
-                let minter_bill_u8 = hex::decode(part_with_minter).unwrap();
-                let minter_bill: IdentityPublicData =
-                    serde_json::from_slice(&minter_bill_u8).unwrap();
-                let minter_bill_name = minter_bill.peer_id.clone();
-                if !minter_bill_name.is_empty() && !nodes.contains(&minter_bill_name) {
-                    nodes.push(minter_bill_name);
+                let minter: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, ENDORSED_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Mint: No minter found")),
+                    )?,
+                )?)?;
+                let minter_node_id = minter.peer_id;
+                if !minter_node_id.is_empty() {
+                    nodes.insert(minter_node_id);
                 }
             }
             RequestToAccept => {
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let part_with_identity = block_data_decrypted
-                    .split("Requested to accept by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-                let requester_to_accept_bill_u8 = hex::decode(part_with_identity).unwrap();
-                let requester_to_accept_bill: IdentityPublicData =
-                    serde_json::from_slice(&requester_to_accept_bill_u8).unwrap();
-                let requester_to_accept_bill_name = requester_to_accept_bill.peer_id.clone();
-                if !requester_to_accept_bill_name.is_empty()
-                    && !nodes.contains(&requester_to_accept_bill_name)
-                {
-                    nodes.push(requester_to_accept_bill_name);
+                let requester: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, REQ_TO_ACCEPT_BY).ok_or(
+                        Error::InvalidBlockdata(String::from(
+                            "Request to accept: No requester found",
+                        )),
+                    )?,
+                )?)?;
+                let requester_node_id = requester.peer_id;
+                if !requester_node_id.is_empty() {
+                    nodes.insert(requester_node_id);
                 }
             }
             Accept => {
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let part_with_identity = block_data_decrypted
-                    .split("Accepted by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-                let accepter_bill_u8 = hex::decode(part_with_identity).unwrap();
-                let accepter_bill: IdentityPublicData =
-                    serde_json::from_slice(&accepter_bill_u8).unwrap();
-                let accepter_bill_name = accepter_bill.peer_id.clone();
-                if !accepter_bill_name.is_empty() && !nodes.contains(&accepter_bill_name) {
-                    nodes.push(accepter_bill_name);
+                let accepter: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, ACCEPTED_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Accept: No accepter found")),
+                    )?,
+                )?)?;
+                let accepter_node_id = accepter.peer_id;
+                if !accepter_node_id.is_empty() {
+                    nodes.insert(accepter_node_id);
                 }
             }
             RequestToPay => {
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let part_with_identity = block_data_decrypted
-                    .split("Requested to pay by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-                let requester_to_pay_bill_u8 = hex::decode(part_with_identity).unwrap();
-                let requester_to_pay_bill: IdentityPublicData =
-                    serde_json::from_slice(&requester_to_pay_bill_u8).unwrap();
-                let requester_to_pay_bill_name = requester_to_pay_bill.peer_id.clone();
-                if !requester_to_pay_bill_name.is_empty()
-                    && !nodes.contains(&requester_to_pay_bill_name)
-                {
-                    nodes.push(requester_to_pay_bill_name);
+                let requester: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, REQ_TO_PAY_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Request to Pay: No requester found")),
+                    )?,
+                )?)?;
+                let requester_node_id = requester.peer_id;
+                if !requester_node_id.is_empty() {
+                    nodes.insert(requester_node_id);
                 }
             }
             Sell => {
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let part_without_sold_to = block_data_decrypted
-                    .split("Sold to ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                let part_with_buyer = part_without_sold_to
-                    .split(" sold by ")
-                    .collect::<Vec<&str>>()
-                    .first()
-                    .unwrap()
-                    .to_string();
-
-                let part_with_seller_and_amount = part_without_sold_to
-                    .clone()
-                    .split(" sold by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                let part_with_seller = part_with_seller_and_amount
-                    .clone()
-                    .split(" amount: ")
-                    .collect::<Vec<&str>>()
-                    .first()
-                    .unwrap()
-                    .to_string();
-
-                let buyer_bill_u8 = hex::decode(part_with_buyer).unwrap();
-                let buyer_bill: IdentityPublicData =
-                    serde_json::from_slice(&buyer_bill_u8).unwrap();
-                let buyer_peer_id = buyer_bill.peer_id.clone();
-                if !buyer_peer_id.is_empty() && !nodes.contains(&buyer_peer_id) {
-                    nodes.push(buyer_peer_id);
+                let buyer: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, SOLD_TO).ok_or(
+                        Error::InvalidBlockdata(String::from("Sell: No buyer found")),
+                    )?,
+                )?)?;
+                let buyer_node_id = buyer.peer_id;
+                if !buyer_node_id.is_empty() {
+                    nodes.insert(buyer_node_id);
                 }
 
-                let seller_bill_u8 = hex::decode(part_with_seller).unwrap();
-                let seller_bill: IdentityPublicData =
-                    serde_json::from_slice(&seller_bill_u8).unwrap();
-                let seller_bill_peer_id = seller_bill.peer_id.clone();
-                if !seller_bill_peer_id.is_empty() && !nodes.contains(&seller_bill_peer_id) {
-                    nodes.push(seller_bill_peer_id);
+                let seller: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, SOLD_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Sell: No seller found")),
+                    )?,
+                )?)?;
+                let seller_node_id = seller.peer_id;
+                if !seller_node_id.is_empty() {
+                    nodes.insert(seller_node_id);
                 }
             }
         }
-        nodes
+        Ok(nodes.into_iter().collect())
     }
 
-    /// Generates a human-readable history label for a `BitcreditBill` based on the operation code.
+    /// Generates a human-readable history label for a bill based on the operation code.
     ///
     /// # Parameters
-    /// - `bill`: A `BitcreditBill` object containing the details of the bill, including
-    ///   drawer, payee, drawee, and place of drawing.
+    /// - `bill_keys`: The bill's keys
     ///
     /// # Returns
     /// A `String` representing the history label for the given bill.
     ///
-    pub fn get_history_label(&self, bill: BitcreditBill) -> String {
+    pub fn get_history_label(&self, bill_keys: &BillKeys) -> Result<String> {
         match self.operation_code {
             Issue => {
-                let time_of_issue = Utc.timestamp_opt(self.timestamp, 0).unwrap();
+                let time_of_issue = util::date::seconds(self.timestamp);
+                let bill: BitcreditBill = from_slice(&self.get_decrypted_block_bytes(bill_keys)?)?;
                 if !bill.drawer.name.is_empty() {
-                    format!(
+                    Ok(format!(
                         "Bill issued by {} at {} in {}",
                         bill.drawer.name, time_of_issue, bill.place_of_drawing
-                    )
+                    ))
                 } else if bill.to_payee {
-                    format!(
+                    Ok(format!(
                         "Bill issued by {} at {} in {}",
                         bill.payee.name, time_of_issue, bill.place_of_drawing
-                    )
+                    ))
                 } else {
-                    format!(
+                    Ok(format!(
                         "Bill issued by {} at {} in {}",
                         bill.drawee.name, time_of_issue, bill.place_of_drawing
-                    )
+                    ))
                 }
             }
             Endorse => {
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let part_with_endorsee = block_data_decrypted
-                    .split("Endorsed to ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
+                let endorser: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, ENDORSED_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Endorse: No endorser found")),
+                    )?,
+                )?)?;
 
-                let part_with_endorsed_by = part_with_endorsee
-                    .clone()
-                    .split(" endorsed by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                let endorser_bill_u8 = hex::decode(part_with_endorsed_by).unwrap();
-                let endorser_bill: IdentityPublicData =
-                    serde_json::from_slice(&endorser_bill_u8).unwrap();
-
-                endorser_bill.name + ", " + &endorser_bill.postal_address
+                Ok(format!("{}, {}", endorser.name, endorser.postal_address))
             }
             Mint => {
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let part_with_mint = block_data_decrypted
-                    .split("Endorsed to ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
+                let minter: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, ENDORSED_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Mint: No minter found")),
+                    )?,
+                )?)?;
 
-                let part_with_minter = part_with_mint
-                    .clone()
-                    .split(" endorsed by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                let minter_bill_u8 = hex::decode(part_with_minter).unwrap();
-                let minter_bill: IdentityPublicData =
-                    serde_json::from_slice(&minter_bill_u8).unwrap();
-
-                minter_bill.name + ", " + &minter_bill.postal_address
+                Ok(format!("{}, {}", minter.name, minter.postal_address))
             }
             RequestToAccept => {
-                let time_of_request_to_accept = Utc.timestamp_opt(self.timestamp, 0).unwrap();
+                let time_of_request_to_accept = util::date::seconds(self.timestamp);
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let requester: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, REQ_TO_ACCEPT_BY).ok_or(
+                        Error::InvalidBlockdata(String::from(
+                            "Request to accept: No requester found",
+                        )),
+                    )?,
+                )?)?;
 
-                let part_with_identity = block_data_decrypted
-                    .split("Requested to accept by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-                let requester_to_accept_bill_u8 = hex::decode(part_with_identity).unwrap();
-                let requester_to_accept_bill: IdentityPublicData =
-                    serde_json::from_slice(&requester_to_accept_bill_u8).unwrap();
-
-                format!(
+                Ok(format!(
                     "Bill requested to accept by {} at {} in {}",
-                    requester_to_accept_bill.name,
-                    time_of_request_to_accept,
-                    requester_to_accept_bill.postal_address
-                )
+                    requester.name, time_of_request_to_accept, requester.postal_address
+                ))
             }
             Accept => {
-                let time_of_accept = Utc.timestamp_opt(self.timestamp, 0).unwrap();
+                let time_of_accept = util::date::seconds(self.timestamp);
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let accepter: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, ACCEPTED_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Accept: No accepter found")),
+                    )?,
+                )?)?;
 
-                let part_with_identity = block_data_decrypted
-                    .split("Accepted by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-                let accepter_bill_u8 = hex::decode(part_with_identity).unwrap();
-                let accepter_bill: IdentityPublicData =
-                    serde_json::from_slice(&accepter_bill_u8).unwrap();
-
-                format!(
+                Ok(format!(
                     "Bill accepted by {} at {} in {}",
-                    accepter_bill.name, time_of_accept, accepter_bill.postal_address
-                )
+                    accepter.name, time_of_accept, accepter.postal_address
+                ))
             }
             RequestToPay => {
-                let time_of_request_to_pay = Utc.timestamp_opt(self.timestamp, 0).unwrap();
+                let time_of_request_to_pay = util::date::seconds(self.timestamp);
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let requester: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, REQ_TO_PAY_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Request to pay: No requester found")),
+                    )?,
+                )?)?;
 
-                let part_with_identity = block_data_decrypted
-                    .split("Requested to pay by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-                let requester_to_pay_bill_u8 = hex::decode(part_with_identity).unwrap();
-                let requester_to_pay_bill: IdentityPublicData =
-                    serde_json::from_slice(&requester_to_pay_bill_u8).unwrap();
-                format!(
+                Ok(format!(
                     "Bill requested to pay by {} at {} in {}",
-                    requester_to_pay_bill.name,
-                    time_of_request_to_pay,
-                    requester_to_pay_bill.postal_address
-                )
+                    requester.name, time_of_request_to_pay, requester.postal_address
+                ))
             }
             Sell => {
-                let bill_keys = read_keys_from_bill_file(&self.bill_name);
-                let key: Rsa<Private> =
-                    Rsa::private_key_from_pem(bill_keys.private_key_pem.as_bytes()).unwrap();
-                let bytes = hex::decode(self.data.clone()).unwrap();
-                let decrypted_bytes = decrypt_bytes(&bytes, &key);
-                let block_data_decrypted = String::from_utf8(decrypted_bytes).unwrap();
+                let block_data_decrypted = self.get_decrypted_block_data(bill_keys)?;
 
-                let part_without_sold_to = block_data_decrypted
-                    .split("Sold to ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
+                let seller: IdentityPublicData = serde_json::from_slice(&hex::decode(
+                    &extract_after_phrase(&block_data_decrypted, SOLD_BY).ok_or(
+                        Error::InvalidBlockdata(String::from("Sell: No seller found")),
+                    )?,
+                )?)?;
 
-                let part_with_seller_and_amount = part_without_sold_to
-                    .clone()
-                    .split(" sold by ")
-                    .collect::<Vec<&str>>()
-                    .get(1)
-                    .unwrap()
-                    .to_string();
-
-                let part_with_seller = part_with_seller_and_amount
-                    .clone()
-                    .split(" amount: ")
-                    .collect::<Vec<&str>>()
-                    .first()
-                    .unwrap()
-                    .to_string();
-
-                let seller_bill_u8 = hex::decode(part_with_seller).unwrap();
-                let seller_bill: IdentityPublicData =
-                    serde_json::from_slice(&seller_bill_u8).unwrap();
-
-                seller_bill.name + ", " + &seller_bill.postal_address
+                Ok(format!("{}, {}", seller.name, seller.postal_address))
             }
         }
     }
@@ -555,63 +376,29 @@ impl Block {
     /// - `true` if the signature is valid.
     /// - `false` if the signature is invalid.
     ///
-    pub fn verifier(&self) -> bool {
-        let public_key_bytes = self.public_key.as_bytes();
-        let public_key_rsa = public_key_from_pem_u8(public_key_bytes);
-        let verifier_key = PKey::from_rsa(public_key_rsa).unwrap();
+    pub fn verify(&self) -> bool {
+        match self.verify_internal() {
+            Err(e) => {
+                error!("Error while verifying block id {}: {e}", self.id);
+                false
+            }
+            Ok(res) => res,
+        }
+    }
 
-        let mut verifier = Verifier::new(MessageDigest::sha256(), verifier_key.as_ref()).unwrap();
+    fn verify_internal(&self) -> Result<bool> {
+        let public_key_rsa = Rsa::public_key_from_pem(self.public_key.as_bytes())?;
+        let verifier_key = PKey::from_rsa(public_key_rsa)?;
+
+        let mut verifier = Verifier::new(MessageDigest::sha256(), verifier_key.as_ref())?;
 
         let data_to_check = self.hash.as_bytes();
-        verifier.update(data_to_check).unwrap();
+        verifier.update(data_to_check)?;
 
-        let signature_bytes = hex::decode(&self.signature).unwrap();
-        verifier.verify(signature_bytes.as_slice()).unwrap()
+        let signature_bytes = hex::decode(&self.signature)?;
+        let res = verifier.verify(signature_bytes.as_slice())?;
+        Ok(res)
     }
-}
-
-/// Mines a block by calculating its hash and returning the result as a hexadecimal string.
-///
-/// # Arguments
-///
-/// - `id`: A reference to the unique identifier (`u64`) of the block.
-/// - `bill_name`: A reference to a string slice representing the name of the bill associated with the block.
-/// - `previous_hash`: A reference to a string slice containing the hash of the previous block in the chain.
-/// - `data`: A reference to a string slice containing the data to be stored in the block.
-/// - `timestamp`: A reference to an `i64` timestamp indicating when the block is being mined.
-/// - `public_key`: A reference to a string slice representing the public key associated with the block.
-/// - `operation_code`: A reference to an `OperationCode` that specifies the operation associated with the block.
-///
-/// # Returns
-///
-/// A `String` containing the hexadecimal representation of the calculated block hash.
-///
-
-fn mine_block(
-    id: &u64,
-    bill_name: &str,
-    previous_hash: &str,
-    data: &str,
-    timestamp: &i64,
-    public_key: &str,
-    operation_code: &OperationCode,
-) -> String {
-    let hash = calculate_hash(
-        id,
-        bill_name,
-        previous_hash,
-        data,
-        timestamp,
-        public_key,
-        operation_code,
-    );
-    let binary_hash = hex::encode(&hash);
-    info!(
-        "mined! hash: {}, binary hash: {}",
-        hex::encode(&hash),
-        binary_hash
-    );
-    hex::encode(hash)
 }
 
 /// Signs a hash using a private RSA key and returns the resulting signature as a hexadecimal string
@@ -624,18 +411,537 @@ fn mine_block(
 ///
 /// A `String` containing the hexadecimal representation of the digital signature.
 ///
-fn signature(hash: String, private_key_pem: String) -> String {
-    let private_key_bytes = private_key_pem.as_bytes();
-    let private_key_rsa = private_key_from_pem_u8(private_key_bytes);
-    let signer_key = PKey::from_rsa(private_key_rsa).unwrap();
+fn signature(hash: &str, private_key_pem: &str) -> Result<String> {
+    let private_key_rsa = Rsa::private_key_from_pem(private_key_pem.as_bytes())?;
+    let signer_key = PKey::from_rsa(private_key_rsa)?;
 
-    let mut signer: Signer = Signer::new(MessageDigest::sha256(), signer_key.as_ref()).unwrap();
+    let mut signer: Signer = Signer::new(MessageDigest::sha256(), signer_key.as_ref())?;
 
     let data_to_sign = hash.as_bytes();
-    signer.update(data_to_sign).unwrap();
+    signer.update(data_to_sign)?;
 
-    let signature: Vec<u8> = signer.sign_to_vec().unwrap();
+    let signature: Vec<u8> = signer.sign_to_vec()?;
     let signature_readable = hex::encode(signature.as_slice());
 
-    signature_readable
+    Ok(signature_readable)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::tests::test::{get_bill_keys, TEST_PRIVATE_KEY, TEST_PUB_KEY};
+    use borsh::to_vec;
+    use libp2p::PeerId;
+
+    #[test]
+    fn signature_can_be_verified() {
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            String::from("some_data"),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Issue,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        assert!(block.verify());
+    }
+
+    #[test]
+    fn get_nodes_from_block_issue() {
+        let mut bill = BitcreditBill::new_empty();
+        let mut drawer = IdentityPublicData::new_empty();
+        let peer_id = PeerId::random().to_string();
+        let mut payer = IdentityPublicData::new_empty();
+        let payer_peer_id = PeerId::random().to_string();
+        payer.peer_id = payer_peer_id.clone();
+        drawer.peer_id = peer_id.clone();
+        bill.drawer = drawer.clone();
+        bill.payee = drawer.clone();
+        bill.drawee = payer;
+
+        let hashed_bill = hex::encode(rsa::encrypt_bytes_with_public_key(
+            &to_vec(&bill).unwrap(),
+            TEST_PUB_KEY,
+        ));
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hashed_bill,
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Issue,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_nodes_from_block(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().len(), 2);
+        assert!(res.as_ref().unwrap().contains(&peer_id));
+        assert!(res.as_ref().unwrap().contains(&payer_peer_id));
+    }
+
+    #[test]
+    fn get_history_label_issue() {
+        let mut bill = BitcreditBill::new_empty();
+        bill.place_of_drawing = "Vienna".to_string();
+        let mut drawer = IdentityPublicData::new_empty();
+        drawer.name = "bill".to_string();
+        bill.drawer = drawer.clone();
+
+        let hashed_bill = hex::encode(rsa::encrypt_bytes_with_public_key(
+            &to_vec(&bill).unwrap(),
+            TEST_PUB_KEY,
+        ));
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hashed_bill,
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Issue,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_history_label(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(
+            res.as_ref().unwrap(),
+            "Bill issued by bill at 2024-11-14 14:18:48 UTC in Vienna"
+        );
+    }
+
+    #[test]
+    fn get_nodes_from_block_endorse() {
+        let mut endorsee = IdentityPublicData::new_empty();
+        let peer_id = PeerId::random().to_string();
+        endorsee.peer_id = peer_id.clone();
+        let mut endorser = IdentityPublicData::new_empty();
+        let endorser_peer_id = PeerId::random().to_string();
+        endorser.peer_id = endorser_peer_id.clone();
+        let hashed_endorsee = hex::encode(serde_json::to_vec(&endorsee).unwrap());
+        let hashed_endorser = hex::encode(serde_json::to_vec(&endorser).unwrap());
+
+        let data = format!(
+            "{}{}{}{}",
+            ENDORSED_TO, &hashed_endorsee, ENDORSED_BY, &hashed_endorser
+        );
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Endorse,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_nodes_from_block(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().len(), 2);
+        assert!(res.as_ref().unwrap().contains(&peer_id));
+        assert!(res.as_ref().unwrap().contains(&endorser_peer_id));
+    }
+
+    #[test]
+    fn get_history_label_endorse() {
+        let endorsee = IdentityPublicData::new_empty();
+        let mut endorser = IdentityPublicData::new_empty();
+        endorser.name = "bill".to_string();
+        endorser.postal_address = "some street 1".to_string();
+        let hashed_endorsee = hex::encode(serde_json::to_vec(&endorsee).unwrap());
+        let hashed_endorser = hex::encode(serde_json::to_vec(&endorser).unwrap());
+
+        let data = format!(
+            "{}{}{}{}",
+            ENDORSED_TO, &hashed_endorsee, ENDORSED_BY, &hashed_endorser
+        );
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Endorse,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_history_label(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap(), "bill, some street 1");
+    }
+
+    #[test]
+    fn get_nodes_from_block_mint() {
+        let mut mint = IdentityPublicData::new_empty();
+        let peer_id = PeerId::random().to_string();
+        mint.peer_id = peer_id.clone();
+        let mut minter = IdentityPublicData::new_empty();
+        let minter_peer_id = PeerId::random().to_string();
+        minter.peer_id = minter_peer_id.clone();
+        let hashed_mint = hex::encode(serde_json::to_vec(&mint).unwrap());
+        let hashed_minter = hex::encode(serde_json::to_vec(&minter).unwrap());
+
+        let data = format!(
+            "{}{}{}{}",
+            ENDORSED_TO, &hashed_mint, ENDORSED_BY, &hashed_minter
+        );
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Mint,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_nodes_from_block(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().len(), 2);
+        assert!(res.as_ref().unwrap().contains(&peer_id));
+        assert!(res.as_ref().unwrap().contains(&minter_peer_id));
+    }
+
+    #[test]
+    fn get_history_label_mint() {
+        let mint = IdentityPublicData::new_empty();
+        let mut minter = IdentityPublicData::new_empty();
+        minter.name = "bill".to_string();
+        minter.postal_address = "some street 1".to_string();
+        let hashed_endorsee = hex::encode(serde_json::to_vec(&mint).unwrap());
+        let hashed_endorser = hex::encode(serde_json::to_vec(&minter).unwrap());
+
+        let data = format!(
+            "{}{}{}{}",
+            ENDORSED_TO, &hashed_endorsee, ENDORSED_BY, &hashed_endorser
+        );
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Mint,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_history_label(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap(), "bill, some street 1");
+    }
+
+    #[test]
+    fn get_nodes_from_block_req_to_accept() {
+        let mut requester = IdentityPublicData::new_empty();
+        let peer_id = PeerId::random().to_string();
+        requester.peer_id = peer_id.clone();
+        let hashed_requester = hex::encode(serde_json::to_vec(&requester).unwrap());
+
+        let data = format!("{}{}", REQ_TO_ACCEPT_BY, &hashed_requester);
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::RequestToAccept,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_nodes_from_block(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().len(), 1);
+        assert!(res.as_ref().unwrap().contains(&peer_id));
+    }
+
+    #[test]
+    fn get_history_label_req_to_accept() {
+        let mut requester = IdentityPublicData::new_empty();
+        requester.name = "bill".to_string();
+        requester.postal_address = "some street 1".to_string();
+        let hashed_requester = hex::encode(serde_json::to_vec(&requester).unwrap());
+
+        let data = format!("{}{}", REQ_TO_ACCEPT_BY, &hashed_requester);
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::RequestToAccept,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_history_label(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(
+            res.as_ref().unwrap(),
+            "Bill requested to accept by bill at 2024-11-14 14:18:48 UTC in some street 1"
+        );
+    }
+
+    #[test]
+    fn get_nodes_from_block_accept() {
+        let mut accepter = IdentityPublicData::new_empty();
+        let peer_id = PeerId::random().to_string();
+        accepter.peer_id = peer_id.clone();
+        let hashed_accepter = hex::encode(serde_json::to_vec(&accepter).unwrap());
+
+        let data = format!("{}{}", ACCEPTED_BY, &hashed_accepter);
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Accept,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_nodes_from_block(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().len(), 1);
+        assert!(res.as_ref().unwrap().contains(&peer_id));
+    }
+
+    #[test]
+    fn get_history_label_accept() {
+        let mut accepter = IdentityPublicData::new_empty();
+        accepter.name = "bill".to_string();
+        accepter.postal_address = "some street 1".to_string();
+        let hashed_accepter = hex::encode(serde_json::to_vec(&accepter).unwrap());
+
+        let data = format!("{}{}", ACCEPTED_BY, &hashed_accepter);
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Accept,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_history_label(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(
+            res.as_ref().unwrap(),
+            "Bill accepted by bill at 2024-11-14 14:18:48 UTC in some street 1"
+        );
+    }
+
+    #[test]
+    fn get_nodes_from_block_accept_fails_for_invalid_data() {
+        let mut accepter = IdentityPublicData::new_empty();
+        let peer_id = PeerId::random().to_string();
+        accepter.peer_id = peer_id.clone();
+        let hashed_accepter = hex::encode(serde_json::to_vec(&accepter).unwrap());
+
+        let data = format!("{}{}", ACCEPTED_BY, &hashed_accepter);
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            // not encrypted
+            hex::encode(data.as_bytes()),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Accept,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_nodes_from_block(&get_bill_keys());
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn get_nodes_from_block_accept_fails_for_invalid_block() {
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                // invalid data
+                "some data".to_string().as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Accept,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_nodes_from_block(&get_bill_keys());
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn get_nodes_from_block_req_to_pay() {
+        let mut requester = IdentityPublicData::new_empty();
+        let peer_id = PeerId::random().to_string();
+        requester.peer_id = peer_id.clone();
+        let hashed_requester = hex::encode(serde_json::to_vec(&requester).unwrap());
+
+        let data = format!("{}{}", REQ_TO_PAY_BY, &hashed_requester);
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::RequestToPay,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_nodes_from_block(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().len(), 1);
+        assert!(res.as_ref().unwrap().contains(&peer_id));
+    }
+
+    #[test]
+    fn get_history_label_req_to_pay() {
+        let mut requester = IdentityPublicData::new_empty();
+        requester.name = "bill".to_string();
+        requester.postal_address = "some street 1".to_string();
+        let hashed_requester = hex::encode(serde_json::to_vec(&requester).unwrap());
+
+        let data = format!("{}{}", REQ_TO_PAY_BY, &hashed_requester);
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::RequestToPay,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_history_label(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(
+            res.as_ref().unwrap(),
+            "Bill requested to pay by bill at 2024-11-14 14:18:48 UTC in some street 1"
+        );
+    }
+
+    #[test]
+    fn get_nodes_from_block_sell() {
+        let mut buyer = IdentityPublicData::new_empty();
+        let peer_id = PeerId::random().to_string();
+        buyer.peer_id = peer_id.clone();
+        let mut seller = IdentityPublicData::new_empty();
+        let endorser_peer_id = PeerId::random().to_string();
+        seller.peer_id = endorser_peer_id.clone();
+        let hashed_buyer = hex::encode(serde_json::to_vec(&buyer).unwrap());
+        let hashed_seller = hex::encode(serde_json::to_vec(&seller).unwrap());
+
+        let data = format!("{}{}{}{}", SOLD_TO, &hashed_buyer, SOLD_BY, &hashed_seller);
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Sell,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_nodes_from_block(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().len(), 2);
+        assert!(res.as_ref().unwrap().contains(&peer_id));
+        assert!(res.as_ref().unwrap().contains(&endorser_peer_id));
+    }
+
+    #[test]
+    fn get_history_label_sell() {
+        let mut seller = IdentityPublicData::new_empty();
+        seller.name = "bill".to_string();
+        seller.postal_address = "some street 1".to_string();
+        let hashed_seller = hex::encode(serde_json::to_vec(&seller).unwrap());
+
+        let data = format!("{}{}", SOLD_BY, &hashed_seller);
+
+        let block = Block::new(
+            1,
+            String::from("prevhash"),
+            hex::encode(rsa::encrypt_bytes_with_public_key(
+                data.as_bytes(),
+                TEST_PUB_KEY,
+            )),
+            String::from("some_bill"),
+            TEST_PUB_KEY.to_owned(),
+            OperationCode::Sell,
+            TEST_PRIVATE_KEY.to_owned(),
+            1731593928,
+        )
+        .unwrap();
+        let res = block.get_history_label(&get_bill_keys());
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap(), "bill, some street 1");
+    }
 }
