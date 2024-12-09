@@ -68,7 +68,13 @@ impl Client {
     ) {
         loop {
             tokio::select! {
-                event = network_events.next() => self.handle_event(event.expect("Swarm stream to be infinite.")).await,
+                event = network_events.next() => {
+                    if let Some(evt) = event {
+                        if let Err(e) = self.handle_event(evt).await {
+                            error!("Error while handling event in DHT client: {e}");
+                        }
+                    }
+                },
                 _ = shutdown_dht_client_receiver.recv() => {
                     info!("Shutting down dht client...");
                     break;
@@ -1101,14 +1107,17 @@ impl Client {
         &mut self,
         company_id: &str,
         node_id: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let company = self.company_store.get(company_id).await?;
         if company.signatories.iter().any(|v| v == node_id) {
             let bytes = company_to_bytes(&company)?;
-            self.respond_file(bytes, channel).await?;
+            Ok(bytes)
+        } else {
+            Err(super::Error::CallerNotSignatoryOfCompany(
+                node_id.to_owned(),
+                company_id.to_owned(),
+            ))
         }
-        Ok(())
     }
 
     // We check if the node id is part of the signatories, and if so, send the
@@ -1117,8 +1126,7 @@ impl Client {
         &mut self,
         company_id: &str,
         node_id: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let company = self.company_store.get(company_id).await?;
         if company.signatories.iter().any(|v| v == node_id) {
             let public_data = self
@@ -1128,9 +1136,13 @@ impl Client {
             let keys = self.company_store.get_key_pair(company_id).await?;
             let bytes = company_keys_to_bytes(&keys)?;
             let file_encrypted = encrypt_bytes_with_public_key(&bytes, &public_key)?;
-            self.respond_file(file_encrypted, channel).await?;
+            Ok(file_encrypted)
+        } else {
+            Err(super::Error::CallerNotSignatoryOfCompany(
+                node_id.to_owned(),
+                company_id.to_owned(),
+            ))
         }
-        Ok(())
     }
 
     // We check if the node id is part of the signatories, and if so,
@@ -1141,20 +1153,33 @@ impl Client {
         company_id: &str,
         node_id: &str,
         file_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let company = self.company_store.get(company_id).await?;
         if company.signatories.iter().any(|v| v == node_id) {
             if let Some(logo) = company.logo_file {
                 if logo.name == *file_name {
-                    self.handle_company_file_request_for_file(
-                        company_id, node_id, file_name, channel,
-                    )
-                    .await?;
+                    let bytes = self
+                        .handle_company_file_request_for_file(company_id, node_id, file_name)
+                        .await?;
+                    Ok(bytes)
+                } else {
+                    Err(super::Error::NoFileForCompanyFound(
+                        file_name.to_owned(),
+                        company_id.to_owned(),
+                    ))
                 }
+            } else {
+                Err(super::Error::NoFileForCompanyFound(
+                    file_name.to_owned(),
+                    company_id.to_owned(),
+                ))
             }
+        } else {
+            Err(super::Error::CallerNotSignatoryOfCompany(
+                node_id.to_owned(),
+                company_id.to_owned(),
+            ))
         }
-        Ok(())
     }
 
     // We check if the node id is part of the signatories, and if so,
@@ -1165,20 +1190,33 @@ impl Client {
         company_id: &str,
         node_id: &str,
         file_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let company = self.company_store.get(company_id).await?;
         if company.signatories.iter().any(|v| v == node_id) {
             if let Some(proof) = company.proof_of_registration_file {
                 if proof.name == *file_name {
-                    self.handle_company_file_request_for_file(
-                        company_id, node_id, file_name, channel,
-                    )
-                    .await?;
+                    let bytes = self
+                        .handle_company_file_request_for_file(company_id, node_id, file_name)
+                        .await?;
+                    Ok(bytes)
+                } else {
+                    Err(super::Error::NoFileForCompanyFound(
+                        file_name.to_owned(),
+                        company_id.to_owned(),
+                    ))
                 }
+            } else {
+                Err(super::Error::NoFileForCompanyFound(
+                    file_name.to_owned(),
+                    company_id.to_owned(),
+                ))
             }
+        } else {
+            Err(super::Error::CallerNotSignatoryOfCompany(
+                node_id.to_owned(),
+                company_id.to_owned(),
+            ))
         }
-        Ok(())
     }
 
     async fn handle_company_file_request_for_file(
@@ -1186,8 +1224,7 @@ impl Client {
         company_id: &str,
         node_id: &str,
         file_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let public_data = self
             .get_identity_public_data_from_dht(node_id.to_owned())
             .await?;
@@ -1199,26 +1236,19 @@ impl Client {
         let identity_private_key = self.identity_store.get().await?.private_key_pem;
         let decrypted_bytes = decrypt_bytes_with_private_key(&bytes, &identity_private_key)?;
         let file_encrypted = encrypt_bytes_with_public_key(&decrypted_bytes, &public_key)?;
-        self.respond_file(file_encrypted, channel).await?;
-        Ok(())
+        Ok(file_encrypted)
     }
 
-    async fn handle_bill_file_request(
-        &mut self,
-        bill_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    async fn handle_bill_file_request(&mut self, bill_name: &str) -> Result<Vec<u8>> {
         let file = self.bill_store.get_bill_as_bytes(bill_name).await?;
-        self.respond_file(file, channel).await?;
-        Ok(())
+        Ok(file)
     }
 
     async fn handle_bill_file_request_for_keys(
         &mut self,
         key_name: &str,
         node_id: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let chain = self.bill_store.read_bill_chain_from_file(key_name).await?;
         let bill_keys = self.bill_store.read_bill_keys_from_file(key_name).await?;
         if chain
@@ -1232,9 +1262,13 @@ impl Client {
             let public_key = data.rsa_public_key_pem;
             let file = self.bill_store.get_bill_keys_as_bytes(key_name).await?;
             let file_encrypted = encrypt_bytes_with_public_key(&file, &public_key)?;
-            self.respond_file(file_encrypted, channel).await?;
+            Ok(file_encrypted)
+        } else {
+            Err(super::Error::CallerNotPartOfBill(
+                node_id.to_owned(),
+                key_name.to_string(),
+            ))
         }
-        Ok(())
     }
 
     async fn handle_bill_file_request_for_attachment(
@@ -1242,8 +1276,7 @@ impl Client {
         bill_name: &str,
         node_id: &str,
         file_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let chain = self.bill_store.read_bill_chain_from_file(bill_name).await?;
         let bill_keys = self.bill_store.read_bill_keys_from_file(bill_name).await?;
         if chain
@@ -1260,16 +1293,20 @@ impl Client {
                 .open_attached_file(bill_name, file_name)
                 .await?;
             let file_encrypted = encrypt_bytes_with_public_key(&file, &public_key)?;
-            self.respond_file(file_encrypted, channel).await?;
+            Ok(file_encrypted)
+        } else {
+            Err(super::Error::CallerNotPartOfBill(
+                node_id.to_owned(),
+                bill_name.to_string(),
+            ))
         }
-        Ok(())
     }
 
     // -------------------------------------------------------------
     // Request handling code ---------------------------------------
     // -------------------------------------------------------------
     /// Handles incoming requests
-    async fn handle_event(&mut self, event: Event) {
+    async fn handle_event(&mut self, event: Event) -> Result<()> {
         match event {
             Event::CompanyUpdate {
                 event,
@@ -1353,74 +1390,53 @@ impl Client {
                                 company_id,
                                 node_id,
                             }) => {
-                                if let Err(e) = self
-                                    .handle_company_data_file_request(
-                                        &company_id,
-                                        &node_id,
-                                        channel,
-                                    )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                let bytes = self
+                                    .handle_company_data_file_request(&company_id, &node_id)
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             ParsedInboundFileRequest::CompanyKeys(CompanyKeysRequest {
                                 node_id,
                                 company_id,
                             }) => {
-                                if let Err(e) = self
-                                    .handle_company_keys_file_request(
-                                        &company_id,
-                                        &node_id,
-                                        channel,
-                                    )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                let bytes = self
+                                    .handle_company_keys_file_request(&company_id, &node_id)
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             ParsedInboundFileRequest::CompanyLogo(CompanyLogoRequest {
                                 node_id,
                                 company_id,
                                 file_name,
                             }) => {
-                                if let Err(e) = self
+                                let bytes = self
                                     .handle_company_logo_file_request(
                                         &company_id,
                                         &node_id,
                                         &file_name,
-                                        channel,
                                     )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             ParsedInboundFileRequest::CompanyProof(CompanyProofRequest {
                                 node_id,
                                 company_id,
                                 file_name,
                             }) => {
-                                if let Err(e) = self
+                                let bytes = self
                                     .handle_company_proof_file_request(
                                         &company_id,
                                         &node_id,
                                         &file_name,
-                                        channel,
                                     )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             // We can send the bill to anyone requesting it, since the content is encrypted
                             // and is useless without the keys
                             ParsedInboundFileRequest::Bill(BillFileRequest { bill_name }) => {
-                                if let Err(e) =
-                                    self.handle_bill_file_request(&bill_name, channel).await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                let bytes = self.handle_bill_file_request(&bill_name).await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             // We check if the requester is part of the bill and if so, we get their
                             // identity from DHT and encrypt the file with their public key
@@ -1428,12 +1444,10 @@ impl Client {
                                 node_id,
                                 key_name,
                             }) => {
-                                if let Err(e) = self
-                                    .handle_bill_file_request_for_keys(&key_name, &node_id, channel)
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                let bytes = self
+                                    .handle_bill_file_request_for_keys(&key_name, &node_id)
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             // We only send attachments (encrypted with the bill public key) to participants of the bill, encrypted with their public key
                             ParsedInboundFileRequest::BillAttachment(
@@ -1443,20 +1457,19 @@ impl Client {
                                     file_name,
                                 },
                             ) => {
-                                if let Err(e) = self
+                                let bytes = self
                                     .handle_bill_file_request_for_attachment(
-                                        &bill_name, &node_id, &file_name, channel,
+                                        &bill_name, &node_id, &file_name,
                                     )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                         }
                     }
                 }
             }
         }
+        Ok(())
     }
 }
 

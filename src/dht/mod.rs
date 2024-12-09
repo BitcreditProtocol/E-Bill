@@ -92,6 +92,18 @@ pub enum Error {
     #[error("File hashes did not match: {0}")]
     FileHashesDidNotMatch(String),
 
+    /// error if the caller is not a part of the bill
+    #[error("The caller {0} is not a part of the bill: {1}")]
+    CallerNotPartOfBill(String, String),
+
+    /// error if the caller is not a signatory for the company they want files on
+    #[error("The caller {0} is not a signatory of the company {1}")]
+    CallerNotSignatoryOfCompany(String, String),
+
+    /// error if the caller requests a file for a company that doesn't exist
+    #[error("The requested file {0} for the company {1} didn't exist")]
+    NoFileForCompanyFound(String, String),
+
     /// error if requesting a file fails
     #[error("request file error: {0}")]
     RequestFile(String),
