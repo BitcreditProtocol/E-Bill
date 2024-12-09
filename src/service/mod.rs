@@ -9,6 +9,8 @@ use super::{dht::Client, Config};
 use crate::external::bitcoin::BitcoinClient;
 use crate::persistence::DbContext;
 use crate::persistence::{self};
+use crate::util::rsa;
+use crate::web::ErrorResponse;
 use crate::{dht, external};
 use bill_service::{BillService, BillServiceApi};
 use company_service::{CompanyService, CompanyServiceApi};
@@ -19,7 +21,6 @@ use log::error;
 use rocket::http::ContentType;
 use rocket::Response;
 use rocket::{http::Status, response::Responder};
-use serde_json::json;
 use std::io::Cursor;
 use std::sync::Arc;
 use thiserror::Error;
@@ -52,9 +53,9 @@ pub enum Error {
     #[error("Bill service error: {0}")]
     BillService(#[from] bill_service::Error),
 
-    /// errors stemming from cryptography, such as converting keys
+    /// errors stemming from cryptography, such as converting keys, encryption and decryption
     #[error("Cryptography error: {0}")]
-    Cryptography(String),
+    Cryptography(#[from] rsa::Error),
 
     /// errors that stem from interacting with the Dht
     #[error("Dht error: {0}")]
@@ -112,7 +113,8 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
 }
 
 fn build_validation_response<'o>(msg: String) -> rocket::response::Result<'o> {
-    let body = json!({ "error": "validation_error", "message": msg }).to_string();
+    let err_resp = ErrorResponse::new("validation_error", msg, 400);
+    let body = err_resp.to_json_string();
     Response::build()
         .status(Status::BadRequest)
         .header(ContentType::JSON)

@@ -1,8 +1,11 @@
 use super::{file_storage_path, Result};
 use crate::util::file::is_not_hidden_or_directory_async;
 use async_trait::async_trait;
-use std::path::Path;
-use tokio::fs::{create_dir_all, read, read_dir, remove_dir_all, write};
+use std::path::{Path, PathBuf};
+use tokio::{
+    fs::{create_dir_all, read, read_dir, remove_dir_all, write, File},
+    io::AsyncReadExt,
+};
 
 #[cfg(test)]
 use mockall::automock;
@@ -27,18 +30,42 @@ pub trait FileUploadStoreApi: Send + Sync {
     /// Reads the temporary files from the given file_upload_id and returns their file name and
     /// bytes
     async fn read_temp_upload_files(&self, file_upload_id: &str) -> Result<Vec<(String, Vec<u8>)>>;
+
+    /// Writes the given encrypted bytes of an attached file to disk, in a folder named id within
+    /// the files folder
+    async fn save_attached_file(
+        &self,
+        encrypted_bytes: &[u8],
+        id: &str,
+        file_name: &str,
+    ) -> Result<()>;
+
+    /// Opens the given attached file from disk
+    async fn open_attached_file(&self, id: &str, file_name: &str) -> Result<Vec<u8>>;
+
+    /// Deletes the attached files for the given id
+    async fn delete_attached_files(&self, id: &str) -> Result<()>;
 }
 
 #[derive(Clone)]
 pub struct FileUploadStore {
     temp_upload_folder: String,
+    files_folder: String,
 }
 
 impl FileUploadStore {
     pub async fn new(data_dir: &str, files_path: &str, temp_upload_path: &str) -> Result<Self> {
+        let files_folder = file_storage_path(data_dir, files_path).await?;
         let temp_upload_folder =
             file_storage_path(&format!("{data_dir}/{files_path}"), temp_upload_path).await?;
-        Ok(Self { temp_upload_folder })
+        Ok(Self {
+            temp_upload_folder,
+            files_folder,
+        })
+    }
+
+    pub fn get_path_for_files(&self, id: &str) -> PathBuf {
+        PathBuf::from(self.files_folder.as_str()).join(id)
     }
 
     pub async fn cleanup_temp_uploads(&self) -> Result<()> {
@@ -104,5 +131,40 @@ impl FileUploadStoreApi for FileUploadStore {
             }
         }
         Ok(files)
+    }
+
+    async fn save_attached_file(
+        &self,
+        encrypted_bytes: &[u8],
+        id: &str,
+        file_name: &str,
+    ) -> Result<()> {
+        let dest_dir = self.get_path_for_files(id);
+        if !dest_dir.exists() {
+            create_dir_all(&dest_dir).await?;
+        }
+        let dest_file = dest_dir.join(file_name);
+        write(dest_file, encrypted_bytes).await?;
+        Ok(())
+    }
+
+    async fn open_attached_file(&self, id: &str, file_name: &str) -> Result<Vec<u8>> {
+        let path = self.get_path_for_files(id).join(file_name);
+
+        let mut file = File::open(&path).await?;
+        let mut buf = Vec::new();
+
+        file.read_to_end(&mut buf).await?;
+        Ok(buf)
+    }
+
+    async fn delete_attached_files(&self, id: &str) -> Result<()> {
+        let path = self.get_path_for_files(id);
+
+        if path.is_dir() {
+            log::info!("deleting attached files at {path:?}");
+            remove_dir_all(path).await?;
+        }
+        Ok(())
     }
 }

@@ -25,7 +25,9 @@ mod event_loop;
 
 use crate::persistence::bill::BillStoreApi;
 use crate::persistence::company::CompanyStoreApi;
+use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::IdentityStoreApi;
+use crate::util::rsa;
 use crate::{blockchain, persistence, util};
 pub use client::Client;
 use libp2p::identity::Keypair;
@@ -87,17 +89,29 @@ pub enum Error {
     #[error("No file returned from providers: {0}")]
     NoFileFromProviders(String),
 
-    /// error if an attached file wasn't found in a bill
-    #[error("No file found in bill: {0}")]
-    FileNotFoundInBill(String),
-
     /// error if file hashes of two files did not match
     #[error("File hashes did not match: {0}")]
     FileHashesDidNotMatch(String),
 
+    /// error if the caller is not a part of the bill
+    #[error("The caller {0} is not a part of the bill: {1}")]
+    CallerNotPartOfBill(String, String),
+
+    /// error if the caller is not a signatory for the company they want files on
+    #[error("The caller {0} is not a signatory of the company {1}")]
+    CallerNotSignatoryOfCompany(String, String),
+
+    /// error if the caller requests a file for a company that doesn't exist
+    #[error("The requested file {0} for the company {1} didn't exist")]
+    NoFileForCompanyFound(String, String),
+
     /// error if requesting a file fails
     #[error("request file error: {0}")]
     RequestFile(String),
+
+    /// error if getting a record fails
+    #[error("get record error: {0}")]
+    GetRecord(String),
 
     /// error if the listen url is invalid
     #[error("invalid listen p2p url error")]
@@ -106,6 +120,10 @@ pub enum Error {
     /// errors that stem from interacting with a blockchain
     #[error("Blockchain error: {0}")]
     Blockchain(#[from] blockchain::Error),
+
+    /// Errors stemming from cryptography, such as converting keys, encryption and decryption
+    #[error("Cryptography error: {0}")]
+    Cryptography(#[from] rsa::Error),
 }
 
 pub struct Dht {
@@ -118,9 +136,16 @@ pub async fn dht_main(
     bill_store: Arc<dyn BillStoreApi>,
     company_store: Arc<dyn CompanyStoreApi>,
     identity_store: Arc<dyn IdentityStoreApi>,
+    file_upload_store: Arc<dyn FileUploadStoreApi>,
 ) -> Result<Dht> {
-    let (network_client, network_events, network_event_loop) =
-        new(conf, bill_store, company_store, identity_store).await?;
+    let (network_client, network_events, network_event_loop) = new(
+        conf,
+        bill_store,
+        company_store,
+        identity_store,
+        file_upload_store,
+    )
+    .await?;
 
     let (shutdown_sender, shutdown_receiver) = broadcast::channel::<bool>(100);
 
@@ -149,8 +174,9 @@ async fn new(
     bill_store: Arc<dyn BillStoreApi>,
     company_store: Arc<dyn CompanyStoreApi>,
     identity_store: Arc<dyn IdentityStoreApi>,
+    file_upload_store: Arc<dyn FileUploadStoreApi>,
 ) -> Result<(Client, Receiver<Event>, EventLoop)> {
-    if !identity_store.exists().await {
+    if !identity_store.libp2p_credentials_exist().await {
         let ed25519_keys = Keypair::generate_ed25519();
         let peer_id = ed25519_keys.public().to_peer_id();
         identity_store.save_peer_id(&peer_id).await?;
@@ -294,7 +320,13 @@ async fn new(
     let event_loop = EventLoop::new(swarm, command_receiver, event_sender, bill_store.clone());
 
     Ok((
-        Client::new(command_sender, bill_store, company_store, identity_store),
+        Client::new(
+            command_sender,
+            bill_store,
+            company_store,
+            identity_store,
+            file_upload_store,
+        ),
         event_receiver,
         event_loop,
     ))

@@ -11,7 +11,7 @@ use crate::constants::{
 use crate::external::bitcoin::BitcoinClientApi;
 use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::IdentityStoreApi;
-use crate::util::get_current_payee_private_key;
+use crate::util::rsa;
 use crate::web::data::File;
 use crate::CONFIG;
 use crate::{dht, external, persistence, util};
@@ -68,9 +68,9 @@ pub enum Error {
     #[error("External API error: {0}")]
     ExternalApi(#[from] external::Error),
 
-    /// errors stemming from cryptography, such as converting keys
+    /// Errors stemming from cryptography, such as converting keys, encryption and decryption
     #[error("Cryptography error: {0}")]
-    Cryptography(String),
+    Cryptography(#[from] rsa::Error),
 }
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
@@ -287,7 +287,7 @@ impl BillService {
         let data_for_new_block_encrypted = util::rsa::encrypt_bytes_with_public_key(
             data_for_new_block_in_bytes,
             &keys.public_key_pem,
-        );
+        )?;
         let data_for_new_block_encrypted_in_string_format =
             hex::encode(data_for_new_block_encrypted);
 
@@ -491,7 +491,10 @@ impl BillServiceApi for BillService {
                     .bitcoin_public_key
                     .eq(&identity.identity.bitcoin_public_key))
         {
-            pr_key_bill = get_current_payee_private_key(identity.identity.clone(), bill.clone());
+            pr_key_bill = self.bitcoin_client.get_combined_private_key(
+                &identity.identity.bitcoin_private_key,
+                &bill.private_key,
+            )?;
         }
 
         Ok(BitcreditBillToReturn {
@@ -548,7 +551,11 @@ impl BillServiceApi for BillService {
     }
 
     async fn find_bill_in_dht(&self, bill_name: &str) -> Result<()> {
-        self.client.clone().get_bill(bill_name).await?;
+        let local_peer_id = self.identity_store.get_peer_id().await?;
+        self.client
+            .clone()
+            .get_bill_data_from_the_network(bill_name, &local_peer_id)
+            .await?;
         Ok(())
     }
 
@@ -563,8 +570,11 @@ impl BillServiceApi for BillService {
         file_name: &str,
         bill_private_key: &str,
     ) -> Result<Vec<u8>> {
-        let read_file = self.store.open_attached_file(bill_name, file_name).await?;
-        let decrypted = util::rsa::decrypt_bytes_with_private_key(&read_file, bill_private_key);
+        let read_file = self
+            .file_upload_store
+            .open_attached_file(bill_name, file_name)
+            .await?;
+        let decrypted = util::rsa::decrypt_bytes_with_private_key(&read_file, bill_private_key)?;
         Ok(decrypted)
     }
 
@@ -576,8 +586,8 @@ impl BillServiceApi for BillService {
         bill_public_key: &str,
     ) -> Result<File> {
         let file_hash = util::sha256_hash(file_bytes);
-        let encrypted = util::rsa::encrypt_bytes_with_public_key(file_bytes, bill_public_key);
-        self.store
+        let encrypted = util::rsa::encrypt_bytes_with_public_key(file_bytes, bill_public_key)?;
+        self.file_upload_store
             .save_attached_file(&encrypted, bill_name, file_name)
             .await?;
         info!("Saved file {file_name} with hash {file_hash} for bill {bill_name}");
@@ -609,8 +619,7 @@ impl BillServiceApi for BillService {
         let private_key_bitcoin: String = private_key.to_string();
         let public_key_bitcoin: String = public_key.to_string();
 
-        let (private_key_pem, public_key_pem) =
-            util::rsa::create_rsa_key_pair().map_err(|e| Error::Cryptography(e.to_string()))?;
+        let (private_key_pem, public_key_pem) = util::rsa::create_rsa_key_pair()?;
 
         self.store
             .write_bill_keys_to_file(
@@ -1119,7 +1128,7 @@ mod test {
     fn get_genesis_chain(bill_name: &str, bill: Option<BitcreditBill>) -> Chain {
         let bill = bill.unwrap_or(get_baseline_bill("some name"));
         let data = to_vec(&bill).unwrap();
-        let encrypted = util::rsa::encrypt_bytes_with_public_key(&data, TEST_PUB_KEY);
+        let encrypted = util::rsa::encrypt_bytes_with_public_key(&data, TEST_PUB_KEY).unwrap();
         let encoded = hex::encode(encrypted);
         Chain::new(
             Block::new(
@@ -1148,6 +1157,7 @@ mod test {
                 Arc::new(MockBillStoreApi::new()),
                 Arc::new(MockCompanyStoreApi::new()),
                 Arc::new(MockIdentityStoreApi::new()),
+                Arc::new(MockFileUploadStoreApi::new()),
             ),
             Arc::new(mock_storage),
             Arc::new(MockIdentityStoreApi::new()),
@@ -1167,6 +1177,7 @@ mod test {
                 Arc::new(MockBillStoreApi::new()),
                 Arc::new(MockCompanyStoreApi::new()),
                 Arc::new(MockIdentityStoreApi::new()),
+                Arc::new(MockFileUploadStoreApi::new()),
             ),
             Arc::new(mock_storage),
             Arc::new(MockIdentityStoreApi::new()),
@@ -1192,6 +1203,7 @@ mod test {
                 Arc::new(MockBillStoreApi::new()),
                 Arc::new(MockCompanyStoreApi::new()),
                 Arc::new(MockIdentityStoreApi::new()),
+                Arc::new(MockFileUploadStoreApi::new()),
             ),
             Arc::new(mock_storage),
             Arc::new(mock_identity_storage),
@@ -1215,7 +1227,7 @@ mod test {
         storage
             .expect_write_bill_keys_to_file()
             .returning(|_, _, _| Ok(()));
-        storage
+        file_upload_storage
             .expect_save_attached_file()
             .returning(move |_, _, _| Ok(()));
         storage
@@ -1262,21 +1274,22 @@ mod test {
         let file_name = "invoice_00000000-0000-0000-0000-000000000000.pdf";
         let file_bytes = String::from("hello world").as_bytes().to_vec();
         let expected_encrypted =
-            util::rsa::encrypt_bytes_with_public_key(&file_bytes, TEST_PUB_KEY);
+            util::rsa::encrypt_bytes_with_public_key(&file_bytes, TEST_PUB_KEY).unwrap();
 
-        let mut storage = MockBillStoreApi::new();
-        storage
+        let mut file_upload_storage = MockFileUploadStoreApi::new();
+        let storage = MockBillStoreApi::new();
+        file_upload_storage
             .expect_save_attached_file()
             .with(always(), eq(bill_name), eq(file_name))
             .times(1)
             .returning(|_, _, _| Ok(()));
 
-        storage
+        file_upload_storage
             .expect_open_attached_file()
             .with(eq(bill_name), eq(file_name))
             .times(1)
             .returning(move |_, _| Ok(expected_encrypted.clone()));
-        let service = get_service(storage);
+        let service = get_service_with_file_upload_store(storage, file_upload_storage);
 
         let bill_file = service
             .encrypt_and_save_uploaded_file(file_name, &file_bytes, bill_name, TEST_PUB_KEY)
@@ -1297,14 +1310,17 @@ mod test {
 
     #[tokio::test]
     async fn save_encrypt_propagates_write_file_error() {
-        let mut storage = MockBillStoreApi::new();
-        storage.expect_save_attached_file().returning(|_, _, _| {
-            Err(persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "test error",
-            )))
-        });
-        let service = get_service(storage);
+        let mut file_upload_storage = MockFileUploadStoreApi::new();
+        let storage = MockBillStoreApi::new();
+        file_upload_storage
+            .expect_save_attached_file()
+            .returning(|_, _, _| {
+                Err(persistence::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "test error",
+                )))
+            });
+        let service = get_service_with_file_upload_store(storage, file_upload_storage);
 
         assert!(service
             .encrypt_and_save_uploaded_file("file_name", &[], "test", TEST_PUB_KEY)
@@ -1314,14 +1330,17 @@ mod test {
 
     #[tokio::test]
     async fn open_decrypt_propagates_read_file_error() {
-        let mut storage = MockBillStoreApi::new();
-        storage.expect_open_attached_file().returning(|_, _| {
-            Err(persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "test error",
-            )))
-        });
-        let service = get_service(storage);
+        let mut file_upload_storage = MockFileUploadStoreApi::new();
+        let storage = MockBillStoreApi::new();
+        file_upload_storage
+            .expect_open_attached_file()
+            .returning(|_, _| {
+                Err(persistence::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "test error",
+                )))
+            });
+        let service = get_service_with_file_upload_store(storage, file_upload_storage);
 
         assert!(service
             .open_and_decrypt_attached_file("test", "test", TEST_PRIVATE_KEY)
