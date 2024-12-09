@@ -1,9 +1,13 @@
 use super::Result;
 use crate::CONFIG;
-use crate::{dht::Client, persistence::identity::IdentityStoreApi, util};
+use crate::{
+    dht::Client,
+    persistence::identity::IdentityStoreApi,
+    util::{self, BcrKeys},
+};
+
 use async_trait::async_trait;
 use borsh_derive::{BorshDeserialize, BorshSerialize};
-use libp2p::identity::Keypair;
 use libp2p::PeerId;
 use rocket::serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -130,7 +134,7 @@ pub struct IdentityWithAll {
     pub identity: Identity,
     pub peer_id: PeerId,
     #[allow(dead_code)]
-    pub key_pair: Keypair,
+    pub key_pair: BcrKeys,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -373,7 +377,7 @@ mod test {
         let identity = IdentityWithAll {
             identity: Identity::new_empty(),
             peer_id: PeerId::random(),
-            key_pair: Keypair::generate_ed25519(),
+            key_pair: BcrKeys::new(),
         };
         let arced = Arc::new(identity.clone());
         let mut storage = MockIdentityStoreApi::new();

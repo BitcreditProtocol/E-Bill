@@ -235,8 +235,9 @@ mod test {
     use crate::{
         service::identity_service::{Identity, IdentityWithAll},
         tests::test::{TEST_PRIVATE_KEY, TEST_PUB_KEY},
+        util::BcrKeys,
     };
-    use libp2p::{identity::Keypair, PeerId};
+    use libp2p::PeerId;
 
     pub fn get_baseline_identity() -> IdentityWithAll {
         let mut identity = Identity::new_empty();
@@ -246,7 +247,7 @@ mod test {
         IdentityWithAll {
             identity,
             peer_id: PeerId::random(),
-            key_pair: Keypair::generate_ed25519(),
+            key_pair: BcrKeys::new(),
         }
     }
 

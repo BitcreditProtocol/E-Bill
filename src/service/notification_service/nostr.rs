@@ -4,7 +4,6 @@ use nostr_sdk::prelude::*;
 use nostr_sdk::Timestamp;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::task::JoinHandle;
 
 use crate::persistence::NostrEventOffset;
@@ -20,7 +19,6 @@ pub struct NostrConfig {
     nsec: String,
     relays: Vec<String>,
     name: String,
-    timeout: Option<Duration>,
 }
 
 /// A wrapper around nostr_sdk that implements the NotificationJsonTransportApi.
@@ -31,7 +29,6 @@ pub struct NostrConfig {
 ///     nsec: "nsec1...".to_string(),
 ///     relays: vec!["wss://relay.example.com".to_string()],
 ///     name: "My Company".to_string(),
-///     timeout: Some(Duration::from_secs(10)),
 /// };
 /// let transport = NostrClient::new(&config).await.unwrap();
 /// transport.send(&recipient, event).await.unwrap();
@@ -49,7 +46,7 @@ impl NostrClient {
     #[allow(dead_code)]
     pub async fn new(config: &NostrConfig) -> Result<Self> {
         let keys = Keys::parse(&config.nsec)?;
-        let options = Options::new().connection_timeout(config.timeout);
+        let options = Options::new();
         let client = Client::builder().signer(keys.clone()).opts(options).build();
         for relay in &config.relays {
             client.add_relay(relay).await?;
@@ -290,7 +287,6 @@ mod tests {
             nsec: NOSTR_KEY1.to_string(),
             relays: vec![url.to_string()],
             name: "BcrDamus1".to_string(),
-            timeout: Some(Duration::from_secs(10)),
         };
         let client1 = NostrClient::new(&config1)
             .await
@@ -300,7 +296,6 @@ mod tests {
             nsec: NOSTR_KEY2.to_string(),
             relays: vec![url.to_string()],
             name: "BcrDamus2".to_string(),
-            timeout: Some(Duration::from_secs(10)),
         };
         let client2 = NostrClient::new(&config2)
             .await

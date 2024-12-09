@@ -6,6 +6,7 @@ pub mod file_upload;
 pub mod identity;
 pub mod nostr;
 
+use crate::util;
 use bill::FileBasedBillStore;
 use db::{contact::SurrealContactStore, get_surreal_db, SurrealDbConfig};
 use identity::FileBasedIdentityStore;
@@ -40,6 +41,9 @@ pub enum Error {
     #[allow(dead_code)]
     #[error("Failed to convert integer {0}")]
     FromInt(#[from] std::num::TryFromIntError),
+
+    #[error("Cryptography error: {0}")]
+    CryptoUtil(#[from] util::crypto::Error),
 
     #[error("Blockchain error: {0}")]
     Blockchain(#[from] blockchain::Error),
@@ -97,7 +101,7 @@ pub async fn get_db_context(conf: &Config) -> Result<DbContext> {
             "identity",
             "identity",
             "peer_id",
-            "ed25519_keys",
+            "bcr_keys",
         )
         .await?,
     );

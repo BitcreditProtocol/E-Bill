@@ -1,10 +1,13 @@
 use super::{file_storage_path, Result};
 use async_trait::async_trait;
 use borsh::{to_vec, BorshDeserialize};
-use libp2p::{identity::Keypair, PeerId};
+use libp2p::PeerId;
 use tokio::{fs, task};
 
-use crate::service::identity_service::{Identity, IdentityWithAll};
+use crate::{
+    service::identity_service::{Identity, IdentityWithAll},
+    util::crypto::BcrKeys,
+};
 #[cfg(test)]
 use mockall::automock;
 use std::path::Path;
@@ -25,16 +28,16 @@ pub trait IdentityStoreApi: Send + Sync {
     /// Gets the local peer id
     async fn get_peer_id(&self) -> Result<PeerId>;
     /// Saves the given key pair
-    async fn save_key_pair(&self, key_pair: &Keypair) -> Result<()>;
+    async fn save_key_pair(&self, key_pair: &BcrKeys) -> Result<()>;
     /// Gets the local key pair
-    async fn get_key_pair(&self) -> Result<Keypair>;
+    async fn get_key_pair(&self) -> Result<BcrKeys>;
 }
 
 #[derive(Clone)]
 pub struct FileBasedIdentityStore {
     identity_file: String,
     peer_id_file: String,
-    key_pair_file: String,
+    key_file: String,
 }
 
 impl FileBasedIdentityStore {
@@ -49,7 +52,7 @@ impl FileBasedIdentityStore {
         Ok(Self {
             identity_file: format!("{}/{}", directory, identity_file_name),
             peer_id_file: format!("{}/{}", directory, peer_id_file_name),
-            key_pair_file: format!("{}/{}", directory, key_pair_file_name),
+            key_file: format!("{}/{}", directory, key_pair_file_name),
         })
     }
 }
@@ -59,7 +62,7 @@ impl IdentityStoreApi for FileBasedIdentityStore {
     async fn exists(&self) -> bool {
         let identity_path = self.identity_file.clone();
         let peer_id_path = self.peer_id_file.clone();
-        let key_pair_path = self.key_pair_file.clone();
+        let key_pair_path = self.key_file.clone();
         task::spawn_blocking(move || {
             Path::new(&identity_path).exists()
                 && Path::new(&peer_id_path).exists()
@@ -115,15 +118,15 @@ impl IdentityStoreApi for FileBasedIdentityStore {
         Ok(peer_id)
     }
 
-    async fn save_key_pair(&self, key_pair: &Keypair) -> Result<()> {
-        let data = key_pair.to_protobuf_encoding()?;
-        fs::write(&self.key_pair_file, &data).await?;
+    async fn save_key_pair(&self, key_pair: &BcrKeys) -> Result<()> {
+        let data = key_pair.get_private_key_string();
+        fs::write(&self.key_file, &data).await?;
         Ok(())
     }
 
-    async fn get_key_pair(&self) -> Result<Keypair> {
-        let data = fs::read(&self.key_pair_file).await?;
-        let key_pair = Keypair::from_protobuf_encoding(&data)?;
+    async fn get_key_pair(&self) -> Result<BcrKeys> {
+        let data = fs::read_to_string(&self.key_file).await?;
+        let key_pair = BcrKeys::from_private_key(&data)?;
         Ok(key_pair)
     }
 }

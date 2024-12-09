@@ -43,7 +43,7 @@ pub struct MyBehaviour {
 impl MyBehaviour {
     pub fn new(
         local_peer_id: PeerId,
-        local_public_key: Keypair,
+        local_keypair: Keypair,
         client: relay::client::Behaviour,
     ) -> Self {
         Self {
@@ -60,13 +60,13 @@ impl MyBehaviour {
             },
             identify: {
                 let cfg_identify =
-                    identify::Config::new("/identify/0.1.0".to_string(), local_public_key.public());
+                    identify::Config::new("/identify/0.1.0".to_string(), local_keypair.public());
                 identify::Behaviour::new(cfg_identify)
             },
             gossipsub: {
                 let gossipsub_config = libp2p::gossipsub::Config::default();
                 let message_authenticity =
-                    gossipsub::MessageAuthenticity::Signed(local_public_key.clone());
+                    gossipsub::MessageAuthenticity::Signed(local_keypair.clone());
                 gossipsub::Behaviour::new(message_authenticity, gossipsub_config)
                     .expect("Correct configuration")
             },

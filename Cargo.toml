@@ -9,7 +9,7 @@ borsh = "1.5.1"
 borsh-derive = "1.0.0"
 env_logger = "0.11.5"
 chrono = "0.4.38"
-libp2p = { version = "0.51.3", features = [
+libp2p = { version = "0.51.4", features = [
   "tcp",
   "dns",
   "async-std",
@@ -23,6 +23,7 @@ libp2p = { version = "0.51.3", features = [
   "gossipsub",
   "relay",
   "dcutr",
+  "secp256k1",
 ] }
 tokio = { version = "1.40.0", features = [
   "rt",
@@ -57,15 +58,15 @@ lettre = { version = "0.11.10", features = [
   "tokio1-native-tls",
   "file-transport",
 ] }
-nostr-sdk = "0.36.0"
+nostr-sdk = { version = "0.37.0", features = ["nip59"] }
 uuid = { version = "1.11.0", features = ["v4"] }
-infer = { version = "0.3", default-features = false }
+infer = { version = "0.16", default-features = false }
 surrealdb = "2"
 lazy_static = "1.5.0"
 
 [dev-dependencies]
 mockall = "0.13.0"
-nostr-relay-builder = "0.36.0"
+nostr-relay-builder = "0.37.0"
 surrealdb = { version = "2", features = ["kv-mem"] }
 
 [features]
