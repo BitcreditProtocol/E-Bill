@@ -99,11 +99,11 @@ pub async fn create(
     let created_company = state
         .company_service
         .create_company(
-            payload.legal_name,
+            payload.name,
             payload.country_of_registration,
             payload.city_of_registration,
             payload.postal_address,
-            payload.legal_email,
+            payload.email,
             payload.registration_number,
             payload.registration_date,
             payload.proof_of_registration_file_upload_id,
@@ -137,8 +137,8 @@ pub async fn edit(
         .company_service
         .edit_company(
             &payload.id,
-            payload.legal_name,
-            payload.legal_email,
+            payload.name,
+            payload.email,
             payload.postal_address,
             payload.logo_file_upload_id,
         )

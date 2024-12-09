@@ -87,8 +87,7 @@ impl IdentityServiceApi for IdentityService {
         email: String,
         postal_address: String,
     ) -> Result<()> {
-        let (private_key_pem, public_key_pem) = util::rsa::create_rsa_key_pair()
-            .map_err(|e| super::Error::Cryptography(e.to_string()))?;
+        let (private_key_pem, public_key_pem) = util::rsa::create_rsa_key_pair()?;
 
         let s = bitcoin::secp256k1::Secp256k1::new();
 

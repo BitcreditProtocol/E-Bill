@@ -26,6 +26,7 @@ mod event_loop;
 use crate::persistence::bill::BillStoreApi;
 use crate::persistence::company::CompanyStoreApi;
 use crate::persistence::identity::IdentityStoreApi;
+use crate::util::rsa;
 use crate::{blockchain, persistence, util};
 pub use client::Client;
 use libp2p::identity::Keypair;
@@ -87,10 +88,6 @@ pub enum Error {
     #[error("No file returned from providers: {0}")]
     NoFileFromProviders(String),
 
-    /// error if an attached file wasn't found in a bill
-    #[error("No file found in bill: {0}")]
-    FileNotFoundInBill(String),
-
     /// error if file hashes of two files did not match
     #[error("File hashes did not match: {0}")]
     FileHashesDidNotMatch(String),
@@ -99,6 +96,10 @@ pub enum Error {
     #[error("request file error: {0}")]
     RequestFile(String),
 
+    /// error if getting a record fails
+    #[error("get record error: {0}")]
+    GetRecord(String),
+
     /// error if the listen url is invalid
     #[error("invalid listen p2p url error")]
     ListenP2pUrlInvalid,
@@ -106,6 +107,10 @@ pub enum Error {
     /// errors that stem from interacting with a blockchain
     #[error("Blockchain error: {0}")]
     Blockchain(#[from] blockchain::Error),
+
+    /// Errors stemming from cryptography, such as converting keys, encryption and decryption
+    #[error("Cryptography error: {0}")]
+    Cryptography(#[from] rsa::Error),
 }
 
 pub struct Dht {

@@ -524,10 +524,7 @@ mod test {
         Block::new(
             2,
             prevhash,
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Sell,

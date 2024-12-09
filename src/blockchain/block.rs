@@ -20,11 +20,6 @@ use crate::util;
 use crate::util::rsa;
 use borsh::from_slice;
 use log::error;
-use openssl::hash::MessageDigest;
-use openssl::pkey::PKey;
-use openssl::rsa::Rsa;
-use openssl::sign::Signer;
-use openssl::sign::Verifier;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -80,7 +75,7 @@ impl Block {
             &public_key,
             &operation_code,
         ));
-        let signature = signature(&hash, &private_key)?;
+        let signature = rsa::signature(&hash, &private_key)?;
 
         Ok(Self {
             id,
@@ -106,7 +101,7 @@ impl Block {
     pub fn get_decrypted_block_bytes(&self, bill_keys: &BillKeys) -> Result<Vec<u8>> {
         let bytes = hex::decode(&self.data)?;
         let decrypted_bytes =
-            rsa::decrypt_bytes_with_private_key(&bytes, &bill_keys.private_key_pem);
+            rsa::decrypt_bytes_with_private_key(&bytes, &bill_keys.private_key_pem)?;
         Ok(decrypted_bytes)
     }
 
@@ -377,7 +372,7 @@ impl Block {
     /// - `false` if the signature is invalid.
     ///
     pub fn verify(&self) -> bool {
-        match self.verify_internal() {
+        match rsa::verify_signature(&self.hash, &self.signature, &self.public_key) {
             Err(e) => {
                 error!("Error while verifying block id {}: {e}", self.id);
                 false
@@ -385,45 +380,6 @@ impl Block {
             Ok(res) => res,
         }
     }
-
-    fn verify_internal(&self) -> Result<bool> {
-        let public_key_rsa = Rsa::public_key_from_pem(self.public_key.as_bytes())?;
-        let verifier_key = PKey::from_rsa(public_key_rsa)?;
-
-        let mut verifier = Verifier::new(MessageDigest::sha256(), verifier_key.as_ref())?;
-
-        let data_to_check = self.hash.as_bytes();
-        verifier.update(data_to_check)?;
-
-        let signature_bytes = hex::decode(&self.signature)?;
-        let res = verifier.verify(signature_bytes.as_slice())?;
-        Ok(res)
-    }
-}
-
-/// Signs a hash using a private RSA key and returns the resulting signature as a hexadecimal string
-/// # Arguments
-///
-/// - `hash`: A string representing the data hash to be signed. This is typically the output of a hashing algorithm like SHA-256.
-/// - `private_key_pem`: A string containing the private RSA key in PEM format. This key is used to generate the signature.
-///
-/// # Returns
-///
-/// A `String` containing the hexadecimal representation of the digital signature.
-///
-fn signature(hash: &str, private_key_pem: &str) -> Result<String> {
-    let private_key_rsa = Rsa::private_key_from_pem(private_key_pem.as_bytes())?;
-    let signer_key = PKey::from_rsa(private_key_rsa)?;
-
-    let mut signer: Signer = Signer::new(MessageDigest::sha256(), signer_key.as_ref())?;
-
-    let data_to_sign = hash.as_bytes();
-    signer.update(data_to_sign)?;
-
-    let signature: Vec<u8> = signer.sign_to_vec()?;
-    let signature_readable = hex::encode(signature.as_slice());
-
-    Ok(signature_readable)
 }
 
 #[cfg(test)]
@@ -462,10 +418,9 @@ mod test {
         bill.payee = drawer.clone();
         bill.drawee = payer;
 
-        let hashed_bill = hex::encode(rsa::encrypt_bytes_with_public_key(
-            &to_vec(&bill).unwrap(),
-            TEST_PUB_KEY,
-        ));
+        let hashed_bill = hex::encode(
+            rsa::encrypt_bytes_with_public_key(&to_vec(&bill).unwrap(), TEST_PUB_KEY).unwrap(),
+        );
 
         let block = Block::new(
             1,
@@ -493,10 +448,9 @@ mod test {
         drawer.name = "bill".to_string();
         bill.drawer = drawer.clone();
 
-        let hashed_bill = hex::encode(rsa::encrypt_bytes_with_public_key(
-            &to_vec(&bill).unwrap(),
-            TEST_PUB_KEY,
-        ));
+        let hashed_bill = hex::encode(
+            rsa::encrypt_bytes_with_public_key(&to_vec(&bill).unwrap(), TEST_PUB_KEY).unwrap(),
+        );
 
         let block = Block::new(
             1,
@@ -536,10 +490,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Endorse,
@@ -571,10 +522,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Endorse,
@@ -606,10 +554,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Mint,
@@ -641,10 +586,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Mint,
@@ -669,10 +611,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::RequestToAccept,
@@ -698,10 +637,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::RequestToAccept,
@@ -729,10 +665,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Accept,
@@ -758,10 +691,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Accept,
@@ -807,11 +737,14 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                // invalid data
-                "some data".to_string().as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(
+                rsa::encrypt_bytes_with_public_key(
+                    // invalid data
+                    "some data".to_string().as_bytes(),
+                    TEST_PUB_KEY,
+                )
+                .unwrap(),
+            ),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Accept,
@@ -835,10 +768,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::RequestToPay,
@@ -864,10 +794,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::RequestToPay,
@@ -899,10 +826,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Sell,
@@ -929,10 +853,7 @@ mod test {
         let block = Block::new(
             1,
             String::from("prevhash"),
-            hex::encode(rsa::encrypt_bytes_with_public_key(
-                data.as_bytes(),
-                TEST_PUB_KEY,
-            )),
+            hex::encode(rsa::encrypt_bytes_with_public_key(data.as_bytes(), TEST_PUB_KEY).unwrap()),
             String::from("some_bill"),
             TEST_PUB_KEY.to_owned(),
             OperationCode::Sell,

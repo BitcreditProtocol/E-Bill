@@ -6,7 +6,7 @@ use crate::constants::{
 };
 use crate::dht::behaviour::{CompanyEvent, FileRequest, FileResponse};
 use crate::persistence::bill::BillStoreApi;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use futures::channel::mpsc::Receiver;
 use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
@@ -38,7 +38,7 @@ pub struct EventLoop {
     pending_dial: PendingDial,
     pending_start_providing: HashMap<QueryId, oneshot::Sender<()>>,
     pending_get_providers: HashMap<QueryId, oneshot::Sender<HashSet<PeerId>>>,
-    pending_get_records: HashMap<QueryId, oneshot::Sender<Record>>,
+    pending_get_records: HashMap<QueryId, oneshot::Sender<Result<Record>>>,
     pending_request_file: PendingRequestFile,
 }
 
@@ -65,8 +65,20 @@ impl EventLoop {
     pub async fn run(mut self, mut shutdown_event_loop_receiver: broadcast::Receiver<bool>) {
         loop {
             tokio::select! {
-                event = self.swarm.next() => self.handle_event(event.expect("Swarm stream to be infinite.")).await,
-                command = self.command_receiver.next() => if let Some(c) = command { self.handle_command(c).await },
+                event = self.swarm.next() => {
+                    if let Some(evt) = event {
+                        if let Err(e) = self.handle_event(evt).await {
+                            error!("EventLoop Error while handling event: {e}");
+                        }
+                    }
+                },
+                command = self.command_receiver.next() => {
+                    if let Some(c) = command {
+                        if let Err(e) = self.handle_command(c).await {
+                            error!("EventLoop Error while handling command: {e}");
+                        }
+                    }
+                },
                 _ = shutdown_event_loop_receiver.recv() => {
                     info!("Shutting down event loop...");
                     break;
@@ -75,7 +87,7 @@ impl EventLoop {
         }
     }
 
-    async fn handle_event<T>(&mut self, event: SwarmEvent<ComposedEvent, T>)
+    async fn handle_event<T>(&mut self, event: SwarmEvent<ComposedEvent, T>) -> Result<()>
     where
         T: std::fmt::Debug,
     {
@@ -86,11 +98,11 @@ impl EventLoop {
             )) => match result {
                 QueryResult::StartProviding(Ok(kad::AddProviderOk { key: _ })) => {
                     info!("Successfully started providing query id: {id:?}");
-                    let sender: oneshot::Sender<()> = self
-                        .pending_start_providing
-                        .remove(&id)
-                        .expect("Completed query to be previously pending.");
-                    let _ = sender.send(());
+                    if let Some(sender) = self.pending_start_providing.remove(&id) {
+                        sender.send(()).map_err(|e| {
+                            anyhow!("Error sending event on start providing channel: {e:?}")
+                        })?;
+                    }
                 }
 
                 QueryResult::GetRecord(Ok(GetRecordOk::FoundRecord(PeerRecord {
@@ -99,20 +111,20 @@ impl EventLoop {
                     if let Some(sender) = self.pending_get_records.remove(&id) {
                         info!(
                             "Got record {:?} {:?}",
-                            std::str::from_utf8(record.key.as_ref()).unwrap(),
-                            std::str::from_utf8(&record.value).unwrap(),
+                            std::str::from_utf8(record.key.as_ref()),
+                            std::str::from_utf8(&record.value),
                         );
 
-                        sender.send(record).expect("Receiver not to be dropped.");
+                        sender.send(Ok(record)).map_err(|e| {
+                            anyhow!("Error sending record from get_record event: {e:?}")
+                        })?;
 
                         // Finish the query. We are only interested in the first result.
                         //TODO: think how to do it better.
-                        self.swarm
-                            .behaviour_mut()
-                            .kademlia
-                            .query_mut(&id)
-                            .unwrap()
-                            .finish();
+                        if let Some(mut query) = self.swarm.behaviour_mut().kademlia.query_mut(&id)
+                        {
+                            query.finish();
+                        }
                     }
                 }
 
@@ -124,48 +136,33 @@ impl EventLoop {
                 }
 
                 QueryResult::GetRecord(Err(GetRecordError::NotFound { key, .. })) => {
-                    //TODO: its bad.
-                    let record = Record {
-                        key,
-                        value: vec![],
-                        publisher: None,
-                        expires: None,
-                    };
-                    let _ = self
-                        .pending_get_records
-                        .remove(&id)
-                        .expect("Request to still be pending.")
-                        .send(record);
+                    if let Some(sender) = self.pending_get_records.remove(&id) {
+                        sender
+                            .send(Err(anyhow!("Get Record Error: NotFound for {key:?}")))
+                            .map_err(|e| {
+                                anyhow!("Error sending Get Record NotFound error: {e:?}")
+                            })?;
+                    }
                 }
 
                 QueryResult::GetRecord(Err(GetRecordError::Timeout { key })) => {
-                    //TODO: its bad.
-                    let record = Record {
-                        key,
-                        value: vec![],
-                        publisher: None,
-                        expires: None,
-                    };
-                    let _ = self
-                        .pending_get_records
-                        .remove(&id)
-                        .expect("Request to still be pending.")
-                        .send(record);
+                    if let Some(sender) = self.pending_get_records.remove(&id) {
+                        sender
+                            .send(Err(anyhow!("Get Record Error: Timeout for {key:?}")))
+                            .map_err(|e| {
+                                anyhow!("Error sending Get Record Timeout error: {e:?}")
+                            })?;
+                    }
                 }
 
                 QueryResult::GetRecord(Err(GetRecordError::QuorumFailed { key, .. })) => {
-                    //TODO: its bad.
-                    let record = Record {
-                        key,
-                        value: vec![],
-                        publisher: None,
-                        expires: None,
-                    };
-                    let _ = self
-                        .pending_get_records
-                        .remove(&id)
-                        .expect("Request to still be pending.")
-                        .send(record);
+                    if let Some(sender) = self.pending_get_records.remove(&id) {
+                        sender
+                            .send(Err(anyhow!("Get Record Error: Quorumfailed for {key:?}")))
+                            .map_err(|e| {
+                                anyhow!("Error sending Get Record QuorumFailed error: {e:?}")
+                            })?;
+                    }
                 }
 
                 QueryResult::GetProviders(Ok(GetProvidersOk::FoundProviders {
@@ -176,16 +173,16 @@ impl EventLoop {
                             info!("Get Providers: PEER {peer:?}");
                         }
 
-                        sender.send(providers).expect("Receiver not to be dropped.");
+                        sender.send(providers).map_err(|e| {
+                            anyhow!("Error sending providers from get_providers event: {e:?}")
+                        })?;
 
                         // Finish the query. We are only interested in the first result.
                         //TODO: think how to do it better.
-                        self.swarm
-                            .behaviour_mut()
-                            .kademlia
-                            .query_mut(&id)
-                            .unwrap()
-                            .finish();
+                        if let Some(mut query) = self.swarm.behaviour_mut().kademlia.query_mut(&id)
+                        {
+                            query.finish();
+                        }
                     }
                 }
 
@@ -198,11 +195,11 @@ impl EventLoop {
                     request_id, error, ..
                 },
             )) => {
-                let _ = self
-                    .pending_request_file
-                    .remove(&request_id)
-                    .expect("Request to still be pending.")
-                    .send(Err(error.into()));
+                if let Some(sender) = self.pending_request_file.remove(&request_id) {
+                    sender
+                        .send(Err(error.into()))
+                        .map_err(|e| anyhow!("Error sending File request error: {e:?}"))?;
+                }
             }
 
             SwarmEvent::Behaviour(ComposedEvent::RequestResponse(
@@ -217,18 +214,18 @@ impl EventLoop {
                             channel,
                         })
                         .await
-                        .expect("Event receiver not to be dropped.");
+                        .map_err(|e| anyhow!("Error sending File request: {e:?}"))?;
                 }
 
                 request_response::Message::Response {
                     request_id,
                     response,
                 } => {
-                    let _ = self
-                        .pending_request_file
-                        .remove(&request_id)
-                        .expect("Request to still be pending.")
-                        .send(Ok(response.0));
+                    if let Some(sender) = self.pending_request_file.remove(&request_id) {
+                        sender
+                            .send(Ok(response.0))
+                            .map_err(|e| anyhow!("Error sending File response: {e:?}"))?;
+                    }
                 }
             },
 
@@ -272,117 +269,132 @@ impl EventLoop {
                 );
                 if message.topic.as_str().starts_with(COMPANY_PREFIX) {
                     if let Some(company_id) = message.topic.as_str().strip_prefix(COMPANY_PREFIX) {
-                        let event = GossipsubEvent::from_byte_array(&message.data).unwrap();
-
-                        match event.id {
-                            GossipsubEventId::AddSignatoryFromCompany => {
-                                if let Ok(signatory) = String::from_utf8(event.message) {
-                                    if let Err(e) = self
-                                        .event_sender
-                                        .send(Event::CompanyUpdate {
-                                            event: CompanyEvent::AddSignatory,
-                                            company_id: company_id.to_string(),
-                                            signatory,
-                                        })
-                                        .await
-                                    {
-                                        error!("Could not send event to DHT client: {e}");
+                        if let Ok(event) = GossipsubEvent::from_byte_array(&message.data) {
+                            match event.id {
+                                GossipsubEventId::AddSignatoryFromCompany => {
+                                    if let Ok(signatory) = String::from_utf8(event.message) {
+                                        if let Err(e) = self
+                                            .event_sender
+                                            .send(Event::CompanyUpdate {
+                                                event: CompanyEvent::AddSignatory,
+                                                company_id: company_id.to_string(),
+                                                signatory,
+                                            })
+                                            .await
+                                        {
+                                            error!("Could not send event to DHT client: {e}");
+                                        }
                                     }
                                 }
-                            }
-                            GossipsubEventId::RemoveSignatoryFromCompany => {
-                                if let Ok(signatory) = String::from_utf8(event.message) {
-                                    if let Err(e) = self
-                                        .event_sender
-                                        .send(Event::CompanyUpdate {
-                                            event: CompanyEvent::RemoveSignatory,
-                                            company_id: company_id.to_string(),
-                                            signatory,
-                                        })
-                                        .await
-                                    {
-                                        error!("Could not send event to DHT client: {e}");
+                                GossipsubEventId::RemoveSignatoryFromCompany => {
+                                    if let Ok(signatory) = String::from_utf8(event.message) {
+                                        if let Err(e) = self
+                                            .event_sender
+                                            .send(Event::CompanyUpdate {
+                                                event: CompanyEvent::RemoveSignatory,
+                                                company_id: company_id.to_string(),
+                                                signatory,
+                                            })
+                                            .await
+                                        {
+                                            error!("Could not send event to DHT client: {e}");
+                                        }
                                     }
                                 }
-                            }
-                            _ => {
-                                warn!("Unknown event: {event:?}");
+                                _ => {
+                                    warn!("Unknown event: {event:?}");
+                                }
                             }
                         }
                     }
                 } else if message.topic.as_str().starts_with(BILL_PREFIX) {
                     if let Some(bill_name) = message.topic.as_str().strip_prefix(BILL_PREFIX) {
-                        let event = GossipsubEvent::from_byte_array(&message.data).unwrap();
-
-                        match event.id {
-                            GossipsubEventId::Block => {
-                                if let Ok(block) = serde_json::from_slice(&event.message) {
-                                    if let Ok(mut chain) =
-                                        self.bill_store.read_bill_chain_from_file(bill_name).await
-                                    {
-                                        chain.try_add_block(block);
-                                        if chain.is_chain_valid() {
-                                            if let Ok(chain_json) = chain.to_pretty_printed_json() {
-                                                if let Err(e) = self
-                                                    .bill_store
-                                                    .write_blockchain_to_file(bill_name, chain_json)
-                                                    .await
-                                                {
-                                                    error!("Could not persist chain for bill {bill_name}: {e}");
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            GossipsubEventId::Chain => {
-                                if let Ok(receive_chain) = serde_json::from_slice(&event.message) {
-                                    if let Ok(mut local_chain) =
-                                        self.bill_store.read_bill_chain_from_file(bill_name).await
-                                    {
-                                        let should_persist =
-                                            local_chain.compare_chain(&receive_chain);
-                                        if should_persist && local_chain.is_chain_valid() {
-                                            if let Ok(chain_json) =
-                                                local_chain.to_pretty_printed_json()
-                                            {
-                                                if let Err(e) = self
-                                                    .bill_store
-                                                    .write_blockchain_to_file(bill_name, chain_json)
-                                                    .await
-                                                {
-                                                    error!("Could not persist chain for bill {bill_name}: {e}");
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            GossipsubEventId::CommandGetChain => {
-                                if let Ok(chain) =
-                                    self.bill_store.read_bill_chain_from_file(bill_name).await
-                                {
-                                    if let Ok(chain_bytes) = serde_json::to_vec(&chain) {
-                                        let event = GossipsubEvent::new(
-                                            GossipsubEventId::Chain,
-                                            chain_bytes,
-                                        );
-                                        let message = event.to_byte_array().unwrap();
-                                        if let Err(e) =
-                                            self.swarm.behaviour_mut().gossipsub.publish(
-                                                gossipsub::IdentTopic::new(format!(
-                                                    "{BILL_PREFIX}{bill_name}"
-                                                )),
-                                                message,
-                                            )
+                        if let Ok(event) = GossipsubEvent::from_byte_array(&message.data) {
+                            match event.id {
+                                GossipsubEventId::Block => {
+                                    if let Ok(block) = serde_json::from_slice(&event.message) {
+                                        if let Ok(mut chain) = self
+                                            .bill_store
+                                            .read_bill_chain_from_file(bill_name)
+                                            .await
                                         {
-                                            error!("Could not publish event: {event:?}: {e}");
+                                            chain.try_add_block(block);
+                                            if chain.is_chain_valid() {
+                                                if let Ok(chain_json) =
+                                                    chain.to_pretty_printed_json()
+                                                {
+                                                    if let Err(e) = self
+                                                        .bill_store
+                                                        .write_blockchain_to_file(
+                                                            bill_name, chain_json,
+                                                        )
+                                                        .await
+                                                    {
+                                                        error!("Could not persist chain for bill {bill_name}: {e}");
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            _ => {
-                                warn!("Unknown event: {event:?}");
+                                GossipsubEventId::Chain => {
+                                    if let Ok(receive_chain) =
+                                        serde_json::from_slice(&event.message)
+                                    {
+                                        if let Ok(mut local_chain) = self
+                                            .bill_store
+                                            .read_bill_chain_from_file(bill_name)
+                                            .await
+                                        {
+                                            let should_persist =
+                                                local_chain.compare_chain(&receive_chain);
+                                            if should_persist && local_chain.is_chain_valid() {
+                                                if let Ok(chain_json) =
+                                                    local_chain.to_pretty_printed_json()
+                                                {
+                                                    if let Err(e) = self
+                                                        .bill_store
+                                                        .write_blockchain_to_file(
+                                                            bill_name, chain_json,
+                                                        )
+                                                        .await
+                                                    {
+                                                        error!("Could not persist chain for bill {bill_name}: {e}");
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                GossipsubEventId::CommandGetChain => {
+                                    if let Ok(chain) =
+                                        self.bill_store.read_bill_chain_from_file(bill_name).await
+                                    {
+                                        if let Ok(chain_bytes) = serde_json::to_vec(&chain) {
+                                            let event = GossipsubEvent::new(
+                                                GossipsubEventId::Chain,
+                                                chain_bytes,
+                                            );
+                                            if let Ok(message) = event.to_byte_array() {
+                                                if let Err(e) =
+                                                    self.swarm.behaviour_mut().gossipsub.publish(
+                                                        gossipsub::IdentTopic::new(format!(
+                                                            "{BILL_PREFIX}{bill_name}"
+                                                        )),
+                                                        message,
+                                                    )
+                                                {
+                                                    error!(
+                                                        "Could not publish event: {event:?}: {e}"
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    warn!("Unknown event: {event:?}");
+                                }
                             }
                         }
                     }
@@ -431,9 +443,10 @@ impl EventLoop {
 
             _ => {}
         }
+        Ok(())
     }
 
-    async fn handle_command(&mut self, command: Command) {
+    async fn handle_command(&mut self, command: Command) -> Result<()> {
         match command {
             Command::StartProviding { entry, sender } => {
                 info!("Start providing {entry:?}");
@@ -441,8 +454,8 @@ impl EventLoop {
                     .swarm
                     .behaviour_mut()
                     .kademlia
-                    .start_providing(entry.into_bytes().into())
-                    .expect("Can not provide.");
+                    .start_providing(entry.clone().into_bytes().into())
+                    .map_err(|e| anyhow!("Error providing entry {:?}: {e:?}", &entry))?;
                 self.pending_start_providing.insert(query_id, sender);
             }
 
@@ -467,7 +480,9 @@ impl EventLoop {
                 let relay_peer_id: PeerId = RELAY_BOOTSTRAP_NODE_ONE_PEER_ID
                     .to_string()
                     .parse()
-                    .expect("Can not to parse relay peer id.");
+                    .map_err(|e| {
+                        anyhow!("Error parsing relay peer id when putting record: {e:?}")
+                    })?;
 
                 let _query_id = self
                     .swarm
@@ -478,13 +493,16 @@ impl EventLoop {
             }
 
             Command::SendMessage { msg, topic } => {
-                info!("Send message to topic {topic:?}");
-                let swarm = self.swarm.behaviour_mut();
-                //TODO: check if topic not empty.
-                swarm
-                    .gossipsub
-                    .publish(gossipsub::IdentTopic::new(topic), msg)
-                    .expect("Can not publish message.");
+                if !topic.is_empty() {
+                    info!("Send message to topic {:?}", &topic);
+                    let swarm = self.swarm.behaviour_mut();
+                    swarm
+                        .gossipsub
+                        .publish(gossipsub::IdentTopic::new(&topic), msg)
+                        .map_err(|e| {
+                            anyhow!("Error publishing message to topic {:?}: {e:?}", &topic)
+                        })?;
+                }
             }
 
             Command::SubscribeToTopic { topic } => {
@@ -493,7 +511,7 @@ impl EventLoop {
                     .behaviour_mut()
                     .gossipsub
                     .subscribe(&gossipsub::IdentTopic::new(topic))
-                    .expect("Can not subscribe.");
+                    .map_err(|e| anyhow!("Error subscribing to topic: {e:?}"))?;
             }
 
             Command::UnsubscribeFromTopic { topic } => {
@@ -502,7 +520,7 @@ impl EventLoop {
                     .behaviour_mut()
                     .gossipsub
                     .unsubscribe(&gossipsub::IdentTopic::new(topic))
-                    .expect("Can not unsubscribe.");
+                    .map_err(|e| anyhow!("Error unsubsribing from topic: {e:?}"))?;
             }
 
             Command::GetRecord { key, sender } => {
@@ -532,7 +550,9 @@ impl EventLoop {
                 let relay_peer_id: PeerId = RELAY_BOOTSTRAP_NODE_ONE_PEER_ID
                     .to_string()
                     .parse()
-                    .expect("Can not to parse relay peer id.");
+                    .map_err(|e| {
+                        anyhow!("Error parsing relay peer id when requesting file: {e:?}")
+                    })?;
                 let relay_address = Multiaddr::empty()
                     .with(Protocol::Ip4(RELAY_BOOTSTRAP_NODE_ONE_IP))
                     .with(Protocol::Tcp(RELAY_BOOTSTRAP_NODE_ONE_TCP))
@@ -554,8 +574,9 @@ impl EventLoop {
                     .behaviour_mut()
                     .request_response
                     .send_response(channel, FileResponse(file))
-                    .expect("Connection to peer to be still open.");
+                    .map_err(|e| anyhow!("Error while sending file response: {e:?}"))?;
             }
         }
+        Ok(())
     }
 }

@@ -21,9 +21,6 @@ pub trait BillStoreApi: Send + Sync {
     /// Checks if the given bill exists
     async fn bill_exists(&self, bill_name: &str) -> bool;
 
-    /// Writes the given bill to file
-    async fn write_bill_to_file(&self, bill_name: &str, bytes: &[u8]) -> Result<()>;
-
     /// Reads the given bill as bytes
     async fn get_bill_as_bytes(&self, bill_name: &str) -> Result<Vec<u8>>;
 
@@ -57,9 +54,6 @@ pub trait BillStoreApi: Send + Sync {
         private_key: String,
         public_key: String,
     ) -> Result<()>;
-
-    /// Writes bill keys to file as bytes
-    async fn write_bill_keys_to_file_as_bytes(&self, bill_name: &str, bytes: &[u8]) -> Result<()>;
 
     /// Writes the given pretty printed chain as JSON to a file
     async fn write_blockchain_to_file(
@@ -113,6 +107,16 @@ impl FileBasedBillStore {
     }
 }
 
+pub fn bill_chain_from_bytes(bytes: &[u8]) -> Result<Chain> {
+    let chain: Chain = serde_json::from_slice(bytes).map_err(super::Error::Json)?;
+    Ok(chain)
+}
+
+pub fn bill_keys_from_bytes(bytes: &[u8]) -> Result<BillKeys> {
+    let keys: BillKeys = serde_json::from_slice(bytes).map_err(super::Error::Json)?;
+    Ok(keys)
+}
+
 #[async_trait]
 impl BillStoreApi for FileBasedBillStore {
     async fn bill_exists(&self, bill_name: &str) -> bool {
@@ -120,12 +124,6 @@ impl BillStoreApi for FileBasedBillStore {
         task::spawn_blocking(move || bill_path.exists())
             .await
             .unwrap_or(false)
-    }
-
-    async fn write_bill_to_file(&self, bill_name: &str, bytes: &[u8]) -> Result<()> {
-        let bill_path = self.get_path_for_bill(bill_name);
-        write(bill_path, bytes).await?;
-        Ok(())
     }
 
     async fn get_bill_as_bytes(&self, bill_name: &str) -> Result<Vec<u8>> {
@@ -224,12 +222,6 @@ impl BillStoreApi for FileBasedBillStore {
             serde_json::to_string_pretty(&keys).map_err(super::Error::Json)?,
         )
         .await?;
-        Ok(())
-    }
-
-    async fn write_bill_keys_to_file_as_bytes(&self, bill_name: &str, bytes: &[u8]) -> Result<()> {
-        let output_path = self.get_path_for_bill_keys(bill_name);
-        write(output_path, bytes).await?;
         Ok(())
     }
 

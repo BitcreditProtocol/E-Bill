@@ -2,8 +2,9 @@ use crate::service::ServiceContext;
 use log::info;
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
-use rocket::http::Header;
+use rocket::http::{Header, Status};
 use rocket::{catch, catchers, routes, Build, Config, Request, Response, Rocket};
+use serde::Serialize;
 
 pub mod data;
 mod handlers;
@@ -11,6 +12,29 @@ mod handlers;
 use crate::constants::MAX_FILE_SIZE_BYTES;
 use rocket::data::ByteUnit;
 use rocket::figment::Figment;
+use rocket::serde::json::Json;
+use serde_json::json;
+
+#[derive(Serialize, Debug, Clone)]
+pub struct ErrorResponse {
+    error: &'static str,
+    message: String,
+    code: u16,
+}
+
+impl ErrorResponse {
+    pub fn new(error: &'static str, message: String, code: u16) -> Self {
+        Self {
+            error,
+            message,
+            code,
+        }
+    }
+
+    pub fn to_json_string(&self) -> String {
+        json!({ "error": self.error, "message": self.message }).to_string()
+    }
+}
 
 pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
     let conf = context.config.clone();
@@ -25,7 +49,7 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
         .merge(("address", conf.http_address.to_owned()));
 
     let rocket = rocket::custom(config)
-        .register("/", catchers![not_found])
+        .register("/", catchers![default_catcher, not_found])
         .manage(context)
         .mount("/exit", routes![handlers::exit])
         .mount("/opcodes", routes![handlers::return_operation_codes])
@@ -128,7 +152,20 @@ impl Fairing for Cors {
     }
 }
 
+#[catch(default)]
+pub fn default_catcher(status: Status, _req: &Request) -> Json<ErrorResponse> {
+    Json(ErrorResponse::new(
+        "error",
+        status.reason().unwrap_or("Unknown error").to_string(),
+        status.code,
+    ))
+}
+
 #[catch(404)]
-pub fn not_found(req: &Request) -> String {
-    format!("We couldn't find the requested path '{}'", req.uri())
+pub fn not_found(req: &Request) -> Json<ErrorResponse> {
+    Json(ErrorResponse::new(
+        "not_found",
+        format!("We couldn't find the requested path '{}'", req.uri()),
+        404,
+    ))
 }

@@ -36,9 +36,9 @@ pub enum Error {
     #[error("unable to serialize/deserialize to/from JSON {0}")]
     Json(#[from] serde_json::Error),
 
-    /// Errors stemming from cryptography, such as converting keys
+    /// Errors stemming from cryptography, such as converting keys, encryption and decryption
     #[error("Cryptography error: {0}")]
-    Cryptography(#[from] openssl::error::ErrorStack),
+    Cryptography(#[from] rsa::Error),
 
     /// Errors stemming from decoding
     #[error("Decode error: {0}")]
@@ -175,7 +175,7 @@ pub fn start_blockchain_for_new_bill(
     let encrypted_and_hashed_bill_data = hex::encode(rsa::encrypt_bytes_with_public_key(
         &to_vec(bill)?,
         &bill_public_key_pem,
-    ));
+    )?);
 
     let first_block = Block::new(
         1,

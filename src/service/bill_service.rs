@@ -11,7 +11,7 @@ use crate::constants::{
 use crate::external::bitcoin::BitcoinClientApi;
 use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::IdentityStoreApi;
-use crate::util::get_current_payee_private_key;
+use crate::util::rsa;
 use crate::web::data::File;
 use crate::CONFIG;
 use crate::{dht, external, persistence, util};
@@ -68,9 +68,9 @@ pub enum Error {
     #[error("External API error: {0}")]
     ExternalApi(#[from] external::Error),
 
-    /// errors stemming from cryptography, such as converting keys
+    /// Errors stemming from cryptography, such as converting keys, encryption and decryption
     #[error("Cryptography error: {0}")]
-    Cryptography(String),
+    Cryptography(#[from] rsa::Error),
 }
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
@@ -287,7 +287,7 @@ impl BillService {
         let data_for_new_block_encrypted = util::rsa::encrypt_bytes_with_public_key(
             data_for_new_block_in_bytes,
             &keys.public_key_pem,
-        );
+        )?;
         let data_for_new_block_encrypted_in_string_format =
             hex::encode(data_for_new_block_encrypted);
 
@@ -491,7 +491,10 @@ impl BillServiceApi for BillService {
                     .bitcoin_public_key
                     .eq(&identity.identity.bitcoin_public_key))
         {
-            pr_key_bill = get_current_payee_private_key(identity.identity.clone(), bill.clone());
+            pr_key_bill = self.bitcoin_client.get_combined_private_key(
+                &identity.identity.bitcoin_private_key,
+                &bill.private_key,
+            )?;
         }
 
         Ok(BitcreditBillToReturn {
@@ -548,7 +551,11 @@ impl BillServiceApi for BillService {
     }
 
     async fn find_bill_in_dht(&self, bill_name: &str) -> Result<()> {
-        self.client.clone().get_bill(bill_name).await?;
+        let local_peer_id = self.identity_store.get_peer_id().await?;
+        self.client
+            .clone()
+            .get_bill_data_from_the_network(bill_name, &local_peer_id)
+            .await?;
         Ok(())
     }
 
@@ -564,7 +571,7 @@ impl BillServiceApi for BillService {
         bill_private_key: &str,
     ) -> Result<Vec<u8>> {
         let read_file = self.store.open_attached_file(bill_name, file_name).await?;
-        let decrypted = util::rsa::decrypt_bytes_with_private_key(&read_file, bill_private_key);
+        let decrypted = util::rsa::decrypt_bytes_with_private_key(&read_file, bill_private_key)?;
         Ok(decrypted)
     }
 
@@ -576,7 +583,7 @@ impl BillServiceApi for BillService {
         bill_public_key: &str,
     ) -> Result<File> {
         let file_hash = util::sha256_hash(file_bytes);
-        let encrypted = util::rsa::encrypt_bytes_with_public_key(file_bytes, bill_public_key);
+        let encrypted = util::rsa::encrypt_bytes_with_public_key(file_bytes, bill_public_key)?;
         self.store
             .save_attached_file(&encrypted, bill_name, file_name)
             .await?;
@@ -609,8 +616,7 @@ impl BillServiceApi for BillService {
         let private_key_bitcoin: String = private_key.to_string();
         let public_key_bitcoin: String = public_key.to_string();
 
-        let (private_key_pem, public_key_pem) =
-            util::rsa::create_rsa_key_pair().map_err(|e| Error::Cryptography(e.to_string()))?;
+        let (private_key_pem, public_key_pem) = util::rsa::create_rsa_key_pair()?;
 
         self.store
             .write_bill_keys_to_file(
@@ -1119,7 +1125,7 @@ mod test {
     fn get_genesis_chain(bill_name: &str, bill: Option<BitcreditBill>) -> Chain {
         let bill = bill.unwrap_or(get_baseline_bill("some name"));
         let data = to_vec(&bill).unwrap();
-        let encrypted = util::rsa::encrypt_bytes_with_public_key(&data, TEST_PUB_KEY);
+        let encrypted = util::rsa::encrypt_bytes_with_public_key(&data, TEST_PUB_KEY).unwrap();
         let encoded = hex::encode(encrypted);
         Chain::new(
             Block::new(
@@ -1262,7 +1268,7 @@ mod test {
         let file_name = "invoice_00000000-0000-0000-0000-000000000000.pdf";
         let file_bytes = String::from("hello world").as_bytes().to_vec();
         let expected_encrypted =
-            util::rsa::encrypt_bytes_with_public_key(&file_bytes, TEST_PUB_KEY);
+            util::rsa::encrypt_bytes_with_public_key(&file_bytes, TEST_PUB_KEY).unwrap();
 
         let mut storage = MockBillStoreApi::new();
         storage
