@@ -7,21 +7,24 @@ use super::behaviour::{
     ParsedInboundFileRequest,
 };
 use super::{GossipsubEvent, GossipsubEventId, Result};
+use crate::blockchain::Chain;
 use crate::constants::{
     BILLS_PREFIX, BILL_PREFIX, COMPANIES_PREFIX, COMPANY_PREFIX, IDENTITY_PREFIX,
 };
-use crate::persistence::bill::BillStoreApi;
+use crate::persistence::bill::{bill_chain_from_bytes, bill_keys_from_bytes, BillStoreApi};
 use crate::persistence::company::{
     company_from_bytes, company_keys_from_bytes, company_keys_to_bytes, company_to_bytes,
     CompanyStoreApi,
 };
+use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::IdentityStoreApi;
+use crate::service::bill_service::BillKeys;
 use crate::service::company_service::{Company, CompanyKeys, CompanyPublicData};
 use crate::service::contact_service::IdentityPublicData;
 use crate::util;
 use crate::util::rsa::{decrypt_bytes_with_private_key, encrypt_bytes_with_public_key};
 use borsh::{from_slice, to_vec};
-use future::try_join_all;
+use future::{try_join_all, BoxFuture};
 use futures::channel::mpsc::Receiver;
 use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
@@ -41,6 +44,7 @@ pub struct Client {
     bill_store: Arc<dyn BillStoreApi>,
     company_store: Arc<dyn CompanyStoreApi>,
     identity_store: Arc<dyn IdentityStoreApi>,
+    file_upload_store: Arc<dyn FileUploadStoreApi>,
 }
 
 impl Client {
@@ -49,12 +53,14 @@ impl Client {
         bill_store: Arc<dyn BillStoreApi>,
         company_store: Arc<dyn CompanyStoreApi>,
         identity_store: Arc<dyn IdentityStoreApi>,
+        file_upload_store: Arc<dyn FileUploadStoreApi>,
     ) -> Self {
         Self {
             sender,
             bill_store,
             company_store,
             identity_store,
+            file_upload_store,
         }
     }
 
@@ -66,7 +72,13 @@ impl Client {
     ) {
         loop {
             tokio::select! {
-                event = network_events.next() => self.handle_event(event.expect("Swarm stream to be infinite.")).await,
+                event = network_events.next() => {
+                    if let Some(evt) = event {
+                        if let Err(e) = self.handle_event(evt).await {
+                            error!("Error while handling event in DHT client: {e}");
+                        }
+                    }
+                },
                 _ = shutdown_dht_client_receiver.recv() => {
                     info!("Shutting down dht client...");
                     break;
@@ -114,12 +126,13 @@ impl Client {
         // Remove the companies, we have locally, but where the network tells us we're not a part
         // of anymore
         for company in local_but_not_remote {
+            let _ = self.file_upload_store.delete_attached_files(&company).await;
             self.company_store.remove(&company).await?;
             self.stop_providing_company(&company).await?;
             self.unsubscribe_from_company_topic(&company).await?;
         }
 
-        // Add companies thet network tells us we're part of, but we don't have locally
+        // Add companies the network tells us we're part of, but we don't have locally
         for company in companies {
             if self.company_store.exists(&company).await {
                 continue;
@@ -202,7 +215,7 @@ impl Client {
         if logo_file.is_some() || proof_file.is_some() {
             if let Some(encrypted_logo_bytes) = logo_file {
                 if let Some(ref file) = company.logo_file {
-                    self.company_store
+                    self.file_upload_store
                         .save_attached_file(&encrypted_logo_bytes, company_id, &file.name)
                         .await?;
                 }
@@ -210,7 +223,7 @@ impl Client {
 
             if let Some(encrypted_proof_bytes) = proof_file {
                 if let Some(ref file) = company.proof_of_registration_file {
-                    self.company_store
+                    self.file_upload_store
                         .save_attached_file(&encrypted_proof_bytes, company_id, &file.name)
                         .await?;
                 }
@@ -225,17 +238,10 @@ impl Client {
         local_peer_id: &PeerId,
         providers: &HashSet<PeerId>,
     ) -> Result<Company> {
-        let requests = providers.iter().map(|peer| {
-            let mut network_client = self.clone();
-            let file_request =
-                file_request_for_company_data(&local_peer_id.to_string(), company_id);
-            async move {
-                network_client
-                    .request_file(peer.to_owned(), file_request)
-                    .await
-            }
-            .boxed()
-        });
+        let requests = self.create_file_requests_for_peers(
+            file_request_for_company_data(&local_peer_id.to_string(), company_id),
+            providers,
+        );
 
         match futures::future::select_ok(requests).await {
             Err(e) => Err(super::Error::NoProviders(format!(
@@ -254,17 +260,11 @@ impl Client {
         local_peer_id: &PeerId,
         providers: &HashSet<PeerId>,
     ) -> Result<CompanyKeys> {
-        let requests = providers.iter().map(|peer| {
-            let mut network_client = self.clone();
-            let file_request =
-                file_request_for_company_keys(&local_peer_id.to_string(), company_id);
-            async move {
-                network_client
-                    .request_file(peer.to_owned(), file_request)
-                    .await
-            }
-            .boxed()
-        });
+        let identity = self.identity_store.get().await?;
+        let requests = self.create_file_requests_for_peers(
+            file_request_for_company_keys(&local_peer_id.to_string(), company_id),
+            providers,
+        );
 
         match futures::future::select_ok(requests).await {
             Err(e) => Err(super::Error::NoProviders(format!(
@@ -272,9 +272,8 @@ impl Client {
             ))),
             Ok(file_content) => {
                 let encrypted_bytes = file_content.0;
-                let identity = self.identity_store.get().await?;
                 let decrypted_bytes =
-                    decrypt_bytes_with_private_key(&encrypted_bytes, &identity.private_key_pem);
+                    decrypt_bytes_with_private_key(&encrypted_bytes, &identity.private_key_pem)?;
                 let company_keys = company_keys_from_bytes(&decrypted_bytes)?;
                 Ok(company_keys)
             }
@@ -289,16 +288,8 @@ impl Client {
         hash: &str,
         file_name: &str,
     ) -> Result<Vec<u8>> {
-        let requests = providers.iter().map(|peer| {
-            let mut network_client = self.clone();
-            let file_request_clone = file_request.clone();
-            async move {
-                network_client
-                    .request_file(peer.to_owned(), file_request_clone)
-                    .await
-            }
-            .boxed()
-        });
+        let identity = self.identity_store.get().await?;
+        let requests = self.create_file_requests_for_peers(file_request, providers);
 
         match futures::future::select_ok(requests).await {
             Err(e) => Err(super::Error::NoProviders(format!(
@@ -306,15 +297,14 @@ impl Client {
             ))),
             Ok(file_content) => {
                 let encrypted_bytes = file_content.0;
-                let identity = self.identity_store.get().await?;
                 let decrypted_bytes =
-                    decrypt_bytes_with_private_key(&encrypted_bytes, &identity.private_key_pem);
+                    decrypt_bytes_with_private_key(&encrypted_bytes, &identity.private_key_pem)?;
                 let remote_hash = util::sha256_hash(&decrypted_bytes);
                 if hash != remote_hash.as_str() {
                     return Err(super::Error::FileHashesDidNotMatch(format!("Get Company File: Hashes didn't match for company {company_id} and file name {file_name}, remote: {remote_hash}, local: {hash}")));
                 }
                 let encrypted_bytes =
-                    encrypt_bytes_with_public_key(&decrypted_bytes, &identity.public_key_pem);
+                    encrypt_bytes_with_public_key(&decrypted_bytes, &identity.public_key_pem)?;
                 Ok(encrypted_bytes)
             }
         }
@@ -398,30 +388,36 @@ impl Client {
         }
 
         let node_request = self.node_request_for_companies(node_id);
-        let companies_for_node = self.get_record(node_request.clone()).await?.value;
-        if companies_for_node.is_empty() {
-            self.put_record(node_request, to_vec(&company_ids)?).await?;
-        } else {
-            match from_slice::<Vec<String>>(&companies_for_node) {
-                Ok(dht_record) => {
-                    let mut unique_elements: HashSet<String> = HashSet::new();
-                    unique_elements.extend(dht_record.clone().into_iter());
-                    unique_elements.extend(company_ids.into_iter());
-                    let result: Vec<String> = unique_elements.into_iter().collect();
+        match self.get_record(node_request.clone()).await {
+            Ok(companies_record) => {
+                let companies_for_node = companies_record.value;
+                if companies_for_node.is_empty() {
+                    self.put_record(node_request, to_vec(&company_ids)?).await?;
+                } else {
+                    match from_slice::<Vec<String>>(&companies_for_node) {
+                        Ok(dht_record) => {
+                            let mut unique_elements: HashSet<String> = HashSet::new();
+                            unique_elements.extend(dht_record.clone().into_iter());
+                            unique_elements.extend(company_ids.into_iter());
+                            let result: Vec<String> = unique_elements.into_iter().collect();
 
-                    if !dht_record.eq(&result) {
-                        self.put_record(node_request.clone(), to_vec(&result)?)
-                            .await?;
+                            if !dht_record.eq(&result) {
+                                self.put_record(node_request.clone(), to_vec(&result)?)
+                                    .await?;
+                            }
+                        }
+                        Err(e) => {
+                            error!("Could not parse company data in dht for {node_id}: {e}");
+                            self.put_record(node_request.clone(), to_vec(&company_ids)?)
+                                .await?;
+                        }
                     }
                 }
-                Err(e) => {
-                    error!("Could not parse company data in dht for {node_id}: {e}");
-                    self.put_record(node_request.clone(), to_vec(&company_ids)?)
-                        .await?;
-                }
+            }
+            Err(_) => {
+                self.put_record(node_request, to_vec(&company_ids)?).await?;
             }
         }
-
         Ok(())
     }
 
@@ -434,20 +430,25 @@ impl Client {
         node_id: &str,
     ) -> Result<()> {
         let node_request = self.node_request_for_companies(node_id);
-        let companies_for_node = self.get_record(node_request.clone()).await?.value;
-        if !companies_for_node.is_empty() {
-            match from_slice::<Vec<String>>(&companies_for_node) {
-                Ok(dht_record) => {
-                    let mut record_for_saving_in_dht = dht_record.clone();
-                    record_for_saving_in_dht.retain(|item| item != company_id);
+        if let Ok(companies_record) = self.get_record(node_request.clone()).await {
+            let companies_for_node = companies_record.value;
+            if !companies_for_node.is_empty() {
+                match from_slice::<Vec<String>>(&companies_for_node) {
+                    Ok(dht_record) => {
+                        let mut record_for_saving_in_dht = dht_record.clone();
+                        record_for_saving_in_dht.retain(|item| item != company_id);
 
-                    if !dht_record.eq(&record_for_saving_in_dht) {
-                        self.put_record(node_request.clone(), to_vec(&record_for_saving_in_dht)?)
+                        if !dht_record.eq(&record_for_saving_in_dht) {
+                            self.put_record(
+                                node_request.clone(),
+                                to_vec(&record_for_saving_in_dht)?,
+                            )
                             .await?;
+                        }
                     }
-                }
-                Err(e) => {
-                    error!("Could not parse company data in dht for {node_id} when trying to remove company {company_id}: {e}");
+                    Err(e) => {
+                        error!("Could not parse company data in dht for {node_id} when trying to remove company {company_id}: {e}");
+                    }
                 }
             }
         }
@@ -464,27 +465,42 @@ impl Client {
     ) -> Result<()> {
         let node_request = self.node_request_for_companies(node_id);
         let mut record_for_saving_in_dht: Vec<String> = vec![];
-        let companies_for_node = self.get_record(node_request.clone()).await?.value;
-        if companies_for_node.is_empty() {
-            record_for_saving_in_dht.push(company_id.to_owned());
-            self.put_record(node_request, to_vec(&record_for_saving_in_dht)?)
-                .await?;
-        } else {
-            match from_slice::<Vec<String>>(&companies_for_node) {
-                Ok(dht_record) => {
-                    record_for_saving_in_dht = dht_record.clone();
-                    if !record_for_saving_in_dht.contains(&company_id.to_string()) {
-                        record_for_saving_in_dht.push(company_id.to_owned());
-                    }
-                    if !dht_record.eq(&record_for_saving_in_dht) {
-                        self.put_record(node_request.clone(), to_vec(&record_for_saving_in_dht)?)
-                            .await?;
-                    }
-                }
-                Err(e) => {
-                    error!("Could not parse company data in dht for {node_id}: {e}");
-                    self.put_record(node_request.clone(), to_vec(&vec![company_id.to_owned()])?)
+        match self.get_record(node_request.clone()).await {
+            Err(_) => {
+                record_for_saving_in_dht.push(company_id.to_owned());
+                self.put_record(node_request, to_vec(&record_for_saving_in_dht)?)
+                    .await?;
+            }
+            Ok(companies_record) => {
+                let companies_for_node = companies_record.value;
+                if companies_for_node.is_empty() {
+                    record_for_saving_in_dht.push(company_id.to_owned());
+                    self.put_record(node_request, to_vec(&record_for_saving_in_dht)?)
                         .await?;
+                } else {
+                    match from_slice::<Vec<String>>(&companies_for_node) {
+                        Ok(dht_record) => {
+                            record_for_saving_in_dht = dht_record.clone();
+                            if !record_for_saving_in_dht.contains(&company_id.to_string()) {
+                                record_for_saving_in_dht.push(company_id.to_owned());
+                            }
+                            if !dht_record.eq(&record_for_saving_in_dht) {
+                                self.put_record(
+                                    node_request.clone(),
+                                    to_vec(&record_for_saving_in_dht)?,
+                                )
+                                .await?;
+                            }
+                        }
+                        Err(e) => {
+                            error!("Could not parse company data in dht for {node_id}: {e}");
+                            self.put_record(
+                                node_request.clone(),
+                                to_vec(&vec![company_id.to_owned()])?,
+                            )
+                            .await?;
+                        }
+                    }
                 }
             }
         }
@@ -525,21 +541,28 @@ impl Client {
         let key = self.company_key(&local_public_data.id);
         let local_json = serde_json::to_string(&local_public_data)?.into_bytes();
 
-        let dht_record = self.get_record(key.clone()).await?.value;
-        if dht_record.is_empty() {
-            self.put_record(key, local_json).await?;
-        } else {
-            match serde_json::from_slice::<CompanyPublicData>(&dht_record) {
-                Err(e) => {
-                    error!(
-                        "Could not parse public data in dht for {}: {e}",
-                        &local_public_data.id
-                    );
-                    self.put_record(key.clone(), local_json).await?;
-                }
-                Ok(dht_public_data) => {
-                    if !dht_public_data.eq(&local_public_data) {
-                        self.put_record(key.clone(), local_json).await?;
+        match self.get_record(key.clone()).await {
+            Err(_) => {
+                self.put_record(key, local_json).await?;
+            }
+            Ok(company_record) => {
+                let dht_record = company_record.value;
+                if dht_record.is_empty() {
+                    self.put_record(key, local_json).await?;
+                } else {
+                    match serde_json::from_slice::<CompanyPublicData>(&dht_record) {
+                        Err(e) => {
+                            error!(
+                                "Could not parse public data in dht for {}: {e}",
+                                &local_public_data.id
+                            );
+                            self.put_record(key.clone(), local_json).await?;
+                        }
+                        Ok(dht_public_data) => {
+                            if !dht_public_data.eq(&local_public_data) {
+                                self.put_record(key.clone(), local_json).await?;
+                            }
+                        }
                     }
                 }
             }
@@ -554,13 +577,18 @@ impl Client {
         company_id: &str,
     ) -> Result<Option<CompanyPublicData>> {
         let key = self.company_key(company_id);
-        let current_info = self.get_record(key.clone()).await?.value;
-        if current_info.is_empty() {
-            return Ok(None);
-        }
-        let company_public_data: CompanyPublicData = serde_json::from_slice(&current_info)?;
+        match self.get_record(key.clone()).await {
+            Err(_) => Ok(None),
+            Ok(company_record) => {
+                let current_info = company_record.value;
+                if current_info.is_empty() {
+                    return Ok(None);
+                }
+                let company_public_data: CompanyPublicData = serde_json::from_slice(&current_info)?;
 
-        Ok(Some(company_public_data))
+                Ok(Some(company_public_data))
+            }
+        }
     }
 
     // --------------------------------------------------------------
@@ -581,14 +609,22 @@ impl Client {
             );
 
             let key = self.identity_key(&identity_data.peer_id);
-            let current_info = self.get_record(key.clone()).await?.value;
-            let mut current_info_string = String::new();
-            if !current_info.is_empty() {
-                current_info_string = std::str::from_utf8(&current_info)?.to_string();
-            }
-            let value = serde_json::to_string(&identity_data)?;
-            if !current_info_string.eq(&value) {
-                self.put_record(key, value.into_bytes()).await?;
+            match self.get_record(key.clone()).await {
+                Err(_) => {
+                    let value = serde_json::to_string(&identity_data)?;
+                    self.put_record(key, value.into_bytes()).await?;
+                }
+                Ok(identity_record) => {
+                    let current_info = identity_record.value;
+                    let mut current_info_string = String::new();
+                    if !current_info.is_empty() {
+                        current_info_string = std::str::from_utf8(&current_info)?.to_string();
+                    }
+                    let value = serde_json::to_string(&identity_data)?;
+                    if !current_info_string.eq(&value) {
+                        self.put_record(key, value.into_bytes()).await?;
+                    }
+                }
             }
         }
         Ok(())
@@ -600,11 +636,13 @@ impl Client {
         peer_id: String,
     ) -> Result<IdentityPublicData> {
         let key = self.identity_key(&peer_id);
-        let current_info = self.get_record(key.clone()).await?.value;
         let mut identity_public_data: IdentityPublicData = IdentityPublicData::new_empty();
-        if !current_info.is_empty() {
-            let current_info_string = std::str::from_utf8(&current_info)?.to_string();
-            identity_public_data = serde_json::from_str(&current_info_string)?;
+        if let Ok(public_data) = self.get_record(key.clone()).await {
+            let current_info = public_data.value;
+            if !current_info.is_empty() {
+                let current_info_string = std::str::from_utf8(&current_info)?.to_string();
+                identity_public_data = serde_json::from_str(&current_info_string)?;
+            }
         }
 
         Ok(identity_public_data)
@@ -626,34 +664,46 @@ impl Client {
     pub async fn update_bills_table(&mut self, node_id: String) -> Result<()> {
         let node_request = self.node_request_for_bills(&node_id);
 
-        let list_bills_for_node = self.get_record(node_request.clone()).await?;
-        let value = list_bills_for_node.value;
-
-        if !value.is_empty() {
-            let record_in_dht: Vec<String> = from_slice(&value)?;
-            let mut new_record = record_in_dht.clone();
-
-            let bill_names = self.bill_store.get_bill_names().await?;
-            for bill_name in bill_names {
-                if !record_in_dht.contains(&bill_name) {
+        let bill_names = self.bill_store.get_bill_names().await?;
+        match self.get_record(node_request.clone()).await {
+            Err(_) => {
+                let mut new_record = Vec::with_capacity(bill_names.len());
+                for bill_name in bill_names {
                     new_record.push(bill_name.clone());
                     self.start_providing_bill(&bill_name).await?;
                 }
+                if !new_record.is_empty() {
+                    self.put_record(node_request.clone(), to_vec(&new_record)?)
+                        .await?;
+                }
             }
-            if !record_in_dht.eq(&new_record) {
-                self.put_record(node_request.clone(), to_vec(&new_record)?)
-                    .await?;
-            }
-        } else {
-            let bill_names = self.bill_store.get_bill_names().await?;
-            let mut new_record = Vec::with_capacity(bill_names.len());
-            for bill_name in bill_names {
-                new_record.push(bill_name.clone());
-                self.start_providing_bill(&bill_name).await?;
-            }
-            if !new_record.is_empty() {
-                self.put_record(node_request.clone(), to_vec(&new_record)?)
-                    .await?;
+            Ok(bills_record) => {
+                let value = bills_record.value;
+                if !value.is_empty() {
+                    let record_in_dht: Vec<String> = from_slice(&value)?;
+                    let mut new_record = record_in_dht.clone();
+
+                    for bill_name in bill_names {
+                        if !record_in_dht.contains(&bill_name) {
+                            new_record.push(bill_name.clone());
+                            self.start_providing_bill(&bill_name).await?;
+                        }
+                    }
+                    if !record_in_dht.eq(&new_record) {
+                        self.put_record(node_request.clone(), to_vec(&new_record)?)
+                            .await?;
+                    }
+                } else {
+                    let mut new_record = Vec::with_capacity(bill_names.len());
+                    for bill_name in bill_names {
+                        new_record.push(bill_name.clone());
+                        self.start_providing_bill(&bill_name).await?;
+                    }
+                    if !new_record.is_empty() {
+                        self.put_record(node_request.clone(), to_vec(&new_record)?)
+                            .await?;
+                    }
+                }
             }
         }
         Ok(())
@@ -673,29 +723,35 @@ impl Client {
     pub async fn add_bill_to_dht_for_node(&mut self, bill_name: &str, node_id: &str) -> Result<()> {
         let node_request = self.node_request_for_bills(node_id);
         let mut record_for_saving_in_dht: Vec<String> = vec![];
-        let list_bills_for_node = self.get_record(node_request.clone()).await?.value;
-        if !list_bills_for_node.is_empty() {
-            match from_slice::<Vec<String>>(&list_bills_for_node) {
-                Ok(dht_record) => {
-                    record_for_saving_in_dht = dht_record.clone();
-                    if !record_for_saving_in_dht.contains(&bill_name.to_string()) {
-                        record_for_saving_in_dht.push(bill_name.to_owned());
+        match self.get_record(node_request.clone()).await {
+            Ok(bills_record) => {
+                let list_bills_for_node = bills_record.value;
+                match from_slice::<Vec<String>>(&list_bills_for_node) {
+                    Ok(dht_record) => {
+                        record_for_saving_in_dht = dht_record.clone();
+                        if !record_for_saving_in_dht.iter().any(|b| b == bill_name) {
+                            record_for_saving_in_dht.push(bill_name.to_owned());
+                        }
+                        if !dht_record.eq(&record_for_saving_in_dht) {
+                            self.put_record(
+                                node_request.clone(),
+                                to_vec(&record_for_saving_in_dht)?,
+                            )
+                            .await?;
+                        }
                     }
-                    if !dht_record.eq(&record_for_saving_in_dht) {
-                        self.put_record(node_request.clone(), to_vec(&record_for_saving_in_dht)?)
+                    Err(e) => {
+                        error!("Could not parse bill data in dht for {}: {e}", &bill_name);
+                        self.put_record(node_request.clone(), to_vec(&vec![bill_name.to_owned()])?)
                             .await?;
                     }
                 }
-                Err(e) => {
-                    error!("Could not parse bill data in dht for {}: {e}", &bill_name);
-                    self.put_record(node_request.clone(), to_vec(&vec![bill_name.to_owned()])?)
-                        .await?;
-                }
             }
-        } else {
-            record_for_saving_in_dht.push(bill_name.to_owned());
-            self.put_record(node_request.clone(), to_vec(&record_for_saving_in_dht)?)
-                .await?;
+            Err(_) => {
+                record_for_saving_in_dht.push(bill_name.to_owned());
+                self.put_record(node_request.clone(), to_vec(&record_for_saving_in_dht)?)
+                    .await?;
+            }
         }
 
         Ok(())
@@ -704,150 +760,173 @@ impl Client {
     /// Checks the DHT for new bills, fetching the bill data, keys and files for them
     pub async fn check_new_bills(&mut self, node_id: String) -> Result<()> {
         let node_request = self.node_request_for_bills(&node_id);
-        let list_bills_for_node = self.get_record(node_request.clone()).await?;
-        let value = list_bills_for_node.value;
+        if let Ok(list_bills_for_node) = self.get_record(node_request.clone()).await {
+            let bills_for_node = list_bills_for_node.value;
+            let local_peer_id = self.identity_store.get_peer_id().await?;
 
-        if !value.is_empty() {
-            let bills: Vec<String> = from_slice(&value)?;
+            if bills_for_node.is_empty() {
+                return Ok(());
+            }
+
+            let bills: Vec<String> = from_slice(&bills_for_node)?;
             for bill_id in bills {
-                if !self.bill_store.bill_exists(&bill_id).await {
-                    self.get_bill(&bill_id).await?;
-
-                    self.get_key(&bill_id).await?;
-
-                    if let Ok(chain) = self.bill_store.read_bill_chain_from_file(&bill_id).await {
-                        let bill_keys = self.bill_store.read_bill_keys_from_file(&bill_id).await?;
-                        let bill = chain.get_first_version_bill(&bill_keys)?;
-                        for file in bill.files {
-                            if let Err(e) = self.get_bill_attachment(&bill_id, &file.name).await {
-                                error!("Could not get bill attachment with file name {} for bill {bill_id}: {e}", file.name);
-                            }
-                        }
-                    }
-
-                    self.sender
-                        .send(Command::SubscribeToTopic {
-                            topic: bill_id.to_string().clone(),
-                        })
-                        .await?;
+                if self.bill_store.bill_exists(&bill_id).await {
+                    continue;
                 }
+                self.get_bill_data_from_the_network(&bill_id, &local_peer_id)
+                    .await?;
+                self.start_providing_bill(&bill_id).await?;
+                self.subscribe_to_bill_topic(&bill_id).await?;
             }
         }
         Ok(())
     }
 
-    /// Requests the data file for the given bill, saving it locally
-    pub async fn get_bill(&mut self, name: &str) -> Result<()> {
-        let local_peer_id = self.identity_store.get_peer_id().await?;
-        let mut providers = self.get_bill_providers(name).await?;
-        providers.remove(&local_peer_id);
+    /// Fetches the bill blockchain, keys and attached file data for the given bill from the network and then persists it locally
+    pub async fn get_bill_data_from_the_network(
+        &mut self,
+        bill_id: &str,
+        local_peer_id: &PeerId,
+    ) -> Result<()> {
+        let mut providers = self.get_bill_providers(bill_id).await?;
+        providers.remove(local_peer_id);
         if providers.is_empty() {
-            error!("Get Bill: No providers found for {name}");
+            error!("Get Bill Files: No providers found for {bill_id}");
             return Ok(());
         }
-        let requests = providers.into_iter().map(|peer| {
-            let mut network_client = self.clone();
 
-            let file_request = file_request_for_bill(&local_peer_id.to_string(), name);
-            async move { network_client.request_file(peer, file_request).await }.boxed()
-        });
+        let chain = self
+            .request_bill_data(bill_id, local_peer_id, &providers)
+            .await?;
+
+        let bill_keys = self
+            .request_key_data(bill_id, local_peer_id, &providers)
+            .await?;
+
+        let bill = chain.get_first_version_bill(&bill_keys)?;
+        let mut file_map: HashMap<String, Vec<u8>> = HashMap::new();
+        for file in bill.files {
+            let (file_name, file_bytes) = self
+                .request_bill_attachment_data(
+                    bill_id,
+                    &file.name,
+                    &file.hash,
+                    &bill_keys,
+                    local_peer_id,
+                    &providers,
+                )
+                .await?;
+            file_map.insert(file_name, file_bytes);
+        }
+
+        self.bill_store
+            .write_blockchain_to_file(bill_id, chain.to_pretty_printed_json()?)
+            .await?;
+        self.bill_store
+            .write_bill_keys_to_file(
+                bill_id.to_string(),
+                bill_keys.private_key_pem,
+                bill_keys.public_key_pem,
+            )
+            .await?;
+
+        for (file_name, file_bytes) in file_map.iter() {
+            self.file_upload_store
+                .save_attached_file(file_bytes, bill_id, file_name)
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Requests the data file for the given bill, saving it locally
+    async fn request_bill_data(
+        &mut self,
+        name: &str,
+        local_peer_id: &PeerId,
+        providers: &HashSet<PeerId>,
+    ) -> Result<Chain> {
+        let requests = self.create_file_requests_for_peers(
+            file_request_for_bill(&local_peer_id.to_string(), name),
+            providers,
+        );
 
         match futures::future::select_ok(requests).await {
             Err(e) => Err(super::Error::NoProviders(format!(
                 "Get Bill: None of the providers returned the file for {name}: {e}",
             ))),
             Ok(file_content) => {
-                let bytes = file_content.0;
-                self.bill_store.write_bill_to_file(name, &bytes).await?;
-                Ok(())
+                let chain = bill_chain_from_bytes(&file_content.0)?;
+                Ok(chain)
             }
         }
     }
 
     /// Requests the given file for the given bill name, decrypting it, checking it's hash,
-    /// encrypting it and saving it once it arrives
-    pub async fn get_bill_attachment(&mut self, bill_name: &str, file_name: &str) -> Result<()> {
-        // check if there is such a bill and if it contains this file
-        let bill_keys = self.bill_store.read_bill_keys_from_file(bill_name).await?;
-        let bill = self
-            .bill_store
-            .read_bill_chain_from_file(bill_name)
+    /// encrypting it and returning it's bytes with it's file name
+    async fn request_bill_attachment_data(
+        &mut self,
+        bill_name: &str,
+        file_name: &str,
+        hash: &str,
+        bill_keys: &BillKeys,
+        local_peer_id: &PeerId,
+        providers: &HashSet<PeerId>,
+    ) -> Result<(String, Vec<u8>)> {
+        let pr_key = self
+            .identity_store
+            .get_full()
             .await?
-            .get_first_version_bill(&bill_keys)?;
-        let local_hash = match bill.files.iter().find(|file| file.name.eq(file_name)) {
-            None => {
-                return Err(super::Error::FileNotFoundInBill(format!("Get Bill Attachment: No file found in bill {bill_name} with file name {file_name}")));
-            }
-            Some(file) => &file.hash,
-        };
-
-        let local_peer_id = self.identity_store.get_peer_id().await?;
-        let mut providers = self.get_bill_providers(bill_name).await?;
-        providers.remove(&local_peer_id);
-        if providers.is_empty() {
-            error!("Get Bill Attachment: No providers found for {bill_name}");
-            return Ok(());
-        }
-
-        let requests = providers.into_iter().map(|peer_id| {
-            let mut network_client = self.clone();
-            let file_request =
-                file_request_for_bill_attachment(&local_peer_id.to_string(), bill_name, file_name);
-            async move { network_client.request_file(peer_id, file_request).await }.boxed()
-        });
-
+            .identity
+            .private_key_pem;
+        let requests = self.create_file_requests_for_peers(
+            file_request_for_bill_attachment(&local_peer_id.to_string(), bill_name, file_name),
+            providers,
+        );
         match futures::future::select_ok(requests).await {
             Err(e) => Err(super::Error::NoFileFromProviders(format!(
                 "Get Bill Attachment: None of the providers returned the file for {bill_name}: {e}"
             ))),
             Ok(file_content) => {
                 let bytes = file_content.0;
-                let keys = self.bill_store.read_bill_keys_from_file(bill_name).await?;
-                let pr_key = self
-                    .identity_store
-                    .get_full()
-                    .await?
-                    .identity
-                    .private_key_pem;
                 // decrypt file using identity private key and check hash
                 let decrypted_with_identity_key =
-                    util::rsa::decrypt_bytes_with_private_key(&bytes, &pr_key);
+                    util::rsa::decrypt_bytes_with_private_key(&bytes, &pr_key)?;
                 let decrypted_with_bill_key = util::rsa::decrypt_bytes_with_private_key(
                     &decrypted_with_identity_key,
-                    &keys.private_key_pem,
-                );
+                    &bill_keys.private_key_pem,
+                )?;
                 let remote_hash = util::sha256_hash(&decrypted_with_bill_key);
-                if local_hash != remote_hash.as_str() {
-                    return Err(super::Error::FileHashesDidNotMatch(format!("Get Bill Attachment: Hashes didn't match for bill {bill_name} and file name {file_name}, remote: {remote_hash}, local: {local_hash}")));
+                if hash != remote_hash.as_str() {
+                    return Err(super::Error::FileHashesDidNotMatch(format!("Get Bill Attachment: Hashes didn't match for bill {bill_name} and file name {file_name}, remote: {remote_hash}, local: {hash}")));
                 }
-                // encrypt with bill public key and save file locally
+                // encrypt with bill public key
                 let encrypted = util::rsa::encrypt_bytes_with_public_key(
                     &decrypted_with_bill_key,
-                    &keys.public_key_pem,
-                );
-                self.bill_store
-                    .save_attached_file(&encrypted, bill_name, file_name)
-                    .await?;
-                Ok(())
+                    &bill_keys.public_key_pem,
+                )?;
+                Ok((file_name.to_string(), encrypted))
             }
         }
     }
 
     /// Requests the keys file for the given bill, decrypting it and saving it locally
-    pub async fn get_key(&mut self, name: &str) -> Result<()> {
-        let local_peer_id = self.identity_store.get_peer_id().await?;
-        let mut providers = self.get_bill_providers(name).await?;
-        providers.remove(&local_peer_id);
-        if providers.is_empty() {
-            error!("Get Bill Attachment: No providers found for {name}");
-            return Ok(());
-        }
-        let requests = providers.into_iter().map(|peer| {
-            let mut network_client = self.clone();
-
-            let file_request = file_request_for_bill_keys(&local_peer_id.to_string(), name);
-            async move { network_client.request_file(peer, file_request).await }.boxed()
-        });
+    async fn request_key_data(
+        &mut self,
+        name: &str,
+        local_peer_id: &PeerId,
+        providers: &HashSet<PeerId>,
+    ) -> Result<BillKeys> {
+        let pr_key = self
+            .identity_store
+            .get_full()
+            .await?
+            .identity
+            .private_key_pem;
+        let requests = self.create_file_requests_for_peers(
+            file_request_for_bill_keys(&local_peer_id.to_string(), name),
+            providers,
+        );
 
         match futures::future::select_ok(requests).await {
             Err(e) => Err(super::Error::NoFileFromProviders(format!(
@@ -855,18 +934,10 @@ impl Client {
             ))),
             Ok(file_content) => {
                 let bytes = file_content.0;
-                let pr_key = self
-                    .identity_store
-                    .get_full()
-                    .await?
-                    .identity
-                    .private_key_pem;
-                let key_bytes_decrypted = decrypt_bytes_with_private_key(&bytes, &pr_key);
+                let key_bytes_decrypted = decrypt_bytes_with_private_key(&bytes, &pr_key)?;
 
-                self.bill_store
-                    .write_bill_keys_to_file_as_bytes(name, &key_bytes_decrypted)
-                    .await?;
-                Ok(())
+                let bill_keys = bill_keys_from_bytes(&key_bytes_decrypted)?;
+                Ok(bill_keys)
             }
         }
     }
@@ -915,6 +986,18 @@ impl Client {
     // -------------------------------------------------------------
     // Utility Functions for the DHT -------------------------------
     // -------------------------------------------------------------
+
+    fn create_file_requests_for_peers<'a>(
+        &'a mut self,
+        file_request: String,
+        providers: &'a HashSet<PeerId>,
+    ) -> impl Iterator<Item = BoxFuture<'a, Result<Vec<u8>>>> {
+        providers.iter().map(move |peer| {
+            let mut cloned_client = self.clone();
+            let cloned_fr = file_request.clone();
+            async move { cloned_client.request_file(peer.to_owned(), cloned_fr).await }.boxed()
+        })
+    }
 
     async fn add_message_to_topic(&mut self, msg: Vec<u8>, topic: String) -> Result<()> {
         self.send_message(msg, topic).await?;
@@ -989,7 +1072,7 @@ impl Client {
         let (sender, receiver) = oneshot::channel();
         self.sender.send(Command::GetRecord { key, sender }).await?;
         let record = receiver.await?;
-        Ok(record)
+        record.map_err(|e| super::Error::GetRecord(e.to_string()))
     }
 
     async fn start_providing(&mut self, entry: String) -> Result<()> {
@@ -1088,14 +1171,17 @@ impl Client {
         &mut self,
         company_id: &str,
         node_id: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let company = self.company_store.get(company_id).await?;
         if company.signatories.iter().any(|v| v == node_id) {
             let bytes = company_to_bytes(&company)?;
-            self.respond_file(bytes, channel).await?;
+            Ok(bytes)
+        } else {
+            Err(super::Error::CallerNotSignatoryOfCompany(
+                node_id.to_owned(),
+                company_id.to_owned(),
+            ))
         }
-        Ok(())
     }
 
     // We check if the node id is part of the signatories, and if so, send the
@@ -1104,8 +1190,7 @@ impl Client {
         &mut self,
         company_id: &str,
         node_id: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let company = self.company_store.get(company_id).await?;
         if company.signatories.iter().any(|v| v == node_id) {
             let public_data = self
@@ -1114,10 +1199,14 @@ impl Client {
             let public_key = public_data.rsa_public_key_pem;
             let keys = self.company_store.get_key_pair(company_id).await?;
             let bytes = company_keys_to_bytes(&keys)?;
-            let file_encrypted = encrypt_bytes_with_public_key(&bytes, &public_key);
-            self.respond_file(file_encrypted, channel).await?;
+            let file_encrypted = encrypt_bytes_with_public_key(&bytes, &public_key)?;
+            Ok(file_encrypted)
+        } else {
+            Err(super::Error::CallerNotSignatoryOfCompany(
+                node_id.to_owned(),
+                company_id.to_owned(),
+            ))
         }
-        Ok(())
     }
 
     // We check if the node id is part of the signatories, and if so,
@@ -1128,20 +1217,33 @@ impl Client {
         company_id: &str,
         node_id: &str,
         file_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let company = self.company_store.get(company_id).await?;
         if company.signatories.iter().any(|v| v == node_id) {
             if let Some(logo) = company.logo_file {
                 if logo.name == *file_name {
-                    self.handle_company_file_request_for_file(
-                        company_id, node_id, file_name, channel,
-                    )
-                    .await?;
+                    let bytes = self
+                        .handle_company_file_request_for_file(company_id, node_id, file_name)
+                        .await?;
+                    Ok(bytes)
+                } else {
+                    Err(super::Error::NoFileForCompanyFound(
+                        file_name.to_owned(),
+                        company_id.to_owned(),
+                    ))
                 }
+            } else {
+                Err(super::Error::NoFileForCompanyFound(
+                    file_name.to_owned(),
+                    company_id.to_owned(),
+                ))
             }
+        } else {
+            Err(super::Error::CallerNotSignatoryOfCompany(
+                node_id.to_owned(),
+                company_id.to_owned(),
+            ))
         }
-        Ok(())
     }
 
     // We check if the node id is part of the signatories, and if so,
@@ -1152,20 +1254,33 @@ impl Client {
         company_id: &str,
         node_id: &str,
         file_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let company = self.company_store.get(company_id).await?;
         if company.signatories.iter().any(|v| v == node_id) {
             if let Some(proof) = company.proof_of_registration_file {
                 if proof.name == *file_name {
-                    self.handle_company_file_request_for_file(
-                        company_id, node_id, file_name, channel,
-                    )
-                    .await?;
+                    let bytes = self
+                        .handle_company_file_request_for_file(company_id, node_id, file_name)
+                        .await?;
+                    Ok(bytes)
+                } else {
+                    Err(super::Error::NoFileForCompanyFound(
+                        file_name.to_owned(),
+                        company_id.to_owned(),
+                    ))
                 }
+            } else {
+                Err(super::Error::NoFileForCompanyFound(
+                    file_name.to_owned(),
+                    company_id.to_owned(),
+                ))
             }
+        } else {
+            Err(super::Error::CallerNotSignatoryOfCompany(
+                node_id.to_owned(),
+                company_id.to_owned(),
+            ))
         }
-        Ok(())
     }
 
     async fn handle_company_file_request_for_file(
@@ -1173,39 +1288,31 @@ impl Client {
         company_id: &str,
         node_id: &str,
         file_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let public_data = self
             .get_identity_public_data_from_dht(node_id.to_owned())
             .await?;
         let public_key = public_data.rsa_public_key_pem;
         let bytes = self
-            .company_store
+            .file_upload_store
             .open_attached_file(company_id, file_name)
             .await?;
         let identity_private_key = self.identity_store.get().await?.private_key_pem;
-        let decrypted_bytes = decrypt_bytes_with_private_key(&bytes, &identity_private_key);
-        let file_encrypted = encrypt_bytes_with_public_key(&decrypted_bytes, &public_key);
-        self.respond_file(file_encrypted, channel).await?;
-        Ok(())
+        let decrypted_bytes = decrypt_bytes_with_private_key(&bytes, &identity_private_key)?;
+        let file_encrypted = encrypt_bytes_with_public_key(&decrypted_bytes, &public_key)?;
+        Ok(file_encrypted)
     }
 
-    async fn handle_bill_file_request(
-        &mut self,
-        bill_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    async fn handle_bill_file_request(&mut self, bill_name: &str) -> Result<Vec<u8>> {
         let file = self.bill_store.get_bill_as_bytes(bill_name).await?;
-        self.respond_file(file, channel).await?;
-        Ok(())
+        Ok(file)
     }
 
     async fn handle_bill_file_request_for_keys(
         &mut self,
         key_name: &str,
         node_id: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let chain = self.bill_store.read_bill_chain_from_file(key_name).await?;
         let bill_keys = self.bill_store.read_bill_keys_from_file(key_name).await?;
         if chain
@@ -1218,10 +1325,14 @@ impl Client {
                 .await?;
             let public_key = data.rsa_public_key_pem;
             let file = self.bill_store.get_bill_keys_as_bytes(key_name).await?;
-            let file_encrypted = encrypt_bytes_with_public_key(&file, &public_key);
-            self.respond_file(file_encrypted, channel).await?;
+            let file_encrypted = encrypt_bytes_with_public_key(&file, &public_key)?;
+            Ok(file_encrypted)
+        } else {
+            Err(super::Error::CallerNotPartOfBill(
+                node_id.to_owned(),
+                key_name.to_string(),
+            ))
         }
-        Ok(())
     }
 
     async fn handle_bill_file_request_for_attachment(
@@ -1229,8 +1340,7 @@ impl Client {
         bill_name: &str,
         node_id: &str,
         file_name: &str,
-        channel: ResponseChannel<FileResponse>,
-    ) -> Result<()> {
+    ) -> Result<Vec<u8>> {
         let chain = self.bill_store.read_bill_chain_from_file(bill_name).await?;
         let bill_keys = self.bill_store.read_bill_keys_from_file(bill_name).await?;
         if chain
@@ -1243,20 +1353,24 @@ impl Client {
                 .await?;
             let public_key = data.rsa_public_key_pem;
             let file = self
-                .bill_store
+                .file_upload_store
                 .open_attached_file(bill_name, file_name)
                 .await?;
-            let file_encrypted = encrypt_bytes_with_public_key(&file, &public_key);
-            self.respond_file(file_encrypted, channel).await?;
+            let file_encrypted = encrypt_bytes_with_public_key(&file, &public_key)?;
+            Ok(file_encrypted)
+        } else {
+            Err(super::Error::CallerNotPartOfBill(
+                node_id.to_owned(),
+                bill_name.to_string(),
+            ))
         }
-        Ok(())
     }
 
     // -------------------------------------------------------------
     // Request handling code ---------------------------------------
     // -------------------------------------------------------------
     /// Handles incoming requests
-    async fn handle_event(&mut self, event: Event) {
+    async fn handle_event(&mut self, event: Event) -> Result<()> {
         match event {
             Event::CompanyUpdate {
                 event,
@@ -1311,6 +1425,11 @@ impl Client {
                             // If we are removed, remove the local company
                             if signatory == local_peer_id.to_string() {
                                 info!("Got from DHT, that we were removed from company {company_id} - deleting company locally");
+
+                                let _ = self
+                                    .file_upload_store
+                                    .delete_attached_files(&company_id)
+                                    .await;
                                 if let Err(e) = self.company_store.remove(&company_id).await {
                                     error!("Could not remove local company {company_id}: {e}");
                                 }
@@ -1340,74 +1459,53 @@ impl Client {
                                 company_id,
                                 node_id,
                             }) => {
-                                if let Err(e) = self
-                                    .handle_company_data_file_request(
-                                        &company_id,
-                                        &node_id,
-                                        channel,
-                                    )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                let bytes = self
+                                    .handle_company_data_file_request(&company_id, &node_id)
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             ParsedInboundFileRequest::CompanyKeys(CompanyKeysRequest {
                                 node_id,
                                 company_id,
                             }) => {
-                                if let Err(e) = self
-                                    .handle_company_keys_file_request(
-                                        &company_id,
-                                        &node_id,
-                                        channel,
-                                    )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                let bytes = self
+                                    .handle_company_keys_file_request(&company_id, &node_id)
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             ParsedInboundFileRequest::CompanyLogo(CompanyLogoRequest {
                                 node_id,
                                 company_id,
                                 file_name,
                             }) => {
-                                if let Err(e) = self
+                                let bytes = self
                                     .handle_company_logo_file_request(
                                         &company_id,
                                         &node_id,
                                         &file_name,
-                                        channel,
                                     )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             ParsedInboundFileRequest::CompanyProof(CompanyProofRequest {
                                 node_id,
                                 company_id,
                                 file_name,
                             }) => {
-                                if let Err(e) = self
+                                let bytes = self
                                     .handle_company_proof_file_request(
                                         &company_id,
                                         &node_id,
                                         &file_name,
-                                        channel,
                                     )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             // We can send the bill to anyone requesting it, since the content is encrypted
                             // and is useless without the keys
                             ParsedInboundFileRequest::Bill(BillFileRequest { bill_name }) => {
-                                if let Err(e) =
-                                    self.handle_bill_file_request(&bill_name, channel).await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                let bytes = self.handle_bill_file_request(&bill_name).await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             // We check if the requester is part of the bill and if so, we get their
                             // identity from DHT and encrypt the file with their public key
@@ -1415,12 +1513,10 @@ impl Client {
                                 node_id,
                                 key_name,
                             }) => {
-                                if let Err(e) = self
-                                    .handle_bill_file_request_for_keys(&key_name, &node_id, channel)
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                let bytes = self
+                                    .handle_bill_file_request_for_keys(&key_name, &node_id)
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                             // We only send attachments (encrypted with the bill public key) to participants of the bill, encrypted with their public key
                             ParsedInboundFileRequest::BillAttachment(
@@ -1430,20 +1526,19 @@ impl Client {
                                     file_name,
                                 },
                             ) => {
-                                if let Err(e) = self
+                                let bytes = self
                                     .handle_bill_file_request_for_attachment(
-                                        &bill_name, &node_id, &file_name, channel,
+                                        &bill_name, &node_id, &file_name,
                                     )
-                                    .await
-                                {
-                                    error!("Could not handle inbound request {request}: {e}")
-                                }
+                                    .await?;
+                                self.respond_file(bytes, channel).await?;
                             }
                         }
                     }
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -1452,7 +1547,8 @@ mod test {
     use super::*;
     use crate::{
         persistence::{
-            bill::MockBillStoreApi, company::MockCompanyStoreApi, identity::MockIdentityStoreApi,
+            bill::MockBillStoreApi, company::MockCompanyStoreApi,
+            file_upload::MockFileUploadStoreApi, identity::MockIdentityStoreApi,
         },
         tests::test::{TEST_PRIVATE_KEY, TEST_PUB_KEY},
     };
@@ -1465,11 +1561,11 @@ mod test {
             id.to_string(),
             (
                 Company {
-                    legal_name: "some_name".to_string(),
+                    name: "some_name".to_string(),
                     country_of_registration: "AT".to_string(),
                     city_of_registration: "Vienna".to_string(),
                     postal_address: "some address".to_string(),
-                    legal_email: "company@example.com".to_string(),
+                    email: "company@example.com".to_string(),
                     registration_number: "some_number".to_string(),
                     registration_date: "2012-01-01".to_string(),
                     proof_of_registration_file: None,
@@ -1491,6 +1587,7 @@ mod test {
             Arc::new(MockBillStoreApi::new()),
             Arc::new(MockCompanyStoreApi::new()),
             Arc::new(MockIdentityStoreApi::new()),
+            Arc::new(MockFileUploadStoreApi::new()),
         )
     }
 
@@ -1500,6 +1597,7 @@ mod test {
             Arc::new(MockBillStoreApi::new()),
             Arc::new(MockCompanyStoreApi::new()),
             Arc::new(MockIdentityStoreApi::new()),
+            Arc::new(MockFileUploadStoreApi::new()),
         )
     }
 
@@ -1507,6 +1605,7 @@ mod test {
         mock_bill_storage: MockBillStoreApi,
         mock_company_storage: MockCompanyStoreApi,
         mock_identity_storage: MockIdentityStoreApi,
+        mock_file_upload_storage: MockFileUploadStoreApi,
         sender: Sender<Command>,
     ) -> Client {
         Client::new(
@@ -1514,14 +1613,21 @@ mod test {
             Arc::new(mock_bill_storage),
             Arc::new(mock_company_storage),
             Arc::new(mock_identity_storage),
+            Arc::new(mock_file_upload_storage),
         )
     }
 
-    fn get_storages() -> (MockBillStoreApi, MockCompanyStoreApi, MockIdentityStoreApi) {
+    fn get_storages() -> (
+        MockBillStoreApi,
+        MockCompanyStoreApi,
+        MockIdentityStoreApi,
+        MockFileUploadStoreApi,
+    ) {
         (
             MockBillStoreApi::new(),
             MockCompanyStoreApi::new(),
             MockIdentityStoreApi::new(),
+            MockFileUploadStoreApi::new(),
         )
     }
 
@@ -1661,7 +1767,7 @@ mod test {
             if let Some(Command::GetRecord { key, sender }) = receiver.next().await {
                 assert_eq!(key, "key".to_string());
                 sender
-                    .send(Record::new(Key::new(&"key".to_string()), vec![]))
+                    .send(Ok(Record::new(Key::new(&"key".to_string()), vec![])))
                     .unwrap();
             } else {
                 panic!("No command received");
@@ -1770,7 +1876,7 @@ mod test {
     #[tokio::test]
     async fn subscribe_to_all_companies_topics() {
         let (sender, receiver) = mpsc::channel(10);
-        let (bill_store, mut company_store, identity_store) = get_storages();
+        let (bill_store, mut company_store, identity_store, file_upload_store) = get_storages();
         company_store.expect_get_all().returning(|| {
             let mut map = HashMap::new();
             let company_1 = get_baseline_company_data("company_1");
@@ -1779,9 +1885,15 @@ mod test {
             map.insert(String::from("company_2"), (company_2.1 .0, company_2.1 .1));
             Ok(map)
         });
-        let result = get_client_chan_stores(bill_store, company_store, identity_store, sender)
-            .subscribe_to_all_companies_topics()
-            .await;
+        let result = get_client_chan_stores(
+            bill_store,
+            company_store,
+            identity_store,
+            file_upload_store,
+            sender,
+        )
+        .subscribe_to_all_companies_topics()
+        .await;
         assert!(result.is_ok());
         assert_eq!(receiver.count().await, 2);
     }
@@ -1789,20 +1901,26 @@ mod test {
     #[tokio::test]
     async fn start_providing_companies_does_nothing_if_no_companies() {
         let (sender, _receiver) = mpsc::channel(10);
-        let (bill_store, mut company_store, identity_store) = get_storages();
+        let (bill_store, mut company_store, identity_store, file_upload_store) = get_storages();
         company_store
             .expect_get_all()
             .returning(|| Ok(HashMap::new()));
-        let result = get_client_chan_stores(bill_store, company_store, identity_store, sender)
-            .start_providing_companies()
-            .await;
+        let result = get_client_chan_stores(
+            bill_store,
+            company_store,
+            identity_store,
+            file_upload_store,
+            sender,
+        )
+        .start_providing_companies()
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn start_providing_companies_calls_start_provide_for_each_company() {
         let (sender, mut receiver) = mpsc::channel(10);
-        let (bill_store, mut company_store, identity_store) = get_storages();
+        let (bill_store, mut company_store, identity_store, file_upload_store) = get_storages();
         company_store.expect_get_all().returning(|| {
             let mut map = HashMap::new();
             let company_1 = get_baseline_company_data("company_1");
@@ -1821,9 +1939,15 @@ mod test {
             assert!(count == 2);
         });
 
-        let result = get_client_chan_stores(bill_store, company_store, identity_store, sender)
-            .start_providing_companies()
-            .await;
+        let result = get_client_chan_stores(
+            bill_store,
+            company_store,
+            identity_store,
+            file_upload_store,
+            sender,
+        )
+        .start_providing_companies()
+        .await;
         assert!(result.is_ok());
     }
 
@@ -1844,10 +1968,10 @@ mod test {
                     Command::GetRecord { key, sender } => {
                         assert_eq!(key, "COMPANIESmy_node_id".to_string());
                         sender
-                            .send(Record::new(
+                            .send(Ok(Record::new(
                                 Key::new(&"COMPANIESmy_node_id".to_string()),
                                 to_vec(&vec!["company_1".to_string()]).unwrap(),
-                            ))
+                            )))
                             .unwrap();
                     }
                     _ => panic!("wrong event"),
@@ -1890,10 +2014,10 @@ mod test {
                         assert_eq!(key, "COMPANIESmy_node_id".to_string());
                         let result: Vec<String> = vec![];
                         sender
-                            .send(Record::new(
+                            .send(Ok(Record::new(
                                 Key::new(&"COMPANIESmy_node_id".to_string()),
                                 to_vec(&result).unwrap(),
-                            ))
+                            )))
                             .unwrap();
                     }
                     _ => panic!("wrong event"),
@@ -1929,10 +2053,10 @@ mod test {
                         let result: String = String::from("hello world"); // this is invalid, since
                                                                           // we expect a vec
                         sender
-                            .send(Record::new(
+                            .send(Ok(Record::new(
                                 Key::new(&"COMPANIESmy_node_id".to_string()),
                                 to_vec(&result).unwrap(),
-                            ))
+                            )))
                             .unwrap();
                     }
                     _ => panic!("wrong event"),
@@ -1965,11 +2089,11 @@ mod test {
                     Command::GetRecord { key, sender } => {
                         assert_eq!(key, "COMPANIESmy_node_id".to_string());
                         sender
-                            .send(Record::new(
+                            .send(Ok(Record::new(
                                 Key::new(&"COMPANIESmy_node_id".to_string()),
                                 to_vec(&vec!["company_1".to_string(), "company_2".to_string()])
                                     .unwrap(),
-                            ))
+                            )))
                             .unwrap();
                     }
                     _ => panic!("wrong event"),
@@ -2000,10 +2124,10 @@ mod test {
                     Command::GetRecord { key, sender } => {
                         assert_eq!(key, "COMPANIESmy_node_id".to_string());
                         sender
-                            .send(Record::new(
+                            .send(Ok(Record::new(
                                 Key::new(&"COMPANIESmy_node_id".to_string()),
                                 to_vec(&vec!["company_2".to_string()]).unwrap(),
-                            ))
+                            )))
                             .unwrap();
                     }
                     _ => panic!("wrong event"),
@@ -2035,10 +2159,10 @@ mod test {
                         let result: String = String::from("hello world"); // this is invalid, since
                                                                           // we expect a vec
                         sender
-                            .send(Record::new(
+                            .send(Ok(Record::new(
                                 Key::new(&"COMPANIESmy_node_id".to_string()),
                                 to_vec(&result).unwrap(),
-                            ))
+                            )))
                             .unwrap();
                     }
                     _ => panic!("wrong event"),
@@ -2069,10 +2193,10 @@ mod test {
                         assert_eq!(key, "COMPANIESmy_node_id".to_string());
                         let result: Vec<String> = vec![];
                         sender
-                            .send(Record::new(
+                            .send(Ok(Record::new(
                                 Key::new(&"COMPANIESmy_node_id".to_string()),
                                 to_vec(&result).unwrap(),
-                            ))
+                            )))
                             .unwrap();
                     }
                     _ => panic!("wrong event"),
@@ -2099,10 +2223,10 @@ mod test {
                         let data =
                             CompanyPublicData::from_all(company.0, company.1 .0, company.1 .1);
                         sender
-                            .send(Record::new(
+                            .send(Ok(Record::new(
                                 Key::new(&"COMPANYcompany_1".to_string()),
                                 serde_json::to_string(&data).unwrap().into_bytes(),
-                            ))
+                            )))
                             .unwrap();
                     }
                     _ => panic!("wrong event"),
@@ -2121,7 +2245,7 @@ mod test {
     #[tokio::test]
     async fn put_companies_public_data_in_dht() {
         let (sender, mut receiver) = mpsc::channel(10);
-        let (bill_store, mut company_store, identity_store) = get_storages();
+        let (bill_store, mut company_store, identity_store, file_upload_store) = get_storages();
         company_store.expect_get_all().returning(|| {
             let mut map = HashMap::new();
             let company_1 = get_baseline_company_data("company_1");
@@ -2141,10 +2265,10 @@ mod test {
                         assert_eq!(key, "COMPANYcompany_1".to_string());
                         let result: Vec<u8> = vec![];
                         sender
-                            .send(Record::new(
+                            .send(Ok(Record::new(
                                 Key::new(&"COMPANYcompany_1".to_string()),
                                 result,
-                            ))
+                            )))
                             .unwrap();
                     }
                     _ => panic!("wrong event"),
@@ -2152,9 +2276,15 @@ mod test {
             }
         });
 
-        let result = get_client_chan_stores(bill_store, company_store, identity_store, sender)
-            .put_companies_public_data_in_dht()
-            .await;
+        let result = get_client_chan_stores(
+            bill_store,
+            company_store,
+            identity_store,
+            file_upload_store,
+            sender,
+        )
+        .put_companies_public_data_in_dht()
+        .await;
         assert!(result.is_ok());
     }
 }

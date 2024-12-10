@@ -50,7 +50,7 @@ pub fn encode(num: &u64) -> String {
             let (div, order) = successors(Some(1u64), |v| v.checked_mul(1000))
                 .zip(ORDERS.iter())
                 .find(|&(e, _)| e > num / 1000)
-                .unwrap();
+                .expect("it's a valid number");
 
             format_num(num, div, order)
         }

@@ -87,8 +87,7 @@ impl IdentityServiceApi for IdentityService {
         email: String,
         postal_address: String,
     ) -> Result<()> {
-        let (private_key_pem, public_key_pem) = util::rsa::create_rsa_key_pair()
-            .map_err(|e| super::Error::Cryptography(e.to_string()))?;
+        let (private_key_pem, public_key_pem) = util::rsa::create_rsa_key_pair()?;
 
         let s = bitcoin::secp256k1::Secp256k1::new();
 
@@ -214,7 +213,8 @@ impl Identity {
 mod test {
     use super::*;
     use crate::persistence::{
-        self, bill::MockBillStoreApi, company::MockCompanyStoreApi, identity::MockIdentityStoreApi,
+        self, bill::MockBillStoreApi, company::MockCompanyStoreApi,
+        file_upload::MockFileUploadStoreApi, identity::MockIdentityStoreApi,
     };
     use futures::channel::mpsc;
 
@@ -228,6 +228,7 @@ mod test {
                 Arc::new(MockBillStoreApi::new()),
                 Arc::new(MockCompanyStoreApi::new()),
                 Arc::new(client_storage),
+                Arc::new(MockFileUploadStoreApi::new()),
             ),
             Arc::new(mock_storage),
         )

@@ -5,7 +5,9 @@ use surrealdb::{
     Surreal,
 };
 
+pub mod company;
 pub mod contact;
+pub mod identity;
 pub mod nostr_event_offset;
 
 /// Configuration for the SurrealDB connection string, namespace and

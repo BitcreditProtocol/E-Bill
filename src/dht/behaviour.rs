@@ -158,7 +158,7 @@ pub enum Command {
     },
     GetRecord {
         key: String,
-        sender: oneshot::Sender<Record>,
+        sender: oneshot::Sender<Result<Record>>,
     },
     RequestFile {
         file_name: String,

@@ -51,6 +51,7 @@ async fn main() -> Result<()> {
         db.bill_store.clone(),
         db.company_store.clone(),
         db.identity_store.clone(),
+        db.file_upload_store.clone(),
     )
     .await
     .expect("DHT failed to start");
@@ -69,12 +70,15 @@ async fn main() -> Result<()> {
     });
 
     let local_peer_id = db.identity_store.get_peer_id().await?;
-    dht_client
-        .check_new_bills(local_peer_id.to_string())
-        .await?;
-    dht_client
+    if let Err(e) = dht_client.check_new_bills(local_peer_id.to_string()).await {
+        error!("Error while checking for new bills: {e}");
+    }
+    if let Err(e) = dht_client
         .update_bills_table(local_peer_id.to_string())
-        .await?;
+        .await
+    {
+        error!("Error while updating bills table: {e}");
+    }
     dht_client.subscribe_to_all_bills_topics().await?;
     dht_client.put_bills_for_parties().await?;
     dht_client.start_providing_bills().await?;
@@ -82,7 +86,9 @@ async fn main() -> Result<()> {
 
     dht_client.put_identity_public_data_in_dht().await?;
 
-    dht_client.check_companies().await?;
+    if let Err(e) = dht_client.check_companies().await {
+        error!("Error while checking for new companies: {e}");
+    }
     dht_client.put_companies_for_signatories().await?;
     dht_client.put_companies_public_data_in_dht().await?;
     dht_client.start_providing_companies().await?;

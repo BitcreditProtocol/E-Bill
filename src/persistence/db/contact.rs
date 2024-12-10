@@ -15,7 +15,6 @@ pub struct SurrealContactStore {
 impl SurrealContactStore {
     const TABLE: &'static str = "contacts";
 
-    #[allow(dead_code)]
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }
     }
@@ -140,6 +139,7 @@ impl From<IdentityPublicData> for ContactDb {
         }
     }
 }
+
 fn as_opt(value: String) -> Option<String> {
     if value.is_empty() {
         None

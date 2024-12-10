@@ -24,11 +24,11 @@ pub trait CompanyServiceApi: Send + Sync {
     /// Create a new company
     async fn create_company(
         &self,
-        legal_name: String,
+        name: String,
         country_of_registration: String,
         city_of_registration: String,
         postal_address: String,
-        legal_email: String,
+        email: String,
         registration_number: String,
         registration_date: String,
         proof_of_registration_file_upload_id: Option<String>,
@@ -39,8 +39,8 @@ pub trait CompanyServiceApi: Send + Sync {
     async fn edit_company(
         &self,
         id: &str,
-        legal_name: Option<String>,
-        legal_email: Option<String>,
+        name: Option<String>,
+        email: Option<String>,
         postal_address: Option<String>,
         logo_file_upload_id: Option<String>,
     ) -> Result<()>;
@@ -142,11 +142,11 @@ impl CompanyServiceApi for CompanyService {
 
     async fn create_company(
         &self,
-        legal_name: String,
+        name: String,
         country_of_registration: String,
         city_of_registration: String,
         postal_address: String,
-        legal_email: String,
+        email: String,
         registration_number: String,
         registration_date: String,
         proof_of_registration_file_upload_id: Option<String>,
@@ -177,11 +177,11 @@ impl CompanyServiceApi for CompanyService {
 
         self.store.save_key_pair(&id, &company_keys).await?;
         let company = Company {
-            legal_name,
+            name,
             country_of_registration,
             city_of_registration,
             postal_address,
-            legal_email,
+            email,
             registration_number,
             registration_date,
             proof_of_registration_file,
@@ -210,8 +210,8 @@ impl CompanyServiceApi for CompanyService {
     async fn edit_company(
         &self,
         id: &str,
-        legal_name: Option<String>,
-        legal_email: Option<String>,
+        name: Option<String>,
+        email: Option<String>,
         postal_address: Option<String>,
         logo_file_upload_id: Option<String>,
     ) -> Result<()> {
@@ -229,11 +229,11 @@ impl CompanyServiceApi for CompanyService {
             )));
         }
 
-        if let Some(legal_name_to_set) = legal_name {
-            company.legal_name = legal_name_to_set;
+        if let Some(name_to_set) = name {
+            company.name = name_to_set;
         }
-        if let Some(legal_email_to_set) = legal_email {
-            company.legal_email = legal_email_to_set;
+        if let Some(email_to_set) = email {
+            company.email = email_to_set;
         }
         if let Some(postal_address_to_set) = postal_address {
             company.postal_address = postal_address_to_set;
@@ -313,6 +313,7 @@ impl CompanyServiceApi for CompanyService {
 
         if peer_id.to_string() == signatory_node_id {
             info!("Removing self from company {id}");
+            let _ = self.file_upload_store.delete_attached_files(id).await;
             self.store.remove(id).await?;
         }
 
@@ -327,8 +328,8 @@ impl CompanyServiceApi for CompanyService {
         public_key: &str,
     ) -> Result<File> {
         let file_hash = util::sha256_hash(file_bytes);
-        let encrypted = util::rsa::encrypt_bytes_with_public_key(file_bytes, public_key);
-        self.store
+        let encrypted = util::rsa::encrypt_bytes_with_public_key(file_bytes, public_key)?;
+        self.file_upload_store
             .save_attached_file(&encrypted, id, file_name)
             .await?;
         info!("Saved company file {file_name} with hash {file_hash} for company {id}");
@@ -344,8 +345,11 @@ impl CompanyServiceApi for CompanyService {
         file_name: &str,
         private_key: &str,
     ) -> Result<Vec<u8>> {
-        let read_file = self.store.open_attached_file(id, file_name).await?;
-        let decrypted = util::rsa::decrypt_bytes_with_private_key(&read_file, private_key);
+        let read_file = self
+            .file_upload_store
+            .open_attached_file(id, file_name)
+            .await?;
+        let decrypted = util::rsa::decrypt_bytes_with_private_key(&read_file, private_key)?;
         Ok(decrypted)
     }
 }
@@ -354,11 +358,11 @@ impl CompanyServiceApi for CompanyService {
 #[serde(crate = "rocket::serde")]
 pub struct CompanyToReturn {
     pub id: String,
-    pub legal_name: String,
+    pub name: String,
     pub country_of_registration: String,
     pub city_of_registration: String,
     pub postal_address: String,
-    pub legal_email: String,
+    pub email: String,
     pub registration_number: String,
     pub registration_date: String,
     pub proof_of_registration_file: Option<File>,
@@ -371,11 +375,11 @@ impl CompanyToReturn {
     fn from(id: String, company: Company, company_keys: CompanyKeys) -> CompanyToReturn {
         CompanyToReturn {
             id,
-            legal_name: company.legal_name,
+            name: company.name,
             country_of_registration: company.country_of_registration,
             city_of_registration: company.city_of_registration,
             postal_address: company.postal_address,
-            legal_email: company.legal_email,
+            email: company.email,
             registration_number: company.registration_number,
             registration_date: company.registration_date,
             proof_of_registration_file: company.proof_of_registration_file,
@@ -389,11 +393,11 @@ impl CompanyToReturn {
 #[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone)]
 #[serde(crate = "rocket::serde")]
 pub struct Company {
-    pub legal_name: String,
+    pub name: String,
     pub country_of_registration: String,
     pub city_of_registration: String,
     pub postal_address: String,
-    pub legal_email: String,
+    pub email: String,
     pub registration_number: String,
     pub registration_date: String,
     pub proof_of_registration_file: Option<File>,
@@ -404,9 +408,9 @@ pub struct Company {
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct CompanyPublicData {
     pub id: String,
-    pub legal_name: String,
+    pub name: String,
     pub postal_address: String,
-    pub legal_email: String,
+    pub email: String,
     pub public_key: String,
 }
 
@@ -414,9 +418,9 @@ impl CompanyPublicData {
     pub fn from_all(id: String, company: Company, company_keys: CompanyKeys) -> CompanyPublicData {
         CompanyPublicData {
             id,
-            legal_name: company.legal_name,
+            name: company.name,
             postal_address: company.postal_address,
-            legal_email: company.legal_email,
+            email: company.email,
             public_key: company_keys.public_key,
         }
     }
@@ -426,9 +430,9 @@ impl From<CompanyToReturn> for CompanyPublicData {
     fn from(company: CompanyToReturn) -> Self {
         Self {
             id: company.id,
-            legal_name: company.legal_name,
+            name: company.name,
             postal_address: company.postal_address,
-            legal_email: company.legal_email,
+            email: company.email,
             public_key: company.public_key,
         }
     }
@@ -483,16 +487,16 @@ mod test {
         )
     }
 
-    fn get_baseline_company_data() -> (String, (Company, CompanyKeys)) {
+    pub fn get_baseline_company_data() -> (String, (Company, CompanyKeys)) {
         (
             "some_id".to_string(),
             (
                 Company {
-                    legal_name: "some_name".to_string(),
+                    name: "some_name".to_string(),
                     country_of_registration: "AT".to_string(),
                     city_of_registration: "Vienna".to_string(),
                     postal_address: "some address".to_string(),
-                    legal_email: "company@example.com".to_string(),
+                    email: "company@example.com".to_string(),
                     registration_number: "some_number".to_string(),
                     registration_date: "2012-01-01".to_string(),
                     proof_of_registration_file: None,
@@ -588,7 +592,7 @@ mod test {
     async fn create_company_baseline() {
         let (mut storage, mut file_upload_store, mut identity_store, contact_store) =
             get_storages();
-        storage
+        file_upload_store
             .expect_save_attached_file()
             .returning(|_, _, _| Ok(()));
         storage.expect_save_key_pair().returning(|_, _| Ok(()));
@@ -616,7 +620,7 @@ mod test {
 
         let res = service
             .create_company(
-                "legal_name".to_string(),
+                "name".to_string(),
                 "AT".to_string(),
                 "Vienna".to_string(),
                 "some Address".to_string(),
@@ -629,7 +633,7 @@ mod test {
             .await;
         assert!(res.is_ok());
         assert!(!res.as_ref().unwrap().id.is_empty());
-        assert_eq!(res.as_ref().unwrap().legal_name, "legal_name".to_string());
+        assert_eq!(res.as_ref().unwrap().name, "name".to_string());
         assert_eq!(
             res.as_ref()
                 .unwrap()
@@ -667,7 +671,7 @@ mod test {
         let service = get_service(storage, file_upload_store, identity_store, contact_store);
         let res = service
             .create_company(
-                "legal_name".to_string(),
+                "name".to_string(),
                 "AT".to_string(),
                 "Vienna".to_string(),
                 "some Address".to_string(),
@@ -693,7 +697,7 @@ mod test {
         });
         storage.expect_exists().returning(|_| true);
         storage.expect_update().returning(|_, _| Ok(()));
-        storage
+        file_upload_store
             .expect_save_attached_file()
             .returning(|_, _, _| Ok(()));
         identity_store
@@ -719,7 +723,7 @@ mod test {
         let res = service
             .edit_company(
                 "some_id",
-                Some("legal_name".to_string()),
+                Some("name".to_string()),
                 Some("some Address".to_string()),
                 Some("company@example.com".to_string()),
                 Some("some_file_id".to_string()),
@@ -736,7 +740,7 @@ mod test {
         let res = service
             .edit_company(
                 "some_id",
-                Some("legal_name".to_string()),
+                Some("name".to_string()),
                 Some("some Address".to_string()),
                 Some("company@example.com".to_string()),
                 None,
@@ -762,7 +766,7 @@ mod test {
         let res = service
             .edit_company(
                 "some_id",
-                Some("legal_name".to_string()),
+                Some("name".to_string()),
                 Some("some Address".to_string()),
                 Some("company@example.com".to_string()),
                 None,
@@ -799,7 +803,7 @@ mod test {
         let res = service
             .edit_company(
                 "some_id",
-                Some("legal_name".to_string()),
+                Some("name".to_string()),
                 Some("some Address".to_string()),
                 Some("company@example.com".to_string()),
                 None,
@@ -941,7 +945,11 @@ mod test {
     #[tokio::test]
     async fn remove_signatory_removing_self_removes_company() {
         let peer_id = PeerId::random();
-        let (mut storage, file_upload_store, mut identity_store, contact_store) = get_storages();
+        let (mut storage, mut file_upload_store, mut identity_store, contact_store) =
+            get_storages();
+        file_upload_store
+            .expect_delete_attached_files()
+            .returning(|_| Ok(()));
         storage.expect_exists().returning(|_| true);
         storage.expect_get().returning(move |_| {
             let mut data = get_baseline_company_data().1 .0;
@@ -1028,16 +1036,16 @@ mod test {
         let file_name = "file_00000000-0000-0000-0000-000000000000.pdf";
         let file_bytes = String::from("hello world").as_bytes().to_vec();
         let expected_encrypted =
-            util::rsa::encrypt_bytes_with_public_key(&file_bytes, TEST_PUB_KEY);
+            util::rsa::encrypt_bytes_with_public_key(&file_bytes, TEST_PUB_KEY).unwrap();
 
-        let (mut storage, file_upload_store, identity_store, contact_store) = get_storages();
-        storage
+        let (storage, mut file_upload_store, identity_store, contact_store) = get_storages();
+        file_upload_store
             .expect_save_attached_file()
             .with(always(), eq(company_id), eq(file_name))
             .times(1)
             .returning(|_, _, _| Ok(()));
 
-        storage
+        file_upload_store
             .expect_open_attached_file()
             .with(eq(company_id), eq(file_name))
             .times(1)
@@ -1063,13 +1071,15 @@ mod test {
 
     #[tokio::test]
     async fn save_encrypt_propagates_write_file_error() {
-        let (mut storage, file_upload_store, identity_store, contact_store) = get_storages();
-        storage.expect_save_attached_file().returning(|_, _, _| {
-            Err(persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "test error",
-            )))
-        });
+        let (storage, mut file_upload_store, identity_store, contact_store) = get_storages();
+        file_upload_store
+            .expect_save_attached_file()
+            .returning(|_, _, _| {
+                Err(persistence::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "test error",
+                )))
+            });
         let service = get_service(storage, file_upload_store, identity_store, contact_store);
 
         assert!(service
@@ -1080,13 +1090,15 @@ mod test {
 
     #[tokio::test]
     async fn open_decrypt_propagates_read_file_error() {
-        let (mut storage, file_upload_store, identity_store, contact_store) = get_storages();
-        storage.expect_open_attached_file().returning(|_, _| {
-            Err(persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "test error",
-            )))
-        });
+        let (storage, mut file_upload_store, identity_store, contact_store) = get_storages();
+        file_upload_store
+            .expect_open_attached_file()
+            .returning(|_, _| {
+                Err(persistence::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "test error",
+                )))
+            });
         let service = get_service(storage, file_upload_store, identity_store, contact_store);
 
         assert!(service

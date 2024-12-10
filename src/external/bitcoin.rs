@@ -1,6 +1,6 @@
 use crate::CONFIG;
 use async_trait::async_trait;
-use bitcoin::Network;
+use bitcoin::{secp256k1::Scalar, Network};
 use serde::Deserialize;
 use std::str::FromStr;
 use thiserror::Error;
@@ -22,6 +22,10 @@ pub enum Error {
     /// all errors originating from dealing with public secp256k1 keys
     #[error("External Bitcoin Public Key error: {0}")]
     PublicKey(#[from] bitcoin::key::ParsePublicKeyError),
+
+    /// all errors originating from dealing with private secp256k1 keys
+    #[error("External Bitcoin Private Key error: {0}")]
+    PrivateKey(#[from] bitcoin::key::FromWifError),
 }
 
 #[cfg(test)]
@@ -43,6 +47,8 @@ pub trait BitcoinClientApi: Send + Sync {
     fn get_address_to_pay(&self, bill_public_key: &str, holder_public_key: &str) -> Result<String>;
 
     fn generate_link_to_pay(&self, address: &str, amount: u64, message: &str) -> String;
+
+    fn get_combined_private_key(&self, pkey: &str, pkey_to_combine: &str) -> Result<String>;
 }
 
 #[derive(Clone)]
@@ -135,6 +141,19 @@ impl BitcoinClientApi for BitcoinClient {
         //todo check what net we used
         let link = format!("bitcoin:{}?amount={}&message={}", address, amount, message);
         link
+    }
+
+    fn get_combined_private_key(&self, pkey: &str, pkey_to_combine: &str) -> Result<String> {
+        let private_key_bill = bitcoin::PrivateKey::from_str(pkey).map_err(Error::from)?;
+
+        let private_key_bill_holder =
+            bitcoin::PrivateKey::from_str(pkey_to_combine).map_err(Error::from)?;
+
+        let private_key_bill = private_key_bill
+            .inner
+            .add_tweak(&Scalar::from(private_key_bill_holder.inner))
+            .map_err(Error::from)?;
+        Ok(bitcoin::PrivateKey::new(private_key_bill, CONFIG.bitcoin_network()).to_string())
     }
 }
 

@@ -80,60 +80,6 @@ async fn handle_input_line(dht_client: &mut Client, line: String) {
             };
         }
 
-        Some("GET_BILL") => {
-            let name: String = {
-                match args.next() {
-                    Some(name) => String::from(name),
-                    None => {
-                        error!("Expected bill name.");
-                        return;
-                    }
-                }
-            };
-            if let Err(e) = dht_client.get_bill(&name).await {
-                error!("Get Bill failed for {name}: {e}");
-            };
-        }
-
-        Some("GET_BILL_ATTACHMENT") => {
-            let name: String = {
-                match args.next() {
-                    Some(name) => String::from(name),
-                    None => {
-                        error!("Expected bill name.");
-                        return;
-                    }
-                }
-            };
-            let file_name: String = {
-                match args.next() {
-                    Some(file_name) => String::from(file_name),
-                    None => {
-                        error!("Expected file name.");
-                        return;
-                    }
-                }
-            };
-            if let Err(e) = dht_client.get_bill_attachment(&name, &file_name).await {
-                error!("Get Bill Attachment failed for {name}: {e}");
-            }
-        }
-
-        Some("GET_KEY") => {
-            let name: String = {
-                match args.next() {
-                    Some(name) => String::from(name),
-                    None => {
-                        error!("Expected bill name.");
-                        return;
-                    }
-                }
-            };
-            if let Err(e) = dht_client.get_key(&name).await {
-                error!("Get Bill Keys failed for {name}: {e}");
-            }
-        }
-
         Some("PUT_RECORD") => {
             let key = {
                 match args.next() {
@@ -256,9 +202,24 @@ async fn handle_input_line(dht_client: &mut Client, line: String) {
             }
         }
 
+        Some("GET_COMPANY_PROVIDERS") => {
+            let key = {
+                match args.next() {
+                    Some(key) => String::from(key),
+                    None => {
+                        error!("Expected key");
+                        return;
+                    }
+                }
+            };
+            if let Err(e) = dht_client.get_company_providers(&key).await {
+                error!("Could not get company providers for {key}: {e}");
+            }
+        }
+
         _ => {
             error!(
-                "expected GET_BILL, GET_KEY, GET_BILL_ATTACHMENT, PUT, SEND_MESSAGE, SUBSCRIBE_TO_BILL, SUBSCRIBE_TO_COMPANY, GET_RECORD, PUT_RECORD, START_PROVIDING_BILL, START_PROVIDING_COMPANY or GET_PROVIDERS."
+                "expected PUT, SEND_MESSAGE, SUBSCRIBE_TO_BILL, SUBSCRIBE_TO_COMPANY, GET_RECORD, PUT_RECORD, START_PROVIDING_BILL, START_PROVIDING_COMPANY, GET_COMPANY_PROVIDERS or GET_BILL_PROVIDERS."
             );
         }
     }
