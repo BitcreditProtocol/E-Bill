@@ -9,6 +9,12 @@ pub mod test {
         }
     }
 
+    pub const TEST_PUB_KEY_SECP: &str =
+        "02295fb5f4eeb2f21e01eaf3a2d9a3be10f39db870d28f02146130317973a40ac0";
+
+    pub const TEST_PRIVATE_KEY_SECP: &str =
+        "d1ff7427912d3b81743d3b67ffa1e65df2156d3dab257316cbc8d0f35eeeabe9";
+
     pub const TEST_PUB_KEY: &str = r#"
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAubhgUJO9PWBZK2CfqSJr

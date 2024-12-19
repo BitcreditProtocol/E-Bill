@@ -137,7 +137,7 @@ pub struct UploadFilesResponse {
     pub file_upload_id: String,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(crate = "rocket::serde")]
 pub struct File {
     pub name: String,

@@ -1576,6 +1576,8 @@ mod test {
                 CompanyKeys {
                     private_key: TEST_PRIVATE_KEY.to_string(),
                     public_key: TEST_PUB_KEY.to_string(),
+                    rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                    rsa_public_key: TEST_PUB_KEY.to_string(),
                 },
             ),
         )
@@ -2401,6 +2403,8 @@ mod test {
             Ok(CompanyKeys {
                 public_key: TEST_PUB_KEY.to_string(),
                 private_key: TEST_PRIVATE_KEY.to_string(),
+                rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                rsa_public_key: TEST_PUB_KEY.to_string(),
             })
         });
 
@@ -2450,6 +2454,8 @@ mod test {
             Ok(CompanyKeys {
                 public_key: TEST_PUB_KEY.to_string(),
                 private_key: TEST_PRIVATE_KEY.to_string(),
+                rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                rsa_public_key: TEST_PUB_KEY.to_string(),
             })
         });
 

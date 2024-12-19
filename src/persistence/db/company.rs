@@ -133,6 +133,8 @@ pub struct CompanyKeysDb {
     pub id: Option<Thing>,
     pub public_key: String,
     pub private_key: String,
+    pub rsa_public_key: String,
+    pub rsa_private_key: String,
 }
 
 impl From<CompanyDb> for Company {
@@ -178,6 +180,8 @@ impl From<CompanyKeysDb> for CompanyKeys {
         Self {
             public_key: value.public_key,
             private_key: value.private_key,
+            rsa_public_key: value.rsa_public_key,
+            rsa_private_key: value.rsa_private_key,
         }
     }
 }
@@ -188,6 +192,8 @@ impl From<&CompanyKeys> for CompanyKeysDb {
             id: None,
             public_key: value.public_key.clone(),
             private_key: value.private_key.clone(),
+            rsa_public_key: value.rsa_public_key.clone(),
+            rsa_private_key: value.rsa_private_key.clone(),
         }
     }
 }
@@ -255,6 +261,8 @@ mod tests {
                 &CompanyKeys {
                     private_key: TEST_PRIVATE_KEY.to_string(),
                     public_key: TEST_PUB_KEY.to_string(),
+                    rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                    rsa_public_key: TEST_PUB_KEY.to_string(),
                 },
             )
             .await
@@ -286,6 +294,8 @@ mod tests {
                 &CompanyKeys {
                     private_key: TEST_PRIVATE_KEY.to_string(),
                     public_key: TEST_PUB_KEY.to_string(),
+                    rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                    rsa_public_key: TEST_PUB_KEY.to_string(),
                 },
             )
             .await
@@ -304,6 +314,8 @@ mod tests {
                 &CompanyKeys {
                     private_key: TEST_PRIVATE_KEY.to_string(),
                     public_key: TEST_PUB_KEY.to_string(),
+                    rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                    rsa_public_key: TEST_PUB_KEY.to_string(),
                 },
             )
             .await
@@ -338,6 +350,8 @@ mod tests {
                 &CompanyKeys {
                     private_key: "privkey".to_string(),
                     public_key: "pubkey".to_string(),
+                    rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                    rsa_public_key: TEST_PUB_KEY.to_string(),
                 },
             )
             .await
@@ -352,6 +366,8 @@ mod tests {
                 &CompanyKeys {
                     private_key: TEST_PRIVATE_KEY.to_string(),
                     public_key: TEST_PUB_KEY.to_string(),
+                    rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                    rsa_public_key: TEST_PUB_KEY.to_string(),
                 },
             )
             .await
