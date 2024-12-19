@@ -175,9 +175,13 @@ impl CompanyServiceApi for CompanyService {
         let (private_key, public_key) = util::create_bitcoin_keypair(CONFIG.bitcoin_network());
         let id = util::sha256_hash(&public_key.to_bytes());
 
+        let (rsa_private_key, rsa_public_key) = util::rsa::create_rsa_key_pair()?;
+
         let company_keys = CompanyKeys {
             private_key: private_key.to_string(),
             public_key: public_key.to_string(),
+            rsa_private_key,
+            rsa_public_key,
         };
 
         let full_identity = self.identity_store.get_full().await?;
@@ -521,6 +525,8 @@ impl From<CompanyToReturn> for CompanyPublicData {
 pub struct CompanyKeys {
     pub private_key: String,
     pub public_key: String,
+    pub rsa_private_key: String,
+    pub rsa_public_key: String,
 }
 
 #[cfg(test)]
@@ -595,6 +601,8 @@ mod test {
                 CompanyKeys {
                     private_key: TEST_PRIVATE_KEY.to_string(),
                     public_key: TEST_PUB_KEY.to_string(),
+                    rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                    rsa_public_key: TEST_PUB_KEY.to_string(),
                 },
             ),
         )
