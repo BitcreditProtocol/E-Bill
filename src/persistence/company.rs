@@ -1,3 +1,4 @@
+use crate::blockchain::company::CompanyBlock;
 use crate::service::company_service::{Company, CompanyKeys};
 use std::collections::HashMap;
 
@@ -33,6 +34,15 @@ pub trait CompanyStoreApi: Send + Sync {
 
     /// Gets the key pair for the given company id
     async fn get_key_pair(&self, id: &str) -> Result<CompanyKeys>;
+}
+
+#[cfg_attr(test, automock)]
+#[async_trait]
+pub trait CompanyChainStoreApi: Send + Sync {
+    /// Gets the latest block of the chain
+    async fn get_latest_block(&self, id: &str) -> Result<CompanyBlock>;
+    /// Adds the block to the chain
+    async fn add_block(&self, id: &str, block: &CompanyBlock) -> Result<()>;
 }
 
 pub fn company_from_bytes(bytes: &[u8]) -> Result<Company> {

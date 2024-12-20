@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use super::{base58_decode, base58_encode};
 use bitcoin::{
-    secp256k1::{self, ecdsa::Signature, Keypair, SecretKey},
+    secp256k1::{self, schnorr::Signature, Keypair, SecretKey},
     Network,
 };
 use nostr_sdk::ToBech32;
@@ -138,20 +138,20 @@ fn load_keypair(private_key: &str) -> Result<Keypair> {
 pub fn signature(hash: &str, private_key: &str) -> Result<String> {
     // create a signing context
     let secp = Secp256k1::signing_only();
-    let secret_key = SecretKey::from_str(private_key)?;
+    let key_pair = load_keypair(private_key)?;
     let msg = Message::from_digest_slice(&base58_decode(hash)?)?;
-    let signature = secp.sign_ecdsa(&msg, &secret_key);
-    Ok(base58_encode(&signature.serialize_compact()))
+    let signature = secp.sign_schnorr(&msg, &key_pair);
+    Ok(base58_encode(&signature.serialize()))
 }
 
 pub fn verify(hash: &str, signature: &str, public_key: &str) -> Result<bool> {
     // create a verification context
     let secp = Secp256k1::verification_only();
-    let pub_key = PublicKey::from_str(public_key)?;
+    let (pub_key, _) = PublicKey::from_str(public_key)?.x_only_public_key();
     let msg = Message::from_digest_slice(&base58_decode(hash)?)?;
-    let decoded_signature = Signature::from_compact(&base58_decode(signature)?)?;
+    let decoded_signature = Signature::from_slice(&base58_decode(signature)?)?;
     Ok(secp
-        .verify_ecdsa(&msg, &decoded_signature, &pub_key)
+        .verify_schnorr(&decoded_signature, &msg, &pub_key)
         .is_ok())
 }
 

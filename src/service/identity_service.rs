@@ -8,7 +8,7 @@ use crate::{
 
 use crate::blockchain::identity::{IdentityBlock, IdentityBlockchain, IdentityUpdateBlockData};
 use crate::blockchain::Blockchain;
-use crate::persistence::identity_chain::IdentityChainStoreApi;
+use crate::persistence::identity::IdentityChainStoreApi;
 use async_trait::async_trait;
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use libp2p::PeerId;
@@ -276,8 +276,8 @@ mod test {
     use crate::{
         persistence::{
             self, bill::MockBillStoreApi, company::MockCompanyStoreApi,
-            file_upload::MockFileUploadStoreApi, identity::MockIdentityStoreApi,
-            identity_chain::MockIdentityChainStoreApi,
+            file_upload::MockFileUploadStoreApi, identity::MockIdentityChainStoreApi,
+            identity::MockIdentityStoreApi,
         },
         tests::test::TEST_PUB_KEY,
     };

@@ -56,6 +56,7 @@ pub const DB_PUBLIC_KEY: &str = "public_key";
 pub const DB_DATA: &str = "data";
 pub const DB_OP_CODE: &str = "op_code";
 
+pub const DB_COMPANY_ID: &str = "company_id";
 pub const DB_NAME: &str = "name";
 pub const DB_NPUB: &str = "npub";
 pub const DB_NEW_NAME: &str = "new_name";

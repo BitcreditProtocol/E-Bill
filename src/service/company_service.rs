@@ -1,11 +1,13 @@
 use super::Result;
+use crate::blockchain::company::{CompanyBlockchain, CompanyCreateBlockData};
 use crate::blockchain::identity::{
     IdentityAddSignatoryBlockData, IdentityBlock, IdentityCreateCompanyBlockData,
     IdentityRemoveSignatoryBlockData,
 };
-use crate::persistence::company::CompanyStoreApi;
-use crate::persistence::identity_chain::IdentityChainStoreApi;
-use crate::CONFIG;
+use crate::blockchain::Blockchain;
+use crate::persistence::company::{CompanyChainStoreApi, CompanyStoreApi};
+use crate::persistence::identity::IdentityChainStoreApi;
+use crate::util::BcrKeys;
 use crate::{
     error,
     persistence::{file_upload::FileUploadStoreApi, identity::IdentityStoreApi, ContactStoreApi},
@@ -94,6 +96,7 @@ pub struct CompanyService {
     identity_store: Arc<dyn IdentityStoreApi>,
     contact_store: Arc<dyn ContactStoreApi>,
     identity_blockchain_store: Arc<dyn IdentityChainStoreApi>,
+    company_blockchain_store: Arc<dyn CompanyChainStoreApi>,
 }
 
 impl CompanyService {
@@ -103,6 +106,7 @@ impl CompanyService {
         identity_store: Arc<dyn IdentityStoreApi>,
         contact_store: Arc<dyn ContactStoreApi>,
         identity_blockchain_store: Arc<dyn IdentityChainStoreApi>,
+        company_blockchain_store: Arc<dyn CompanyChainStoreApi>,
     ) -> Self {
         Self {
             store,
@@ -110,6 +114,7 @@ impl CompanyService {
             identity_store,
             contact_store,
             identity_blockchain_store,
+            company_blockchain_store,
         }
     }
 
@@ -172,12 +177,19 @@ impl CompanyServiceApi for CompanyService {
         logo_file_upload_id: Option<String>,
         timestamp: i64,
     ) -> Result<CompanyToReturn> {
-        let (private_key, public_key) = util::create_bitcoin_keypair(CONFIG.bitcoin_network());
-        let id = util::sha256_hash(&public_key.to_bytes());
+        let keys = BcrKeys::new();
+        let private_key = keys.get_private_key_string();
+        let public_key = keys.get_public_key();
+
+        let id = util::sha256_hash(public_key.as_bytes());
+
+        let (rsa_private_key, rsa_public_key) = util::rsa::create_rsa_key_pair()?;
 
         let company_keys = CompanyKeys {
             private_key: private_key.to_string(),
-            public_key: public_key.to_string(),
+            public_key: public_key.clone(),
+            rsa_private_key,
+            rsa_public_key,
         };
 
         let full_identity = self.identity_store.get_full().await?;
@@ -213,13 +225,27 @@ impl CompanyServiceApi for CompanyService {
         };
         self.store.insert(&id, &company).await?;
 
+        let company_to_return =
+            CompanyToReturn::from(id.clone(), company.clone(), company_keys.clone());
+        let company_chain = CompanyBlockchain::new(
+            &CompanyCreateBlockData::from(company_to_return),
+            &full_identity.node_id.to_string(),
+            &full_identity.key_pair,
+            &company_keys,
+            &full_identity.identity.public_key_pem,
+            timestamp,
+        )?;
+        let create_company_block = company_chain.get_first_block();
+        self.company_blockchain_store
+            .add_block(&id, create_company_block)
+            .await?;
+
         let previous_block = self.identity_blockchain_store.get_latest_block().await?;
         let new_block = IdentityBlock::create_block_for_create_company(
             &previous_block,
             &IdentityCreateCompanyBlockData {
                 company_id: id.clone(),
-                block_hash: "TODO_COMPANY_BLOCK_HASH".to_string(), // TODO: use actual hash once we
-                                                                   // have company chain
+                block_hash: create_company_block.hash.clone(),
             },
             &full_identity.key_pair,
             &full_identity.identity.public_key_pem,
@@ -448,6 +474,7 @@ pub struct CompanyToReturn {
     pub logo_file: Option<File>,
     pub signatories: Vec<String>,
     pub public_key: String,
+    pub rsa_public_key: String,
 }
 
 impl CompanyToReturn {
@@ -465,6 +492,7 @@ impl CompanyToReturn {
             logo_file: company.logo_file,
             signatories: company.signatories,
             public_key: company_keys.public_key,
+            rsa_public_key: company_keys.rsa_public_key,
         }
     }
 }
@@ -517,10 +545,12 @@ impl From<CompanyToReturn> for CompanyPublicData {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
 pub struct CompanyKeys {
     pub private_key: String,
     pub public_key: String,
+    pub rsa_private_key: String,
+    pub rsa_public_key: String,
 }
 
 #[cfg(test)]
@@ -529,9 +559,11 @@ mod test {
     use crate::{
         blockchain::{identity::IdentityBlockchain, Blockchain},
         persistence::{
-            self, company::MockCompanyStoreApi, contact::MockContactStoreApi,
-            file_upload::MockFileUploadStoreApi, identity::MockIdentityStoreApi,
-            identity_chain::MockIdentityChainStoreApi,
+            self,
+            company::{MockCompanyChainStoreApi, MockCompanyStoreApi},
+            contact::MockContactStoreApi,
+            file_upload::MockFileUploadStoreApi,
+            identity::{MockIdentityChainStoreApi, MockIdentityStoreApi},
         },
         service::{
             contact_service::IdentityPublicData,
@@ -550,6 +582,7 @@ mod test {
         mock_identity_storage: MockIdentityStoreApi,
         mock_contacts_storage: MockContactStoreApi,
         mock_identity_chain_storage: MockIdentityChainStoreApi,
+        mock_company_chain_storage: MockCompanyChainStoreApi,
     ) -> CompanyService {
         CompanyService::new(
             Arc::new(mock_storage),
@@ -557,6 +590,7 @@ mod test {
             Arc::new(mock_identity_storage),
             Arc::new(mock_contacts_storage),
             Arc::new(mock_identity_chain_storage),
+            Arc::new(mock_company_chain_storage),
         )
     }
 
@@ -566,6 +600,7 @@ mod test {
         MockIdentityStoreApi,
         MockContactStoreApi,
         MockIdentityChainStoreApi,
+        MockCompanyChainStoreApi,
     ) {
         (
             MockCompanyStoreApi::new(),
@@ -573,6 +608,7 @@ mod test {
             MockIdentityStoreApi::new(),
             MockContactStoreApi::new(),
             MockIdentityChainStoreApi::new(),
+            MockCompanyChainStoreApi::new(),
         )
     }
 
@@ -595,6 +631,8 @@ mod test {
                 CompanyKeys {
                     private_key: TEST_PRIVATE_KEY.to_string(),
                     public_key: TEST_PUB_KEY.to_string(),
+                    rsa_private_key: TEST_PRIVATE_KEY.to_string(),
+                    rsa_public_key: TEST_PUB_KEY.to_string(),
                 },
             ),
         )
@@ -602,8 +640,14 @@ mod test {
 
     #[tokio::test]
     async fn get_list_of_companies_baseline() {
-        let (mut storage, file_upload_store, identity_store, contact_store, identity_chain_store) =
-            get_storages();
+        let (
+            mut storage,
+            file_upload_store,
+            identity_store,
+            contact_store,
+            identity_chain_store,
+            company_chain_store,
+        ) = get_storages();
         storage.expect_get_all().returning(|| {
             let mut map = HashMap::new();
             let company_data = get_baseline_company_data();
@@ -616,6 +660,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
 
         let res = service.get_list_of_companies().await;
@@ -630,8 +675,14 @@ mod test {
 
     #[tokio::test]
     async fn get_list_of_companies_propagates_persistence_errors() {
-        let (mut storage, file_upload_store, identity_store, contact_store, identity_chain_store) =
-            get_storages();
+        let (
+            mut storage,
+            file_upload_store,
+            identity_store,
+            contact_store,
+            identity_chain_store,
+            company_chain_store,
+        ) = get_storages();
         storage.expect_get_all().returning(|| {
             Err(persistence::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -644,6 +695,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service.get_list_of_companies().await;
         assert!(res.is_err());
@@ -651,8 +703,14 @@ mod test {
 
     #[tokio::test]
     async fn get_company_by_id_baseline() {
-        let (mut storage, file_upload_store, identity_store, contact_store, identity_chain_store) =
-            get_storages();
+        let (
+            mut storage,
+            file_upload_store,
+            identity_store,
+            contact_store,
+            identity_chain_store,
+            company_chain_store,
+        ) = get_storages();
         storage.expect_exists().returning(|_| true);
         storage
             .expect_get()
@@ -666,6 +724,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
 
         let res = service.get_company_by_id("some_id").await;
@@ -676,8 +735,14 @@ mod test {
 
     #[tokio::test]
     async fn get_company_by_id_fails_if_company_doesnt_exist() {
-        let (mut storage, file_upload_store, identity_store, contact_store, identity_chain_store) =
-            get_storages();
+        let (
+            mut storage,
+            file_upload_store,
+            identity_store,
+            contact_store,
+            identity_chain_store,
+            company_chain_store,
+        ) = get_storages();
         storage.expect_exists().returning(|_| false);
         let service = get_service(
             storage,
@@ -685,6 +750,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service.get_company_by_id("some_id").await;
         assert!(res.is_err());
@@ -692,8 +758,14 @@ mod test {
 
     #[tokio::test]
     async fn get_company_by_id_propagates_persistence_errors() {
-        let (mut storage, file_upload_store, identity_store, contact_store, identity_chain_store) =
-            get_storages();
+        let (
+            mut storage,
+            file_upload_store,
+            identity_store,
+            contact_store,
+            identity_chain_store,
+            company_chain_store,
+        ) = get_storages();
         storage.expect_exists().returning(|_| true);
         storage.expect_get().returning(|_| {
             Err(persistence::Error::Io(std::io::Error::new(
@@ -707,6 +779,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service.get_company_by_id("some_id").await;
         assert!(res.is_err());
@@ -720,7 +793,11 @@ mod test {
             mut identity_store,
             contact_store,
             mut identity_chain_store,
+            mut company_chain_store,
         ) = get_storages();
+        company_chain_store
+            .expect_add_block()
+            .returning(|_, _| Ok(()));
         file_upload_store
             .expect_save_attached_file()
             .returning(|_, _, _| Ok(()));
@@ -772,6 +849,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
 
         let res = service
@@ -815,6 +893,7 @@ mod test {
             mut identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_save_key_pair().returning(|_, _| Ok(()));
         storage.expect_insert().returning(|_, _| {
@@ -838,6 +917,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .create_company(
@@ -865,6 +945,7 @@ mod test {
             mut identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_get().returning(move |_| {
             let mut data = get_baseline_company_data().1 .0;
@@ -901,6 +982,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .edit_company(
@@ -916,8 +998,14 @@ mod test {
 
     #[tokio::test]
     async fn edit_company_fails_if_company_doesnt_exist() {
-        let (mut storage, file_upload_store, identity_store, contact_store, identity_chain_store) =
-            get_storages();
+        let (
+            mut storage,
+            file_upload_store,
+            identity_store,
+            contact_store,
+            identity_chain_store,
+            company_chain_store,
+        ) = get_storages();
         storage.expect_exists().returning(|_| false);
         let service = get_service(
             storage,
@@ -925,6 +1013,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .edit_company(
@@ -947,6 +1036,7 @@ mod test {
             mut identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| false);
         storage.expect_get().returning(|_| {
@@ -963,6 +1053,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .edit_company(
@@ -984,6 +1075,7 @@ mod test {
             mut identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         let node_id = PeerId::random();
         storage.expect_get().returning(move |_| {
@@ -1012,6 +1104,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .edit_company(
@@ -1033,6 +1126,7 @@ mod test {
             mut identity_store,
             mut contact_store,
             mut identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| true);
         storage.expect_update().returning(|_, _| Ok(()));
@@ -1080,6 +1174,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .add_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1095,6 +1190,7 @@ mod test {
             mut identity_store,
             mut contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| true);
         contact_store
@@ -1115,6 +1211,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .add_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1130,6 +1227,7 @@ mod test {
             mut identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| false);
         identity_store.expect_get_full().returning(|| {
@@ -1147,6 +1245,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .add_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1162,6 +1261,7 @@ mod test {
             mut identity_store,
             mut contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| true);
         identity_store.expect_get_full().returning(|| {
@@ -1191,6 +1291,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .add_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1206,6 +1307,7 @@ mod test {
             mut identity_store,
             mut contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| true);
         identity_store.expect_get_full().returning(|| {
@@ -1239,6 +1341,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .add_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1254,6 +1357,7 @@ mod test {
             mut identity_store,
             contact_store,
             mut identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| true);
         storage.expect_get().returning(|_| {
@@ -1298,6 +1402,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1313,6 +1418,7 @@ mod test {
             mut identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| false);
         identity_store.expect_get_full().returning(|| {
@@ -1330,6 +1436,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1346,6 +1453,7 @@ mod test {
             mut identity_store,
             contact_store,
             mut identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         file_upload_store
             .expect_delete_attached_files()
@@ -1393,6 +1501,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .remove_signatory("some_id", node_id.to_string(), 1731593928)
@@ -1408,6 +1517,7 @@ mod test {
             mut identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| true);
         storage.expect_get().returning(|_| {
@@ -1432,6 +1542,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1447,6 +1558,7 @@ mod test {
             mut identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| true);
         storage.expect_get().returning(|_| {
@@ -1469,6 +1581,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1484,6 +1597,7 @@ mod test {
             mut identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         ) = get_storages();
         storage.expect_exists().returning(|_| true);
         storage.expect_get().returning(|_| {
@@ -1514,6 +1628,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
         let res = service
             .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
@@ -1529,8 +1644,14 @@ mod test {
         let expected_encrypted =
             util::rsa::encrypt_bytes_with_public_key(&file_bytes, TEST_PUB_KEY).unwrap();
 
-        let (storage, mut file_upload_store, identity_store, contact_store, identity_chain_store) =
-            get_storages();
+        let (
+            storage,
+            mut file_upload_store,
+            identity_store,
+            contact_store,
+            identity_chain_store,
+            company_chain_store,
+        ) = get_storages();
         file_upload_store
             .expect_save_attached_file()
             .with(always(), eq(company_id), eq(file_name))
@@ -1548,6 +1669,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
 
         let file = service
@@ -1569,8 +1691,14 @@ mod test {
 
     #[tokio::test]
     async fn save_encrypt_propagates_write_file_error() {
-        let (storage, mut file_upload_store, identity_store, contact_store, identity_chain_store) =
-            get_storages();
+        let (
+            storage,
+            mut file_upload_store,
+            identity_store,
+            contact_store,
+            identity_chain_store,
+            company_chain_store,
+        ) = get_storages();
         file_upload_store
             .expect_save_attached_file()
             .returning(|_, _, _| {
@@ -1585,6 +1713,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
 
         assert!(service
@@ -1595,8 +1724,14 @@ mod test {
 
     #[tokio::test]
     async fn open_decrypt_propagates_read_file_error() {
-        let (storage, mut file_upload_store, identity_store, contact_store, identity_chain_store) =
-            get_storages();
+        let (
+            storage,
+            mut file_upload_store,
+            identity_store,
+            contact_store,
+            identity_chain_store,
+            company_chain_store,
+        ) = get_storages();
         file_upload_store
             .expect_open_attached_file()
             .returning(|_, _| {
@@ -1611,6 +1746,7 @@ mod test {
             identity_store,
             contact_store,
             identity_chain_store,
+            company_chain_store,
         );
 
         assert!(service

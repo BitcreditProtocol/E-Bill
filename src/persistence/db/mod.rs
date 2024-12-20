@@ -6,6 +6,7 @@ use surrealdb::{
 };
 
 pub mod company;
+pub mod company_chain;
 pub mod contact;
 pub mod identity;
 pub mod identity_chain;

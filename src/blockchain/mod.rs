@@ -8,6 +8,7 @@ use log::{error, warn};
 use std::string::FromUtf8Error;
 
 pub mod bill;
+pub mod company;
 pub mod identity;
 
 /// Generic result type
