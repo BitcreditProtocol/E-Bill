@@ -215,7 +215,7 @@ pub trait Blockchain {
         self.blocks()
             .iter()
             .filter(|block| block.op_code() == &op_code)
-            .last()
+            .next_back()
             .unwrap_or_else(|| self.get_first_block())
     }
 

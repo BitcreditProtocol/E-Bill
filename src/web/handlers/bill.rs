@@ -3,6 +3,7 @@ use crate::blockchain::Blockchain;
 use crate::external::mint::{accept_mint_bitcredit, request_to_mint_bitcredit};
 use crate::service::{contact_service::IdentityPublicData, Result};
 use crate::util::file::{detect_content_type_for_bytes, UploadFileHandler};
+use crate::util::BcrKeys;
 use crate::web::data::{
     AcceptBitcreditBillPayload, AcceptMintBitcreditBillPayload, BitcreditBillPayload,
     EndorseBitcreditBillPayload, MintBitcreditBillPayload, RequestToAcceptBitcreditBillPayload,
@@ -171,7 +172,26 @@ pub async fn issue_bill(
         return Err(service::Error::PreconditionFailed);
     }
 
-    let drawer = state.identity_service.get_full_identity().await?;
+    let current_identity = state.get_current_identity().await;
+    let (drawer_public_data, drawer_keys) = match current_identity.company {
+        None => {
+            let identity = state.identity_service.get_full_identity().await?;
+            (
+                IdentityPublicData::new(identity.identity),
+                identity.key_pair,
+            )
+        }
+        Some(company_node_id) => {
+            let (company, keys) = state
+                .company_service
+                .get_company_and_keys_by_id(&company_node_id)
+                .await?;
+            (
+                IdentityPublicData::from(company),
+                BcrKeys::from_private_key(&keys.private_key)?,
+            )
+        }
+    };
 
     let (public_data_drawee, public_data_payee) =
         match (bill_payload.drawer_is_payee, bill_payload.drawer_is_drawee) {
@@ -196,13 +216,13 @@ pub async fn issue_bill(
                     }
                 };
 
-                let public_data_payee = IdentityPublicData::new(drawer.identity.clone());
+                let public_data_payee = drawer_public_data.clone();
 
                 (public_data_drawee, public_data_payee)
             }
             // Drawer is drawee
             (false, true) => {
-                let public_data_drawee = IdentityPublicData::new(drawer.identity.clone());
+                let public_data_drawee = drawer_public_data.clone();
 
                 let public_data_payee = match state
                     .contact_service
@@ -267,7 +287,8 @@ pub async fn issue_bill(
             bill_payload.place_of_payment.to_owned(),
             bill_payload.maturity_date.to_owned(),
             bill_payload.currency_code.to_owned(),
-            drawer,
+            drawer_public_data,
+            drawer_keys,
             bill_payload.language.to_owned(),
             public_data_drawee,
             public_data_payee,

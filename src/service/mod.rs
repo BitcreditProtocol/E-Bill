@@ -28,7 +28,7 @@ use rocket::{http::Status, response::Responder};
 use std::io::Cursor;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, RwLock};
 
 /// Generic result type
 pub type Result<T> = std::result::Result<T, Error>;
@@ -147,7 +147,6 @@ fn build_validation_response<'o>(msg: String) -> rocket::response::Result<'o> {
 }
 
 /// A dependency container for all services that are used by the application
-#[derive(Clone)]
 pub struct ServiceContext {
     pub config: Config,
     dht_client: Client,
@@ -160,6 +159,15 @@ pub struct ServiceContext {
     pub shutdown_sender: broadcast::Sender<bool>,
     pub notification_service: Arc<dyn NotificationServiceApi>,
     pub push_service: Arc<dyn PushApi>,
+    pub current_identity: RwLock<SwitchIdentityState>,
+}
+
+/// A structure describing the currently selected identity between the personal and multiple
+/// possible company identities
+#[derive(Clone)]
+pub struct SwitchIdentityState {
+    pub personal: String,
+    pub company: Option<String>,
 }
 
 impl ServiceContext {
@@ -174,11 +182,27 @@ impl ServiceContext {
             error!("Error sending shutdown event: {e}");
         }
     }
+
+    pub async fn get_current_identity(&self) -> SwitchIdentityState {
+        self.current_identity.read().await.clone()
+    }
+
+    pub async fn set_current_personal_identity(&self, node_id: String) {
+        let mut current_identity = self.current_identity.write().await;
+        current_identity.personal = node_id;
+        current_identity.company = None;
+    }
+
+    pub async fn set_current_company_identity(&self, node_id: String) {
+        let mut current_identity = self.current_identity.write().await;
+        current_identity.company = Some(node_id);
+    }
 }
 
 /// building up the service context dependencies here for now. Later we can modularize this
 /// and make it more flexible.
 pub async fn create_service_context(
+    local_node_id: &str,
     config: Config,
     client: Client,
     shutdown_sender: broadcast::Sender<bool>,
@@ -240,5 +264,9 @@ pub async fn create_service_context(
         shutdown_sender,
         notification_service,
         push_service,
+        current_identity: RwLock::new(SwitchIdentityState {
+            personal: local_node_id.to_owned(),
+            company: None,
+        }),
     })
 }

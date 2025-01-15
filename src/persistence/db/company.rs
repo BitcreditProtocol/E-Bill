@@ -43,11 +43,11 @@ impl CompanyStoreApi for SurrealCompanyStore {
         let company_keys: Vec<CompanyKeysDb> = self.db.select(Self::KEYS_TABLE).await?;
         let companies_map: HashMap<String, CompanyDb> = companies
             .into_iter()
-            .filter_map(|company| company.id.clone().map(|id| (id.id.to_string(), company)))
+            .map(|company| (company.id.id.to_raw(), company))
             .collect();
         let companies_keys_map: HashMap<String, CompanyKeysDb> = company_keys
             .into_iter()
-            .filter_map(|keys| keys.id.clone().map(|id| (id.id.to_string(), keys)))
+            .filter_map(|keys| keys.id.clone().map(|id| (id.id.to_raw(), keys)))
             .collect();
         let combined: HashMap<String, (Company, CompanyKeys)> = companies_map
             .into_iter()
@@ -60,7 +60,8 @@ impl CompanyStoreApi for SurrealCompanyStore {
         Ok(combined)
     }
 
-    async fn insert(&self, id: &str, data: &Company) -> Result<()> {
+    async fn insert(&self, data: &Company) -> Result<()> {
+        let id = data.id.to_owned();
         let entity: CompanyDb = data.into();
         let _: Option<CompanyDb> = self
             .db
@@ -107,8 +108,7 @@ impl CompanyStoreApi for SurrealCompanyStore {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompanyDb {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<Thing>,
+    pub id: Thing,
     pub name: String,
     pub country_of_registration: String,
     pub city_of_registration: String,
@@ -138,6 +138,7 @@ pub struct CompanyKeysDb {
 impl From<CompanyDb> for Company {
     fn from(value: CompanyDb) -> Self {
         Self {
+            id: value.id.id.to_raw(),
             name: value.name,
             country_of_registration: value.country_of_registration,
             city_of_registration: value.city_of_registration,
@@ -155,7 +156,7 @@ impl From<CompanyDb> for Company {
 impl From<&Company> for CompanyDb {
     fn from(value: &Company) -> Self {
         Self {
-            id: None,
+            id: (SurrealCompanyStore::DATA_TABLE.to_owned(), value.id.clone()).into(),
             name: value.name.clone(),
             country_of_registration: value.country_of_registration.clone(),
             city_of_registration: value.city_of_registration.clone(),
@@ -216,6 +217,7 @@ mod tests {
     use crate::{
         persistence::db::get_memory_db,
         tests::test::{TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP},
+        util::BcrKeys,
     };
 
     async fn get_store() -> SurrealCompanyStore {
@@ -227,6 +229,7 @@ mod tests {
 
     fn get_baseline_company() -> Company {
         Company {
+            id: TEST_PUB_KEY_SECP.to_owned(),
             name: "some_name".to_string(),
             country_of_registration: "AT".to_string(),
             city_of_registration: "Vienna".to_string(),
@@ -243,15 +246,12 @@ mod tests {
     #[tokio::test]
     async fn test_exists() {
         let store = get_store().await;
-        assert!(!store.exists("some_id").await);
-        store
-            .insert("some_id", &get_baseline_company())
-            .await
-            .unwrap();
-        assert!(!store.exists("some_id").await);
+        assert!(!store.exists(TEST_PUB_KEY_SECP).await);
+        store.insert(&get_baseline_company()).await.unwrap();
+        assert!(!store.exists(TEST_PUB_KEY_SECP).await);
         store
             .save_key_pair(
-                "some_id",
+                TEST_PUB_KEY_SECP,
                 &CompanyKeys {
                     private_key: TEST_PRIVATE_KEY_SECP.to_string(),
                     public_key: TEST_PUB_KEY_SECP.to_string(),
@@ -259,30 +259,24 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(store.exists("some_id").await)
+        assert!(store.exists(TEST_PUB_KEY_SECP).await)
     }
 
     #[tokio::test]
     async fn test_get() {
         let store = get_store().await;
-        store
-            .insert("some_id", &get_baseline_company())
-            .await
-            .unwrap();
-        let company = store.get("some_id").await.unwrap();
+        store.insert(&get_baseline_company()).await.unwrap();
+        let company = store.get(TEST_PUB_KEY_SECP).await.unwrap();
         assert_eq!(company.name, "some_name".to_owned());
     }
 
     #[tokio::test]
     async fn test_remove() {
         let store = get_store().await;
-        store
-            .insert("some_id", &get_baseline_company())
-            .await
-            .unwrap();
+        store.insert(&get_baseline_company()).await.unwrap();
         store
             .save_key_pair(
-                "some_id",
+                TEST_PUB_KEY_SECP,
                 &CompanyKeys {
                     private_key: TEST_PRIVATE_KEY_SECP.to_string(),
                     public_key: TEST_PUB_KEY_SECP.to_string(),
@@ -290,9 +284,9 @@ mod tests {
             )
             .await
             .unwrap();
-        assert!(store.exists("some_id").await);
-        store.remove("some_id").await.unwrap();
-        assert!(!store.exists("some_id").await);
+        assert!(store.exists(TEST_PUB_KEY_SECP).await);
+        store.remove(TEST_PUB_KEY_SECP).await.unwrap();
+        assert!(!store.exists(TEST_PUB_KEY_SECP).await);
     }
 
     #[tokio::test]
@@ -300,7 +294,7 @@ mod tests {
         let store = get_store().await;
         store
             .save_key_pair(
-                "some_id",
+                TEST_PUB_KEY_SECP,
                 &CompanyKeys {
                     private_key: TEST_PRIVATE_KEY_SECP.to_string(),
                     public_key: TEST_PUB_KEY_SECP.to_string(),
@@ -308,21 +302,18 @@ mod tests {
             )
             .await
             .unwrap();
-        let company_keys = store.get_key_pair("some_id").await.unwrap();
+        let company_keys = store.get_key_pair(TEST_PUB_KEY_SECP).await.unwrap();
         assert_eq!(company_keys.public_key, TEST_PUB_KEY_SECP.to_string());
     }
 
     #[tokio::test]
     async fn test_update() {
         let store = get_store().await;
-        store
-            .insert("some_id", &get_baseline_company())
-            .await
-            .unwrap();
-        let mut company = store.get("some_id").await.unwrap();
+        store.insert(&get_baseline_company()).await.unwrap();
+        let mut company = store.get(TEST_PUB_KEY_SECP).await.unwrap();
         company.name = "some other company".to_string();
-        store.update("some_id", &company).await.unwrap();
-        let changed_company = store.get("some_id").await.unwrap();
+        store.update(TEST_PUB_KEY_SECP, &company).await.unwrap();
+        let changed_company = store.get(TEST_PUB_KEY_SECP).await.unwrap();
         assert_eq!(changed_company.name, "some other company".to_owned());
     }
 
@@ -331,24 +322,23 @@ mod tests {
         let store = get_store().await;
         let mut company = get_baseline_company();
         company.name = "first".to_string();
-        store.insert("some_id", &company).await.unwrap();
+        store.insert(&company).await.unwrap();
         store
             .save_key_pair(
-                "some_id",
+                TEST_PUB_KEY_SECP,
                 &CompanyKeys {
-                    private_key: "privkey".to_string(),
-                    public_key: "pubkey".to_string(),
+                    private_key: TEST_PRIVATE_KEY_SECP.to_owned(),
+                    public_key: TEST_PUB_KEY_SECP.to_owned(),
                 },
             )
             .await
             .unwrap();
-        store
-            .insert("some_other_id", &get_baseline_company())
-            .await
-            .unwrap();
+        let mut company2 = get_baseline_company();
+        company2.id = BcrKeys::new().get_public_key();
+        store.insert(&company2).await.unwrap();
         store
             .save_key_pair(
-                "some_other_id",
+                &company2.id,
                 &CompanyKeys {
                     private_key: TEST_PRIVATE_KEY_SECP.to_string(),
                     public_key: TEST_PUB_KEY_SECP.to_string(),
@@ -359,24 +349,24 @@ mod tests {
         let companies = store.get_all().await.unwrap();
         assert_eq!(companies.len(), 2);
         assert_eq!(
-            companies.get("some_id").as_ref().unwrap().0.name,
+            companies.get(TEST_PUB_KEY_SECP).as_ref().unwrap().0.name,
             "first".to_owned()
         );
         assert_eq!(
-            companies.get("some_id").as_ref().unwrap().1.public_key,
-            "pubkey".to_owned()
-        );
-        assert_eq!(
-            companies.get("some_other_id").as_ref().unwrap().0.name,
-            "some_name".to_owned()
-        );
-        assert_eq!(
             companies
-                .get("some_other_id")
+                .get(TEST_PUB_KEY_SECP)
                 .as_ref()
                 .unwrap()
                 .1
                 .public_key,
+            TEST_PUB_KEY_SECP.to_owned()
+        );
+        assert_eq!(
+            companies.get(&company2.id).as_ref().unwrap().0.name,
+            "some_name".to_owned()
+        );
+        assert_eq!(
+            companies.get(&company2.id).as_ref().unwrap().1.public_key,
             TEST_PUB_KEY_SECP.to_owned()
         );
     }

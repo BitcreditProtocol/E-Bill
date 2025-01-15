@@ -1,6 +1,6 @@
 use crate::external;
 use crate::service::Result;
-use crate::web::data::{ChangeIdentityPayload, IdentityPayload};
+use crate::web::data::{ChangeIdentityPayload, IdentityPayload, SwitchIdentity};
 use crate::{service::identity_service::IdentityToReturn, service::ServiceContext};
 use rocket::http::Status;
 use rocket::serde::json::Json;
@@ -62,4 +62,46 @@ pub async fn change_identity(
         )
         .await?;
     Ok(Status::Ok)
+}
+
+#[get("/active")]
+pub async fn active(state: &State<ServiceContext>) -> Result<Json<SwitchIdentity>> {
+    let current_identity_state = state.get_current_identity().await;
+    let node_id = match current_identity_state.company {
+        None => current_identity_state.personal,
+        Some(company_node_id) => company_node_id,
+    };
+    Ok(Json(SwitchIdentity { node_id }))
+}
+
+#[put("/switch", format = "json", data = "<switch_identity_payload>")]
+pub async fn switch(
+    state: &State<ServiceContext>,
+    switch_identity_payload: Json<SwitchIdentity>,
+) -> Result<Status> {
+    let node_id = switch_identity_payload.0.node_id;
+    let personal_node_id = state.identity_service.get_identity().await?.node_id;
+
+    // if it's the personal node id, set it
+    if node_id == personal_node_id {
+        state.set_current_personal_identity(node_id).await;
+        return Ok(Status::Ok);
+    }
+
+    // if it's one of our companies, set it
+    if state
+        .company_service
+        .get_list_of_companies()
+        .await?
+        .iter()
+        .any(|c| c.id == node_id)
+    {
+        state.set_current_company_identity(node_id).await;
+        return Ok(Status::Ok);
+    }
+
+    // otherwise, return an error
+    Err(crate::service::Error::Validation(format!(
+        "The provided node_id: {node_id} is not a valid company id, or personal node_id"
+    )))
 }

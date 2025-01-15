@@ -167,7 +167,6 @@ impl IdentityServiceApi for IdentityService {
 #[derive(Clone, Debug)]
 pub struct IdentityWithAll {
     pub identity: Identity,
-    #[allow(dead_code)]
     pub key_pair: BcrKeys,
 }
 

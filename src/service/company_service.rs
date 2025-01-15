@@ -31,6 +31,9 @@ pub trait CompanyServiceApi: Send + Sync {
     /// Get a company by id
     async fn get_company_by_id(&self, id: &str) -> Result<CompanyToReturn>;
 
+    /// Get a company and it's keys by id
+    async fn get_company_and_keys_by_id(&self, id: &str) -> Result<(Company, CompanyKeys)>;
+
     /// Create a new company
     async fn create_company(
         &self,
@@ -156,6 +159,11 @@ impl CompanyServiceApi for CompanyService {
         Ok(companies)
     }
 
+    async fn get_company_and_keys_by_id(&self, id: &str) -> Result<(Company, CompanyKeys)> {
+        let (company, keys) = self.get_company_and_keys_by_id(id).await?;
+        Ok((company, keys))
+    }
+
     async fn get_company_by_id(&self, id: &str) -> Result<CompanyToReturn> {
         if !self.store.exists(id).await {
             return Err(super::Error::Validation(format!(
@@ -204,6 +212,7 @@ impl CompanyServiceApi for CompanyService {
 
         self.store.save_key_pair(&id, &company_keys).await?;
         let company = Company {
+            id: id.clone(),
             name,
             country_of_registration,
             city_of_registration,
@@ -215,7 +224,7 @@ impl CompanyServiceApi for CompanyService {
             logo_file,
             signatories: vec![full_identity.identity.node_id.clone()], // add caller as signatory
         };
-        self.store.insert(&id, &company).await?;
+        self.store.insert(&company).await?;
 
         let company_to_return =
             CompanyToReturn::from(id.clone(), company.clone(), company_keys.clone());
@@ -550,6 +559,7 @@ impl CompanyToReturn {
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone)]
 pub struct Company {
+    pub id: String,
     pub name: String,
     pub country_of_registration: String,
     pub city_of_registration: String,
@@ -659,9 +669,10 @@ pub mod test {
 
     pub fn get_baseline_company_data() -> (String, (Company, CompanyKeys)) {
         (
-            "some_id".to_string(),
+            TEST_PUB_KEY_SECP.to_owned(),
             (
                 Company {
+                    id: TEST_PUB_KEY_SECP.to_owned(),
                     name: "some_name".to_string(),
                     country_of_registration: "AT".to_string(),
                     city_of_registration: "Vienna".to_string(),
@@ -724,7 +735,7 @@ pub mod test {
         let res = service.get_list_of_companies().await;
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().len(), 1);
-        assert_eq!(res.as_ref().unwrap()[0].id, "some_id".to_string());
+        assert_eq!(res.as_ref().unwrap()[0].id, TEST_PUB_KEY_SECP.to_string());
         assert_eq!(
             res.as_ref().unwrap()[0].public_key,
             TEST_PUB_KEY_SECP.to_string()
@@ -785,9 +796,9 @@ pub mod test {
             company_chain_store,
         );
 
-        let res = service.get_company_by_id("some_id").await;
+        let res = service.get_company_by_id(TEST_PUB_KEY_SECP).await;
         assert!(res.is_ok());
-        assert_eq!(res.as_ref().unwrap().id, "some_id".to_string());
+        assert_eq!(res.as_ref().unwrap().id, TEST_PUB_KEY_SECP.to_string());
         assert_eq!(
             res.as_ref().unwrap().public_key,
             TEST_PUB_KEY_SECP.to_string()
@@ -863,7 +874,7 @@ pub mod test {
             .expect_save_attached_file()
             .returning(|_, _, _| Ok(()));
         storage.expect_save_key_pair().returning(|_, _| Ok(()));
-        storage.expect_insert().returning(|_, _| Ok(()));
+        storage.expect_insert().returning(|_| Ok(()));
         identity_store.expect_get_full().returning(|| {
             let identity = Identity::new_empty();
             Ok(IdentityWithAll {
@@ -950,7 +961,7 @@ pub mod test {
             company_chain_store,
         ) = get_storages();
         storage.expect_save_key_pair().returning(|_, _| Ok(()));
-        storage.expect_insert().returning(|_, _| {
+        storage.expect_insert().returning(|_| {
             Err(persistence::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 "test error",

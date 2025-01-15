@@ -230,7 +230,7 @@ impl Client {
                 .await?;
         }
 
-        self.company_store.insert(company_id, &company).await?;
+        self.company_store.insert(&company).await?;
         self.company_store
             .save_key_pair(company_id, &company_keys)
             .await?;
@@ -659,8 +659,8 @@ impl Client {
     }
 
     /// Checks the bill record for the local node, adding missing bills and starts providing them, if necessary
-    pub async fn update_bills_table(&mut self, node_id: String) -> Result<()> {
-        let node_request = self.node_request_for_bills(&node_id);
+    pub async fn update_bills_table(&mut self, node_id: &str) -> Result<()> {
+        let node_request = self.node_request_for_bills(node_id);
 
         let bill_ids = self.bill_store.get_bill_ids().await?;
         match self.get_record(node_request.clone()).await {
@@ -1606,6 +1606,7 @@ mod test {
             id.to_string(),
             (
                 Company {
+                    id: id.to_string(),
                     name: "some_name".to_string(),
                     country_of_registration: "AT".to_string(),
                     city_of_registration: "Vienna".to_string(),
@@ -3064,7 +3065,7 @@ mod test {
         company_store
             .expect_exists()
             .returning(|id| id == "company_1");
-        company_store.expect_insert().returning(|_, _| Ok(()));
+        company_store.expect_insert().returning(|_| Ok(()));
         company_store
             .expect_save_key_pair()
             .returning(|_, _| Ok(()));

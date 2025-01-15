@@ -61,7 +61,9 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
             routes![
                 handlers::identity::create_identity,
                 handlers::identity::change_identity,
-                handlers::identity::return_identity
+                handlers::identity::return_identity,
+                handlers::identity::active,
+                handlers::identity::switch
             ],
         )
         .mount("/bitcredit", FileServer::from("frontend_build"))

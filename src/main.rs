@@ -70,13 +70,13 @@ async fn main() -> Result<()> {
         }
     });
 
+    let local_node_id = db.identity_store.get_key_pair().await?.get_public_key();
     // These actions only make sense, if we already have created an identity
     if db.identity_store.exists().await {
-        let local_node_id = db.identity_store.get().await?.node_id;
         if let Err(e) = dht_client.check_new_bills().await {
             error!("Error while checking for new bills: {e}");
         }
-        if let Err(e) = dht_client.update_bills_table(local_node_id).await {
+        if let Err(e) = dht_client.update_bills_table(&local_node_id).await {
             error!("Error while updating bills table: {e}");
         }
         dht_client.subscribe_to_all_bills_topics().await?;
@@ -94,8 +94,14 @@ async fn main() -> Result<()> {
     }
 
     let web_server_error_shutdown_sender = dht.shutdown_sender.clone();
-    let service_context =
-        create_service_context(conf.clone(), dht_client.clone(), dht.shutdown_sender, db).await?;
+    let service_context = create_service_context(
+        &local_node_id,
+        conf.clone(),
+        dht_client.clone(),
+        dht.shutdown_sender,
+        db,
+    )
+    .await?;
 
     let nostr_handle = service_context.nostr_consumer.start().await?;
 

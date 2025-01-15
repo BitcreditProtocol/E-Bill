@@ -168,7 +168,8 @@ pub trait BillServiceApi: Send + Sync {
         place_of_payment: String,
         maturity_date: String,
         currency_code: String,
-        drawer: IdentityWithAll,
+        drawer_public_data: IdentityPublicData,
+        drawer_keys: BcrKeys,
         language: String,
         public_data_drawee: IdentityPublicData,
         public_data_payee: IdentityPublicData,
@@ -651,7 +652,8 @@ impl BillServiceApi for BillService {
         place_of_payment: String,
         maturity_date: String,
         currency_code: String,
-        drawer: IdentityWithAll,
+        drawer_public_data: IdentityPublicData,
+        drawer_keys: BcrKeys,
         language: String,
         public_data_drawee: IdentityPublicData,
         public_data_payee: IdentityPublicData,
@@ -675,12 +677,10 @@ impl BillServiceApi for BillService {
 
         let amount_letters: String = util::numbers_to_words::encode(&amount_numbers);
 
-        let public_data_drawer = IdentityPublicData::new(drawer.identity.clone());
-
         let utc = Utc::now();
         let date_of_issue = utc.naive_local().date().to_string();
 
-        let to_payee = public_data_drawer == public_data_payee;
+        let to_payee = drawer_public_data == public_data_payee;
 
         let mut bill_files: Vec<File> = vec![];
         if let Some(ref upload_id) = file_upload_id {
@@ -719,7 +719,7 @@ impl BillServiceApi for BillService {
             private_key: bitcoin_private_key.to_string(),
             language,
             drawee: public_data_drawee,
-            drawer: public_data_drawer.clone(),
+            drawer: drawer_public_data.clone(),
             payee: public_data_payee,
             endorsee: None,
             files: bill_files,
@@ -727,8 +727,8 @@ impl BillServiceApi for BillService {
 
         let chain = BillBlockchain::new(
             &bill,
-            public_data_drawer,
-            drawer.key_pair.clone(),
+            drawer_public_data,
+            drawer_keys.clone(),
             public_key,
             timestamp,
         )?;
@@ -737,7 +737,7 @@ impl BillServiceApi for BillService {
         self.add_block_to_identity_chain_for_signed_bill_action(
             &bill_id,
             block,
-            &drawer.key_pair,
+            &drawer_keys,
             timestamp,
         )
         .await?;
@@ -1394,7 +1394,8 @@ pub mod test {
                 String::from("London"),
                 String::from("2030-01-01"),
                 String::from("sa"),
-                drawer,
+                IdentityPublicData::new(drawer.identity),
+                drawer.key_pair,
                 String::from("en"),
                 drawee,
                 payee,

@@ -15,7 +15,7 @@ use crate::{
     CONFIG,
 };
 
-use super::Result;
+use super::{company_service::Company, Result};
 use log::info;
 
 #[cfg_attr(test, automock)]
@@ -345,6 +345,19 @@ impl From<Contact> for IdentityPublicData {
             postal_address: value.postal_address,
             email: value.email,
             nostr_relay: value.nostr_relays.first().cloned(),
+        }
+    }
+}
+
+impl From<Company> for IdentityPublicData {
+    fn from(value: Company) -> Self {
+        Self {
+            t: ContactType::Company,
+            node_id: value.id.clone(),
+            name: value.name,
+            postal_address: value.postal_address,
+            email: value.email,
+            nostr_relay: None,
         }
     }
 }

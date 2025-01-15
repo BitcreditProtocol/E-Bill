@@ -21,7 +21,7 @@ pub trait CompanyStoreApi: Send + Sync {
     async fn get_all(&self) -> Result<HashMap<String, (Company, CompanyKeys)>>;
 
     /// Inserts the company with the given id
-    async fn insert(&self, id: &str, data: &Company) -> Result<()>;
+    async fn insert(&self, data: &Company) -> Result<()>;
 
     /// Updates the company with the given id
     async fn update(&self, id: &str, data: &Company) -> Result<()>;
