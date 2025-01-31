@@ -59,12 +59,14 @@ jobs:
         working-directory: ./be/.github/workflows/wizard
         
       - name: Discover filesystem
-        run: find ~ -type d
+        run: |
+            find ~ -type d
+            find /home/runner/installbuilder-24.11.1/bin -type f
 
       - name: Build installer
         run: |
-            builder build ./be/.github/workflows/wizard/spec.xml windows
-        working-directory: /home/runner/installbuilder-24.11.1/bin
+            /home/runner/installbuilder-24.11.1/bin/builder build spec.xml windows
+        working-directory: ./be/.github/workflows/wizard
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
