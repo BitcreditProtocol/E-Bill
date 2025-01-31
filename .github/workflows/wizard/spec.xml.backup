@@ -17,7 +17,7 @@
                     <platforms>all</platforms>
                     <distributionFileList>
                         <distributionDirectory>
-                            <origin>/home/runner/work/E-Bill/E-Bill/fe/dist</origin>
+                            <origin>./target/release</origin>
                         </distributionDirectory>
                     </distributionFileList>
                     <shortcutList>
@@ -91,7 +91,6 @@
     </preInstallationActionList>
     <enableRollback>1</enableRollback>
     <enableTimestamp>1</enableTimestamp>
-    <outputDirectory>.</outputDirectory>
     <vendor>Bitcredit Foundation</vendor>
     <parameterList>
         <directoryParameter>

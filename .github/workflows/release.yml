@@ -30,11 +30,11 @@ jobs:
             repository: BitcreditProtocol/E-Bill-frontend
             path: fe
 
-    #   - name: Build FE
-    #     run: |
-    #         npm install
-    #         npm run build
-    #     working-directory: ./fe
+      - name: Build FE
+        run: |
+            npm install
+            npm run build
+        working-directory: ./fe
 
     #   # Build BE
     #   - name: Install BE dependencies
@@ -58,7 +58,19 @@ jobs:
             ./installbuilder-pro-24.11.1-x64.run --mode unattended
         working-directory: ./be/.github/workflows/wizard
         
-      - name: List all folders in home
+      - name: Discover filesystem
         run: find ~ -type d
+
+      - name: Build installer
+        run: |
+            builder build ./be/.github/workflows/wizard/spec.xml windows
+        working-directory: /home/runner/installbuilder-24.11.1/bin
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v2
+        with:
+            name: bitcredit-0.3-windows-x64-installer.exe
+            path: ./be/.github/workflows/wizard/bitcredit-0.3-windows-x64-installer.exe
+
 
         #path/to/installbuilder/bin/builder build project.xml windows
