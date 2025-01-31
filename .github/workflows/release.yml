@@ -28,7 +28,6 @@ jobs:
         uses: actions/checkout@v4
         with:
             repository: BitcreditProtocol/E-Bill-frontend
-            ref: fixes/identity-creation
             path: fe
 
     #   - name: Build FE
