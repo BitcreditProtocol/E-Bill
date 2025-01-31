@@ -67,6 +67,10 @@ jobs:
             /home/runner/installbuilder-24.11.1/bin/builder build spec.xml windows
         working-directory: ./be/.github/workflows/wizard
 
+      - name: Discover filesystem
+        run: |
+            find ./be/.github/workflows/wizard -type f
+
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
