@@ -31,32 +31,32 @@ jobs:
             ref: fixes/identity-creation
             path: fe
 
-      - name: Build FE
-        run: |
-            npm install
-            npm run build
-        working-directory: ./fe
+    #   - name: Build FE
+    #     run: |
+    #         npm install
+    #         npm run build
+    #     working-directory: ./fe
 
-      # Build BE
-      - name: Install BE dependencies
-        run: |
-            sudo apt-get install -y protobuf-compiler
+    #   # Build BE
+    #   - name: Install BE dependencies
+    #     run: |
+    #         sudo apt-get install -y protobuf-compiler
 
-      - name: Build BE
-        run: cargo build --features embedded-db --release
-        working-directory: ./be
+    #   - name: Build BE
+    #     run: cargo build --features embedded-db --release
+    #     working-directory: ./be
 
-      # Build and release the package
-      - name: Copy FE build to BE release directory
-        run: |
-            mkdir -p ./be/target/release/frontend
-            cp -r ./fe/dist/* ./be/target/release/frontend/
+    #   # Build and release the package
+    #   - name: Copy FE build to BE release directory
+    #     run: |
+    #         mkdir -p ./be/target/release/frontend
+    #         cp -r ./fe/dist/* ./be/target/release/frontend/
      
       - name: Install InstallBuilder
         run: |
             curl -L -o installbuilder-pro-24.11.1-x64.run https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-linux-x64-installer.run
             chmod +x installbuilder-pro-24.11.1-x64.run
-            ./installbuilder-pro-24.11.1-x64.run
+            ./installbuilder-pro-24.11.1-x64.run --mode unattended
         working-directory: ./be/.github/workflows/wizard
         
         #path/to/installbuilder/bin/builder build project.xml windows
