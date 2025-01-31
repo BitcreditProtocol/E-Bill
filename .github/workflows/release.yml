@@ -2,14 +2,17 @@ name: Release E-Bill package
 
 # Trigger the workflow manually
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version number for the release'
-        required: true
-      release_notes:
-        description: 'Release notes for the version'
-        required: true
+    push:
+        branches:
+            - feature/wizard
+#   workflow_dispatch:
+#     inputs:
+#       version:
+#         description: 'Version number for the release'
+#         required: true
+#       release_notes:
+#         description: 'Release notes for the version'
+#         required: true
 
 jobs:
   build:
