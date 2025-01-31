@@ -58,4 +58,8 @@ jobs:
             ./installbuilder-pro-24.11.1-x64.run --mode unattended
         working-directory: ./be/.github/workflows/wizard
         
+      - name: List all folders in home
+        run: ls -d */
+        working-directory: ~
+
         #path/to/installbuilder/bin/builder build project.xml windows
