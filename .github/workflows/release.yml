@@ -59,7 +59,7 @@ jobs:
         working-directory: ./be/.github/workflows/wizard
         
       - name: List all folders in home
-        run: ls -d -R */
+        run: ls -d -R
         working-directory: /home
 
         #path/to/installbuilder/bin/builder build project.xml windows
