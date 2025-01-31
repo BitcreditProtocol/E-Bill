@@ -67,7 +67,7 @@ jobs:
         working-directory: /home/runner/installbuilder-24.11.1/bin
 
       - name: Upload installer
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
             name: bitcredit-0.3-windows-x64-installer.exe
             path: ./be/.github/workflows/wizard/bitcredit-0.3-windows-x64-installer.exe
