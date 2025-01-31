@@ -1,0 +1,64 @@
+name: Release E-Bill package
+
+# Trigger the workflow manually
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number for the release'
+        required: true
+      release_notes:
+        description: 'Release notes for the version'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout BE repo
+        uses: actions/checkout@v4
+        with:
+            path: be
+        
+      - name: Checkout FE repo
+        uses: actions/checkout@v4
+        with:
+            repository: BitcreditProtocol/E-Bill-frontend
+            path: fe
+        
+      # Build FE
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+            node-version: v22.11.0
+
+      - name: Build FE
+        run: |
+            npm ci
+            npm run build
+        working-directory: ./fe
+
+      # Build BE
+      - name: Install BE dependencies
+        run: |
+            sudo apt-get install -y protobuf-compiler
+
+      - name: Build BE
+        run: cargo build --features embedded-db --release
+        working-directory: ./be
+
+      # Build and release the package
+      - name: Copy FE build to BE release directory
+        run: |
+            mkdir -p ./be/target/release/frontend
+            cp -r ./fe/dist/* ./be/target/release/frontend/
+     
+      - name: Install InstallBuilder
+        run: |
+            curl -L -o installbuilder-pro-24.11.1-x64.run https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-linux-x64-installer.run
+            chmod +x installbuilder-pro-24.11.1-x64.run
+            ./installbuilder-pro-24.11.1-x64.run
+        working-directory: ./be/.github/workflows/wizard
+        
+        #path/to/installbuilder/bin/builder build project.xml windows
