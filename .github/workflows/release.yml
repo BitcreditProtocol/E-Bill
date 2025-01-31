@@ -74,8 +74,8 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-            name: bitcredit-0.3-windows-x64-installer.exe
-            path: ./be/.github/workflows/wizard/bitcredit-0.3-windows-x64-installer.exe
+            name: bitcredit-0.3-windows-installer.exe
+            path: ./be/.github/workflows/wizard/bitcredit-0.3-windows-installer.exe
 
 
         #path/to/installbuilder/bin/builder build project.xml windows

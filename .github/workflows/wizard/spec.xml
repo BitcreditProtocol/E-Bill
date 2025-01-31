@@ -91,7 +91,7 @@
     </preInstallationActionList>
     <enableRollback>1</enableRollback>
     <enableTimestamp>1</enableTimestamp>
-    <outputDirectory>/home/runner/work/E-Bill/E-Bill/be/.github/workflows/wizard</outputDirectory>
+    <outputDirectory>.</outputDirectory>
     <vendor>Bitcredit Foundation</vendor>
     <parameterList>
         <directoryParameter>
