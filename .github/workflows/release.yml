@@ -37,9 +37,7 @@ jobs:
             node-version: v22.11.0
 
       - name: Build FE
-        run: |
-            npm ci
-            npm run build
+        run: npm run build
         working-directory: ./fe
 
       # Build BE
