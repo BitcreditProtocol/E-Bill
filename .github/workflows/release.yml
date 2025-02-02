@@ -25,12 +25,12 @@ jobs:
                 ver: windows-x64-installer.exe
                 target: windows
                 exec: builder-cli.exe
-          - os: macos-latest
-            pck: brew install protobuf
-            installer: 
-                ver: osx-installer.dmg
-                target: osx
-                exec: builder
+        #   - os: macos-latest
+        #     pck: brew install protobuf
+        #     installer: 
+        #         ver: osx-installer.dmg
+        #         target: osx
+        #         exec: builder
     
     runs-on: ${{ matrix.config.os }}
     steps:
