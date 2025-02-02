@@ -39,8 +39,8 @@ jobs:
         with:
             path: be
     
-      - name: Install BE dependencies
-        run: ${{ matrix.config.pck }}
+    #   - name: Install BE dependencies
+    #     run: ${{ matrix.config.pck }}
 
     #   - name: Build BE
     #     run: cargo build --features embedded-db --release
