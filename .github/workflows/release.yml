@@ -41,6 +41,7 @@ jobs:
 
       - name: Build BE
         run: cargo build --features embedded-db --release
+        working-directory: ./be
       
       - name: Checkout FE repo
         uses: actions/checkout@v4
