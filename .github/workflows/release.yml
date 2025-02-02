@@ -52,11 +52,11 @@ jobs:
             repository: BitcreditProtocol/E-Bill-frontend
             path: fe
 
-    #   - name: Build FE
-    #     run: |
-    #         npm install
-    #         npm run build
-    #     working-directory: ./fe
+      - name: Build FE
+        run: |
+            npm install
+            npm run build
+        working-directory: ./fe
       
       - name: Install InstallBuilder
         run: |
@@ -65,7 +65,7 @@ jobs:
         
       - name: Build installer
         run: |
-            /home/runner/installbuilder-24.11.1/bin/${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}
+            ${{ env.GITHUB_WORKSPACE }}/home/runner/installbuilder-24.11.1/bin/${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}
         working-directory: ./be/.github/workflows/wizard
 
       - name: Upload BE artifacts
