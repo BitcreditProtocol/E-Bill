@@ -19,9 +19,12 @@ jobs:
     strategy:
       matrix:
         config: 
-        #   - os: windows-latest
-        #     pck: choco install protoc -y
-        #     installer: windows-x64-installer.exe
+          - os: windows-latest
+            pck: choco install protoc -y
+            installer: 
+                ver: windows-x64-installer.exe
+                target: windows
+                exec: builder-cli.exe
           - os: macos-latest
             pck: brew install protobuf
             installer: 
@@ -39,9 +42,9 @@ jobs:
       - name: Install BE dependencies
         run: ${{ matrix.config.pck }}
 
-      - name: Build BE
-        run: cargo build --features embedded-db --release
-        working-directory: ./be
+    #   - name: Build BE
+    #     run: cargo build --features embedded-db --release
+    #     working-directory: ./be
       
       - name: Checkout FE repo
         uses: actions/checkout@v4
@@ -59,9 +62,8 @@ jobs:
         run: |
             curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
             ./installbuilder-${{ matrix.config.installer.ver }} --mode unattended
-        working-directory: ./be/.github/workflows/wizard
-
-      - name: Build installers
+        
+      - name: Build installer
         run: |
             /home/runner/installbuilder-24.11.1/bin/${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}
         working-directory: ./be/.github/workflows/wizard
