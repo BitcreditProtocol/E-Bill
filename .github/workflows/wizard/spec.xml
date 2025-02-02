@@ -44,7 +44,7 @@
                     <platforms>all</platforms>
                     <distributionFileList>
                         <distributionDirectory>
-                            <origin>/home/runner/work/E-Bill/E-Bill/fe/dist</origin>
+                            <origin>/home/runner/work/E-Bill/E-Bill/fe/dist/</origin>
                         </distributionDirectory>
                     </distributionFileList>
                 </folder>

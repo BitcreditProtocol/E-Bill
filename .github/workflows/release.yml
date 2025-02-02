@@ -2,9 +2,9 @@ name: Release E-Bill package
 
 # Trigger the workflow manually
 on:
-    push:
-        branches:
-            - feature/wizard
+  push:
+    branches:
+      - feature/wizard
 #   workflow_dispatch:
 #     inputs:
 #       version:
@@ -16,14 +16,32 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        config: 
+        #   - os: windows-latest
+        #     pck: choco install protoc -y
+        #     installer: windows-x64-installer.exe
+          - os: macos-latest
+            pck: brew install protobuf
+            installer: 
+                ver: osx-installer.dmg
+                target: osx
+                exec: builder
+    
+    runs-on: ${{ matrix.config.os }}
     steps:
       - name: Checkout BE repo
         uses: actions/checkout@v4
         with:
             path: be
-        
+    
+      - name: Install BE dependencies
+        run: ${{ matrix.config.pck }}
+
+      - name: Build BE
+        run: cargo build --features embedded-db --release
+      
       - name: Checkout FE repo
         uses: actions/checkout@v4
         with:
@@ -35,34 +53,31 @@ jobs:
             npm install
             npm run build
         working-directory: ./fe
-
-      # Build BE
-      - name: Install BE dependencies
-        run: |
-            sudo apt-get install -y protobuf-compiler
-
-      - name: Build BE
-        run: cargo build --features embedded-db --release
-        working-directory: ./be
-
-      # Build and release the package     
+      
       - name: Install InstallBuilder
         run: |
-            curl -L -o installbuilder-pro-24.11.1-x64.run https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-linux-x64-installer.run
-            chmod +x installbuilder-pro-24.11.1-x64.run
-            ./installbuilder-pro-24.11.1-x64.run --mode unattended
+            curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
+            ./installbuilder-${{ matrix.config.installer.ver }} --mode unattended
         working-directory: ./be/.github/workflows/wizard
 
-      - name: Build installer
+      - name: Build installers
         run: |
-            /home/runner/installbuilder-24.11.1/bin/builder build spec.xml windows
+            /home/runner/installbuilder-24.11.1/bin/${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}
         working-directory: ./be/.github/workflows/wizard
 
-      - name: Upload installer
+      - name: Upload BE artifacts
         uses: actions/upload-artifact@v4
         with:
-            name: bitcredit-0.3-windows-installer.exe
-            path: ./be/.github/workflows/wizard/bitcredit-0.3-windows-installer.exe
+            name: bitcredit-0.3-${{ matrix.config.installer.ver }}
+            path: ./be/.github/workflows/wizard/bitcredit-0.3-${{ matrix.config.installer.ver }}
+  
+#   build_installer:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Download artifacts
+#         uses: actions/download-artifact@v4
+#         with:
+#             path: be
 
-
-        #path/to/installbuilder/bin/builder build project.xml windows
+#       - name: Discover filesystem
+#         run: find ~ -type d
