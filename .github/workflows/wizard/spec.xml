@@ -17,7 +17,7 @@
                     <platforms>all</platforms>
                     <distributionFileList>
                         <distributionDirectory>
-                            <origin>/home/runner/work/E-Bill/E-Bill/be/target/release</origin>
+                            <origin>/home/runner/work/E-Bill/E-Bill/be/target/release/</origin>
                         </distributionDirectory>
                     </distributionFileList>
                     <shortcutList>
