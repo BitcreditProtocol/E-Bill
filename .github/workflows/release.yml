@@ -50,7 +50,7 @@ jobs:
         uses: actions/checkout@v4
         with:
             repository: BitcreditProtocol/E-Bill-frontend
-            ref: ddfda32            
+            ref: fix-main            
             path: fe
 
       - name: Build FE
