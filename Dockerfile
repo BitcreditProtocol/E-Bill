@@ -9,9 +9,18 @@ RUN apt-get update && apt-get install -y protobuf-compiler libclang-dev
 
 WORKDIR /ebills
 
+# start - build dependency cache
+RUN mkdir ./src
+RUN echo 'fn main() { panic!("Dummy Image Called!")}' > ./src/main.rs
+COPY ["Cargo.toml", "Cargo.lock",  "./"]
+RUN cargo build --release
+# end - build dependency cache
+
 COPY ./ .
 
-RUN cargo build --release --features embedded-db
+# need to break the cargo cache
+RUN touch -a -m ./src/main.rs
+RUN cargo build --release  --features embedded-db
 
 ##############################
 ## Create image
