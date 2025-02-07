@@ -69,11 +69,11 @@ jobs:
           ALLENVVARS: "${{ toJSON(github) }}"
 
       - name: Set work directory
-        uses: rvolo/xml-replace-action@v0.2
+        uses: richardrigutins/replace-in-files@v2
         with:
-          filepath: ./be/.github/workflows/wizard/spec.xml
-          xpath: //project/initializationActionList/setInstallerVariable[@name="agent_workdir"]/@value
-          replace: ${{ github.workspace }}
+          files: ./be/.github/workflows/wizard/spec.xml
+          search-text: WORKDIR_PLACEHOLDER
+          replacement-text: ${{ github.workspace }}
 
       - name: Install InstallBuilder
         run: |

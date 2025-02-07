@@ -3,7 +3,7 @@
     <fullName>Bitcredit Client</fullName>
     <version>0.4</version>
     <initializationActionList>
-        <setInstallerVariable name="agent_workdir" value="" />
+        <setInstallerVariable name="agent_workdir" value="WORKDIR_PLACEHOLDER" />
     </initializationActionList>
     <componentList>
         <component>
