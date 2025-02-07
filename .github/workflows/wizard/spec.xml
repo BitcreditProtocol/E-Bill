@@ -179,7 +179,7 @@
     <enableRollback>1</enableRollback>
     <enableTimestamp>1</enableTimestamp>
     <vendor>Bitcredit Foundation</vendor>
-    <outputDirectory>.</outputDirectory>
+    <outputDirectory>${agent_workdir}/be/.github/workflows/wizard/</outputDirectory>
     <parameterList>
         <directoryParameter>
             <name>installdir</name>
