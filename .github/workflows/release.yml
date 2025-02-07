@@ -66,14 +66,14 @@ jobs:
       - name: Show all environment variables
         run: echo $ALLENVVARS
         env:
-          ALLENVVARS: "${{ toJSON(env) }}"
+          ALLENVVARS: "${{ toJSON(github) }}"
 
       - name: Set work directory
         uses: rvolo/xml-replace-action@v0.2
         with:
           filepath: ./be/.github/workflows/wizard/spec.xml
           xpath: //project/initializationActionList/setInstallerVariable[@name="agent_workdir"]/@value
-          replace: ${{ env.GITHUB_WORKSPACE }}
+          replace: ${{ github.workspace }}
 
       - name: Install InstallBuilder
         run: |
