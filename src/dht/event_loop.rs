@@ -2,12 +2,10 @@ use super::behaviour::{Command, ComposedEvent, Event, MyBehaviour};
 use super::{GossipsubEvent, GossipsubEventId};
 use crate::blockchain::bill::{BillBlock, BillBlockchain};
 use crate::blockchain::Blockchain;
-use crate::constants::{
-    BILL_PREFIX, COMPANY_PREFIX, RELAY_BOOTSTRAP_NODE_ONE_IP, RELAY_BOOTSTRAP_NODE_ONE_PEER_ID,
-    RELAY_BOOTSTRAP_NODE_ONE_TCP,
-};
+use crate::constants::{BILL_PREFIX, COMPANY_PREFIX};
 use crate::dht::behaviour::{CompanyEvent, FileRequest, FileResponse};
 use crate::persistence::bill::{BillChainStoreApi, BillStoreApi};
+use crate::CONFIG;
 use anyhow::{anyhow, Result};
 use borsh::{from_slice, to_vec};
 use futures::channel::mpsc::Receiver;
@@ -470,8 +468,9 @@ impl EventLoop {
                     expires: None,
                 };
 
-                let relay_peer_id: PeerId = RELAY_BOOTSTRAP_NODE_ONE_PEER_ID
-                    .to_string()
+                let relay_peer_id: PeerId = CONFIG
+                    .relay_bootstrap_peer_id
+                    .clone()
                     .parse()
                     .map_err(|e| {
                         anyhow!("Error parsing relay peer id when putting record: {e:?}")
@@ -540,15 +539,17 @@ impl EventLoop {
             } => {
                 info!("Request file {file_name:?}");
 
-                let relay_peer_id: PeerId = RELAY_BOOTSTRAP_NODE_ONE_PEER_ID
-                    .to_string()
+                let relay_peer_id: PeerId = CONFIG
+                    .relay_bootstrap_peer_id
+                    .clone()
                     .parse()
                     .map_err(|e| {
                         anyhow!("Error parsing relay peer id when requesting file: {e:?}")
                     })?;
-                let relay_address = Multiaddr::empty()
-                    .with(Protocol::Ip4(RELAY_BOOTSTRAP_NODE_ONE_IP))
-                    .with(Protocol::Tcp(RELAY_BOOTSTRAP_NODE_ONE_TCP))
+
+                let relay_address = CONFIG
+                    .relay_bootstrap_address
+                    .parse::<Multiaddr>()?
                     .with(Protocol::P2p(Multihash::from(relay_peer_id)))
                     .with(Protocol::P2pCircuit)
                     .with(Protocol::P2p(Multihash::from(peer)));

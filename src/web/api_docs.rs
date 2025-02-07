@@ -25,6 +25,7 @@ use utoipa::OpenApi;
         handlers::identity::get_seed_phrase,
         handlers::identity::recover_from_seed_phrase,
         handlers::identity::backup_identity,
+        handlers::identity::restore_identity,
         handlers::search,
     )
 )]

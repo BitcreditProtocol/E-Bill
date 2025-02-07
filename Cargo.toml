@@ -36,6 +36,7 @@ tokio = { version = "1.40.0", features = [
 ] }
 async-trait = "0.1.83"
 rocket = { version = "0.5.1", features = ["json"] }
+rocket_cors = "0.6.0"
 rocket_ws = "0.1.1"
 rocket_dyn_templates = { version = "0.2.0", features = ["handlebars"] }
 open = "5.3.0"

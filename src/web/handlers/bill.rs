@@ -139,7 +139,7 @@ pub async fn attachment(
 
 #[utoipa::path(
     tag = "Bills Search",
-    path = "bill/search",
+    path = "/bill/search",
     description = "Get all bill details for the given filter",
     responses(
         (status = 200, description = "Search for bills", body = BillsResponse<LightBitcreditBillToReturn>)
@@ -179,7 +179,7 @@ pub async fn search(
 
 #[utoipa::path(
     tag = "Bills Light",
-    path = "bill/list/light",
+    path = "/bill/list/light",
     description = "Get all bill details in a light version",
     responses(
         (status = 200, description = "List of bills light", body = BillsResponse<LightBitcreditBillToReturn>)
@@ -201,7 +201,7 @@ pub async fn list_light(
 
 #[utoipa::path(
     tag = "Bills",
-    path = "bill/list",
+    path = "/bill/list",
     description = "Get all bill details",
     responses(
         (status = 200, description = "List of bills", body = BillsResponse<BitcreditBillToReturn>)
@@ -247,7 +247,7 @@ pub async fn find_bill_in_dht(
 
 #[utoipa::path(
     tag = "Bills",
-    path = "bill/{id}",
+    path = "/bill/{id}",
     description = "Get bill details by id",
     params(
         ("id" = String, Path, description = "Id of the bill to return")

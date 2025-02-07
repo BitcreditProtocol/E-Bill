@@ -58,6 +58,38 @@ pub trait IdentityServiceApi: Send + Sync {
     ) -> Result<Vec<u8>>;
 }
 
+#[repr(u8)]
+#[derive(
+    Debug,
+    Clone,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+    PartialEq,
+    Eq,
+    ToSchema,
+    BorshSerialize,
+    BorshDeserialize,
+)]
+#[borsh(use_discriminant = true)]
+pub enum IdentityType {
+    Person = 0,
+    Company = 1,
+}
+
+impl TryFrom<u64> for IdentityType {
+    type Error = super::Error;
+
+    fn try_from(value: u64) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(IdentityType::Person),
+            1 => Ok(IdentityType::Company),
+            _ => Err(super::Error::Validation(format!(
+                "Invalid identity type found: {value}"
+            ))),
+        }
+    }
+}
+
 /// The identity service is responsible for managing the local identity and syncing it
 /// with the dht data.
 #[derive(Clone)]

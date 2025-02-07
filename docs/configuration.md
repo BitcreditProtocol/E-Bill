@@ -14,12 +14,14 @@ The following options are available:
 * `ENVIRONMENT` - environment to start the app in (default: development)
 * `RUST_LOG` - the log level, e.g.: info, trace, debug, error (default: error)
 * `NOSTR_RELAY` - nostr relay endpoint (default: ws://localhost:8080)
-* `MINT_URL` - cashu mint endpoint (default: http://127.0.0.1:3338)
+* `MINT_URL` - cashu mint endpoint (default: https://moksha.minibill.tech)
 * `JOB_RUNNER_INITIAL_DELAY_SECONDS` - initial delay until cron jobs run (default: 1)
 * `JOB_RUNNER_CHECK_INTERVAL_SECONDS` - interval in which cron jobs run (default: 600)
 * `FRONTEND_URL_PATH` - default path to serve the frontend from (default: /)
 * `FRONTEND_SERVE_FOLDER` - folder where the static frontend is served from (default: ./frontend)
 * `LAUNCH_FRONTEND_AT_STARTUP` - open the frontend in a browser on startup (default: false)
+* `RELAY_BOOTSTRAP_ADDRESS` - the relay bootstrap address (default: /ip4/45.147.248.87/tcp/1908)
+* `RELAY_BOOTSTRAP_PEER_ID` - the relay bootstrap peer id (default: 12D3KooWL5y2jyVFtk541g9ySSoKGjNf61GEPG1XbPhop5MRfyA8)
 
 ## Example
 

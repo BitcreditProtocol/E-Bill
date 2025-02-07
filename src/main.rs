@@ -1,4 +1,4 @@
-use crate::constants::{BOOTSTRAP_FOLDER_PATH, QUOTES_MAP_FOLDER_PATH};
+use crate::constants::QUOTES_MAP_FOLDER_PATH;
 use anyhow::Result;
 use clap::Parser;
 use config::Config;
@@ -33,15 +33,33 @@ lazy_static! {
 #[tokio::main]
 async fn main() -> Result<()> {
     env::set_var("RUST_BACKTRACE", "full");
-
     env_logger::init();
-
     info!("Chosen Network: {:?}", CONFIG.bitcoin_network());
 
     let conf = CONFIG.clone();
-
     init_folders();
 
+    loop {
+        let (reboot_sender, mut reboot_receiver) = tokio::sync::watch::channel(false);
+        if let Err(e) = start(conf.clone(), reboot_sender).await {
+            error!("Error starting the application: {e}");
+            break;
+        }
+
+        let reboot = *reboot_receiver.borrow_and_update();
+        if reboot {
+            // we need to give the os time to finish its disk operations
+            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+            info!("Restarting application...");
+        } else {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+async fn start(conf: Config, reboot_sender: tokio::sync::watch::Sender<bool>) -> Result<()> {
     external::mint::init_wallet().await;
 
     // Initialize the database context
@@ -128,6 +146,7 @@ async fn main() -> Result<()> {
         dht_client.clone(),
         dht.shutdown_sender,
         db,
+        reboot_sender,
     )
     .await?;
 
@@ -156,8 +175,5 @@ async fn main() -> Result<()> {
 fn init_folders() {
     if !Path::new(QUOTES_MAP_FOLDER_PATH).exists() {
         fs::create_dir(QUOTES_MAP_FOLDER_PATH).expect("Can't create folder quotes.");
-    }
-    if !Path::new(BOOTSTRAP_FOLDER_PATH).exists() {
-        fs::create_dir(BOOTSTRAP_FOLDER_PATH).expect("Can't create folder bootstrap.");
     }
 }

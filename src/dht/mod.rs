@@ -1,7 +1,4 @@
 use crate::config::Config;
-use crate::constants::{
-    RELAY_BOOTSTRAP_NODE_ONE_IP, RELAY_BOOTSTRAP_NODE_ONE_PEER_ID, RELAY_BOOTSTRAP_NODE_ONE_TCP,
-};
 use behaviour::{ComposedEvent, Event, MyBehaviour};
 use borsh::{to_vec, BorshDeserialize};
 use borsh_derive::{BorshDeserialize, BorshSerialize};
@@ -27,7 +24,7 @@ use crate::persistence::bill::{BillChainStoreApi, BillStoreApi};
 use crate::persistence::company::{CompanyChainStoreApi, CompanyStoreApi};
 use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::IdentityStoreApi;
-use crate::{blockchain, persistence, util};
+use crate::{blockchain, persistence, util, CONFIG};
 pub use client::Client;
 use log::{error, info};
 use std::sync::Arc;
@@ -82,6 +79,10 @@ pub enum Error {
     /// error if there are no providers
     #[error("No providers found: {0}")]
     NoProviders(String),
+
+    /// error with address parsing
+    #[error("invalid address: {0}")]
+    MultiAddr(#[from] libp2p::multiaddr::Error),
 
     /// error if a file wasn't returned from any provider
     #[error("No file returned from providers: {0}")]
@@ -237,10 +238,10 @@ async fn new(
         }
     }
 
-    let relay_peer_id: PeerId = RELAY_BOOTSTRAP_NODE_ONE_PEER_ID.to_string().parse()?;
-    let relay_address = Multiaddr::empty()
-        .with(Protocol::Ip4(RELAY_BOOTSTRAP_NODE_ONE_IP))
-        .with(Protocol::Tcp(RELAY_BOOTSTRAP_NODE_ONE_TCP))
+    let relay_peer_id: PeerId = CONFIG.relay_bootstrap_peer_id.clone().parse()?;
+    let relay_address = CONFIG
+        .relay_bootstrap_address
+        .parse::<Multiaddr>()?
         .with(Protocol::P2p(Multihash::from(relay_peer_id)));
     info!("Relay address: {:?}", relay_address);
 

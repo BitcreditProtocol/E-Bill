@@ -1,3 +1,4 @@
+use crate::service::identity_service::IdentityType;
 use crate::service::{
     bill_service::LightBitcreditBillToReturn,
     company_service::CompanyToReturn,
@@ -183,8 +184,9 @@ pub struct UploadBillFilesForm<'r> {
     pub files: Vec<TempFile<'r>>,
 }
 
-#[derive(Debug, FromForm)]
+#[derive(Debug, FromForm, ToSchema)]
 pub struct UploadFileForm<'r> {
+    #[schema(value_type = String, format = Binary)]
     pub file: TempFile<'r>,
 }
 
@@ -250,6 +252,8 @@ pub struct BillCombinedBitcoinKey {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SwitchIdentity {
+    #[serde(rename = "type")]
+    pub t: Option<IdentityType>,
     pub node_id: String,
 }
 

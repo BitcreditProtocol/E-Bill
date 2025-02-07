@@ -26,7 +26,6 @@ WORKDIR /ebills
 
 # Copy essential build files
 COPY --from=rust-builder /ebills/target/release/bitcredit ./bitcredit
-COPY --from=rust-builder /ebills/bootstrap ./bootstrap
 COPY --from=rust-builder /ebills/frontend ./frontend
 
 # Create additional directories and set user permissions

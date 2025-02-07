@@ -1,5 +1,8 @@
+use std::env;
+
 use super::middleware::IdentityCheck;
 use crate::external;
+use crate::service::identity_service::IdentityType;
 use crate::service::Result;
 use crate::util::date::{format_date_string, now};
 use crate::util::file::{detect_content_type_for_bytes, UploadFileHandler};
@@ -8,11 +11,12 @@ use crate::web::data::{
     UploadFilesResponse,
 };
 use crate::{service::identity_service::IdentityToReturn, service::ServiceContext};
+use log::info;
 use rocket::form::Form;
 use rocket::http::{ContentType, Status};
 use rocket::response::Responder;
 use rocket::serde::json::Json;
-use rocket::{get, post, put, Response, State};
+use rocket::{get, post, put, Response, Shutdown, State};
 
 #[get("/file/<file_name>")]
 pub async fn get_file(
@@ -164,11 +168,14 @@ pub async fn change_identity(
 #[get("/active")]
 pub async fn active(state: &State<ServiceContext>) -> Result<Json<SwitchIdentity>> {
     let current_identity_state = state.get_current_identity().await;
-    let node_id = match current_identity_state.company {
-        None => current_identity_state.personal,
-        Some(company_node_id) => company_node_id,
+    let (node_id, t) = match current_identity_state.company {
+        None => (current_identity_state.personal, IdentityType::Person),
+        Some(company_node_id) => (company_node_id, IdentityType::Company),
     };
-    Ok(Json(SwitchIdentity { node_id }))
+    Ok(Json(SwitchIdentity {
+        t: Some(t),
+        node_id,
+    }))
 }
 
 #[utoipa::path(
@@ -263,6 +270,31 @@ pub async fn backup_identity(state: &State<ServiceContext>) -> Result<BinaryFile
         data: bytes,
         name: file_name.to_string(),
     })
+}
+
+#[utoipa::path(
+    post,
+    tag = "Identity",
+    path = "/identity/restore",
+    request_body(content_type = "multipart/form-data", content = UploadFileForm, description = "Backup file to upload"),
+    responses(
+        (status = 200, description = "Indentity has been restored")
+    )
+)]
+#[post("/restore", data = "<data>")]
+pub async fn restore_identity(
+    state: &State<ServiceContext>,
+    shutdown: Shutdown,
+    mut data: Form<UploadFileForm<'_>>,
+) -> Result<()> {
+    let dir = env::temp_dir();
+    let target = dir.join("restore.ecies");
+    data.file.persist_to(target.as_path()).await?;
+    state.backup_service.restore(target.as_path()).await?;
+    info!("Identity has been restored. Restarting system ...");
+    shutdown.notify();
+    state.shutdown();
+    Ok(())
 }
 
 /// Just a wrapper struct to allow setting a content disposition header

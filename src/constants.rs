@@ -1,5 +1,3 @@
-use std::net::Ipv4Addr;
-
 // General
 pub const BILLS_PREFIX: &str = "BILLS";
 pub const BILL_PREFIX: &str = "BILL";
@@ -26,15 +24,7 @@ pub const VALID_CURRENCIES: [&str; 2] = ["sat", "crsat"];
 
 // Paths
 pub const QUOTES_MAP_FOLDER_PATH: &str = "quotes";
-pub const BOOTSTRAP_FOLDER_PATH: &str = "bootstrap";
 pub const QUOTE_MAP_FILE_PATH: &str = "quotes/quotes";
-pub const BOOTSTRAP_NODES_FILE_PATH: &str = "bootstrap/bootstrap_nodes.json";
-
-// Relay
-pub const RELAY_BOOTSTRAP_NODE_ONE_IP: Ipv4Addr = Ipv4Addr::new(45, 147, 248, 87);
-pub const RELAY_BOOTSTRAP_NODE_ONE_TCP: u16 = 1908;
-pub const RELAY_BOOTSTRAP_NODE_ONE_PEER_ID: &str =
-    "12D3KooWL5y2jyVFtk541g9ySSoKGjNf61GEPG1XbPhop5MRfyA8";
 
 // DB constants
 pub const DB_TABLE: &str = "table";

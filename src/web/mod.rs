@@ -1,10 +1,10 @@
 use crate::service::ServiceContext;
 use api_docs::ApiDocs;
 use log::info;
-use rocket::fairing::{Fairing, Info, Kind};
 use rocket::fs::FileServer;
-use rocket::http::{Header, Status};
-use rocket::{catch, catchers, routes, Build, Config, Request, Response, Rocket};
+use rocket::http::{Method, Status};
+use rocket::{catch, catchers, routes, Build, Config, Request, Rocket};
+use rocket_cors::{AllowedOrigins, CorsOptions};
 use serde::Serialize;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -53,6 +53,23 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
         .merge(("port", conf.http_port))
         .merge(("address", conf.http_address.to_owned()));
 
+    let cors = CorsOptions::default()
+        .allowed_origins(AllowedOrigins::all())
+        .allowed_methods(
+            vec![
+                Method::Get,
+                Method::Post,
+                Method::Patch,
+                Method::Put,
+                Method::Delete,
+                Method::Options,
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
+        )
+        .allow_credentials(true);
+
     let rocket = rocket::custom(config)
         .register("/", catchers![default_catcher, not_found])
         .manage(context)
@@ -73,6 +90,7 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
                 handlers::identity::get_file,
                 handlers::identity::upload_file,
                 handlers::identity::backup_identity,
+                handlers::identity::restore_identity,
             ],
         )
         .mount(
@@ -160,7 +178,7 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
             "/",
             SwaggerUi::new("/swagger-ui/<_..>").url("/api-docs/openapi.json", ApiDocs::openapi()),
         )
-        .attach(Cors);
+        .attach(cors.to_cors().expect("Cors setup failed"));
 
     info!("HTTP Server Listening on {}", conf.http_listen_url());
 
@@ -176,28 +194,6 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
     }
 
     rocket
-}
-
-struct Cors;
-
-#[rocket::async_trait]
-impl Fairing for Cors {
-    fn info(&self) -> Info {
-        Info {
-            name: "Add CORS headers to responses",
-            kind: Kind::Response,
-        }
-    }
-
-    async fn on_response<'r>(&self, _request: &'r Request<'_>, response: &mut Response<'r>) {
-        response.set_header(Header::new("Access-Control-Allow-Origin", "*"));
-        response.set_header(Header::new(
-            "Access-Control-Allow-Methods",
-            "POST, GET, PATCH, OPTIONS, PUT, DELETE",
-        ));
-        response.set_header(Header::new("Access-Control-Allow-Headers", "*"));
-        response.set_header(Header::new("Access-Control-Allow-Credentials", "true"));
-    }
 }
 
 #[catch(default)]

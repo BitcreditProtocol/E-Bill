@@ -1,10 +1,9 @@
 use super::Error;
 use crate::constants::{
-    BILL_ATTACHMENT_PREFIX, BILL_PREFIX, BOOTSTRAP_NODES_FILE_PATH, COMPANY_CHAIN_PREFIX,
-    COMPANY_KEY_PREFIX, COMPANY_LOGO_PREFIX, COMPANY_PREFIX, COMPANY_PROOF_PREFIX, KEY_PREFIX,
-    MAX_FILE_SIZE_BYTES,
+    BILL_ATTACHMENT_PREFIX, BILL_PREFIX, COMPANY_CHAIN_PREFIX, COMPANY_KEY_PREFIX,
+    COMPANY_LOGO_PREFIX, COMPANY_PREFIX, COMPANY_PROOF_PREFIX, KEY_PREFIX, MAX_FILE_SIZE_BYTES,
 };
-use crate::util;
+use crate::{util, CONFIG};
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::channel::oneshot;
@@ -20,7 +19,7 @@ use libp2p::{dcutr, gossipsub, identify, relay, PeerId};
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::{fs, iter};
+use std::iter;
 
 #[derive(Deserialize, Serialize, Debug)]
 struct Nodes {
@@ -80,18 +79,16 @@ impl MyBehaviour {
     }
 
     pub fn bootstrap_kademlia(&mut self) {
-        let boot_nodes_string = fs::read_to_string(BOOTSTRAP_NODES_FILE_PATH)
-            .expect("Can't read bootstrap nodes file.");
-        let boot_nodes = serde_json::from_str::<NodesJson>(&boot_nodes_string)
-            .expect("Can't parse bootstrap nodes file.");
-        for index in 0..boot_nodes.nodes.len() {
-            let node = boot_nodes.nodes[index].node.clone();
-            let address = boot_nodes.nodes[index].address.clone();
-            self.kademlia.add_address(
-                &node.parse().expect("Can't parse bootstrap node id"),
-                address.parse().expect("Can't parse bootstrap node address"),
-            );
-        }
+        self.kademlia.add_address(
+            &CONFIG
+                .relay_bootstrap_peer_id
+                .parse()
+                .expect("Can't parse bootstrap node id"),
+            CONFIG
+                .relay_bootstrap_address
+                .parse()
+                .expect("Can't parse bootstrap node address"),
+        );
         self.kademlia.bootstrap().expect("Cant bootstrap");
     }
 }

@@ -33,7 +33,7 @@ use search_service::{SearchService, SearchServiceApi};
 use std::io::Cursor;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{broadcast, watch, RwLock};
 
 /// Generic result type
 pub type Result<T> = std::result::Result<T, Error>;
@@ -214,6 +214,7 @@ pub async fn create_service_context(
     client: Client,
     shutdown_sender: broadcast::Sender<bool>,
     db: DbContext,
+    reboot_sender: watch::Sender<bool>,
 ) -> Result<ServiceContext> {
     let contact_service = Arc::new(ContactService::new(
         db.contact_store.clone(),
@@ -276,6 +277,7 @@ pub async fn create_service_context(
         db.backup_store.clone(),
         db.identity_store.clone(),
         SurrealDbConfig::new(&config.surreal_db_connection),
+        reboot_sender.clone(),
     );
 
     Ok(ServiceContext {

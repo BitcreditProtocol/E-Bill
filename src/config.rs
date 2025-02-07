@@ -29,7 +29,7 @@ pub struct Config {
     pub environment: String,
     #[arg(default_value_t = String::from("ws://localhost:8080"), long, env = "NOSTR_RELAY")]
     pub nostr_relay: String,
-    #[arg(default_value_t = String::from("http://127.0.0.1:3338"), long, env = "MINT_URL")]
+    #[arg(default_value_t = String::from("https://moksha.minibill.tech"), long, env = "MINT_URL")]
     pub mint_url: String,
     #[arg(default_value_t = 1, long, env = "JOB_RUNNER_INITIAL_DELAY_SECONDS")]
     pub job_runner_initial_delay_seconds: u64,
@@ -41,6 +41,10 @@ pub struct Config {
     pub frontend_url_path: String,
     #[arg(default_value_t = false, long, env = "LAUNCH_FRONTEND_AT_STARTUP")]
     pub launch_frontend_at_startup: bool,
+    #[arg(default_value_t = String::from("/ip4/45.147.248.87/tcp/1908"), long, env = "RELAY_BOOTSTRAP_ADDRESS")]
+    pub relay_bootstrap_address: String,
+    #[arg(default_value_t = String::from("12D3KooWL5y2jyVFtk541g9ySSoKGjNf61GEPG1XbPhop5MRfyA8"), long, env = "RELAY_BOOTSTRAP_PEER_ID")]
+    pub relay_bootstrap_peer_id: String,
 }
 
 impl Config {

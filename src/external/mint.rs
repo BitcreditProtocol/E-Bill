@@ -10,6 +10,7 @@ use moksha_core::primitives::{
     BillKeys, CurrencyUnit, PaymentMethod, PostMintQuoteBitcreditResponse,
     PostRequestToMintBitcreditResponse,
 };
+use moksha_core::token::TokenV3;
 use moksha_wallet::http::CrossPlatformHttpClient;
 use moksha_wallet::localstore::sqlite::SqliteLocalStore;
 use moksha_wallet::wallet::Wallet;
@@ -122,10 +123,17 @@ pub async fn client_accept_bitcredit_quote(bill_id_hex: &str, bill_id_base58: &S
             )
             .await;
 
-        token = result
-            .unwrap()
-            .serialize(Option::from(CurrencyUnit::CrSat))
-            .unwrap();
+        let bill_mint_path = format!("/{}/cr-sat", &bill_id_hex);
+        let token_mint_url =
+            Url::parse(&format!("{}{}", CONFIG.mint_url, bill_mint_path)).expect("Invalid url");
+
+        token = TokenV3::from((
+            token_mint_url,
+            CurrencyUnit::CrSat,
+            result.unwrap().proofs(),
+        ))
+        .serialize(Option::from(CurrencyUnit::CrSat))
+        .unwrap();
 
         add_bitcredit_token_in_quotes_map(token.clone(), bill_id_base58.clone());
     }
