@@ -63,12 +63,17 @@ jobs:
             npm run build
         working-directory: ./fe
       
-      - run: tree
+      - name: Show all environment variables
+        run: echo $ALLENVVARS
+        env:
+          ALLENVVARS: "${{ toJSON(env) }}"
 
       - name: Set work directory
-        uses: Mudlet/xmlstarlet-action@master
+        uses: rvolo/xml-replace-action@v0.2
         with:
-          args: ed -L --update '/project/initializationActionList/setInstallerVariable[@name="agent_workdir"]/@value' -v "${{ env.GITHUB_WORKSPACE }}" "./be/.github/workflows/wizard/spec.xml"
+          filepath: ./be/.github/workflows/wizard/spec.xml
+          xpath: //project/initializationActionList/setInstallerVariable[@name="agent_workdir"]/@value
+          replace: ${{ env.GITHUB_WORKSPACE }}
 
       - name: Install InstallBuilder
         run: |
@@ -77,7 +82,7 @@ jobs:
         
       - name: Build installer
         run: |
-            c://Program Files/installbuilder-24.11.1/bin/${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}
+            c:/Program Files/installbuilder-24.11.1/bin/${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}
         working-directory: ./be/.github/workflows/wizard
 
       - name: Upload BE artifacts
