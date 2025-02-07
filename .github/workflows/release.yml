@@ -24,7 +24,7 @@ jobs:
             installer: 
                 ver: windows-x64-installer.exe
                 target: windows
-                exec: c:/Program Files/installbuilder-24.11.1/bin/builder-cli.exe
+                exec: c:/Program Files/InstallBuilder Professional 24.11.1/bin/builder-cli.exe
         #   - os: macos-latest
         #     pck: brew install protobuf
         #     installer: 
