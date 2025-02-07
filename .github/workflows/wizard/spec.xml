@@ -1,7 +1,10 @@
 <project>
     <shortName>bitcredit</shortName>
     <fullName>Bitcredit Client</fullName>
-    <version>0.3</version>
+    <version>0.4</version>
+    <initializationActionList>
+        <setInstallerVariable name="agent_workdir" value="" />
+    </initializationActionList>
     <componentList>
         <component>
             <name>default</name>
@@ -17,7 +20,8 @@
                     <platforms>all</platforms>
                     <distributionFileList>
                         <distributionDirectory>
-                            <origin>/home/runner/work/E-Bill/E-Bill/be/target/release/</origin>
+                            <origin>${agent_workdir}/be/target/release/*</origin>
+                            <allowWildcards>1</allowWildcards>
                         </distributionDirectory>
                     </distributionFileList>
                     <shortcutList>
@@ -36,17 +40,6 @@
                             <windowsPath>${installdir}</windowsPath>
                         </shortcut>
                     </shortcutList>
-                </folder>
-                <folder>
-                    <description>Frontend</description>
-                    <destination>${installdir}/frontend</destination>
-                    <name>frontend</name>
-                    <platforms>all</platforms>
-                    <distributionFileList>
-                        <distributionDirectory>
-                            <origin>/home/runner/work/E-Bill/E-Bill/fe/dist/</origin>
-                        </distributionDirectory>
-                    </distributionFileList>
                 </folder>
                 <folder>
                     <description>Program Files</description>
@@ -78,6 +71,32 @@
                     <name>programfilesosx</name>
                     <platforms>osx</platforms>
                 </folder>
+                <folder>
+                    <description>Frontend</description>
+                    <destination>${installdir}/frontend</destination>
+                    <name>frontend</name>
+                    <platforms>all</platforms>
+                    <distributionFileList>
+                        <distributionDirectory>
+                            <origin>${agent_workdir}/fe/dist/*</origin>
+                            <allowWildcards>1</allowWildcards>
+                        </distributionDirectory>
+                    </distributionFileList>
+                </folder>
+                <folder>
+                    <description>nssm</description>
+                    <destination>${installdir}</destination>
+                    <name>nssm</name>
+                    <platforms>windows-x64</platforms>
+                    <distributionFileList>
+                        <distributionFile>
+                            <origin>${agent_workdir}/be/.github/workflows/wizard/nssm.exe</origin>
+                        </distributionFile>
+                        <distributionFile>
+                            <origin>${agent_workdir}/be/.github/workflows/wizard/bitcredit.ico</origin>
+                        </distributionFile>
+                    </distributionFileList>
+                </folder>
             </folderList>
             <startMenuShortcutList>
                 <startMenuShortcut>
@@ -91,18 +110,74 @@
                     <windowsPath>${installdir}/</windowsPath>
                 </startMenuShortcut>
             </startMenuShortcutList>
+            <desktopShortcutList>
+                <shortcut>
+                    <name>${product_fullname}</name>
+                    <runInTerminal>0</runInTerminal>
+                    <windowsExec>http://localhost:${http_port}</windowsExec>
+                    <windowsIco>${installdir}/bitcredit.ico</windowsIco>
+                </shortcut>
+            </desktopShortcutList>
         </component>
     </componentList>
     <preInstallationActionList>
         <getFreePort>
-            <finalPort>1050</finalPort>
-            <initialPort>1000</initialPort>
-            <variable>be_port</variable>
+            <finalPort>9000</finalPort>
+            <initialPort>8000</initialPort>
+            <variable>http_port</variable>
         </getFreePort>
     </preInstallationActionList>
+    <postInstallationActionList>
+        <setInstallerVariable>
+            <name>be_service_name</name>
+            <persist>1</persist>
+            <value>bitcreditclient</value>
+        </setInstallerVariable>
+        <runProgram>
+            <runAs>Administrator</runAs>
+            <program>${installdir}/nssm.exe</program>
+            <programArguments>install "${be_service_name}" "${installdir}\bitcredit.exe" "--http-port ${http_port} --surreal-db-connection rocksdb://data/surreal --nostr-relay wss://bitcr-cloud-run-03-550030097098.europe-west1.run.app"</programArguments>
+            <workingDirectory>${installdir}</workingDirectory>
+        </runProgram>
+        <runProgram>
+            <runAs>Administrator</runAs>
+            <program>${installdir}/nssm.exe</program>
+            <programArguments>set "${be_service_name}" DisplayName "Bitcredit Client"</programArguments>
+            <workingDirectory>${installdir}</workingDirectory>
+        </runProgram>
+        <runProgram>
+            <runAs>Administrator</runAs>
+            <program>${installdir}/nssm.exe</program>
+            <programArguments>set "${be_service_name}" AppStdout "${installdir}\logs\stdout.txt"</programArguments>
+            <workingDirectory>${installdir}</workingDirectory>
+        </runProgram>
+        <runProgram>
+            <runAs>Administrator</runAs>
+            <program>${installdir}/nssm.exe</program>
+            <programArguments>set "${be_service_name}" AppStderr "${installdir}\logs\stderr.txt"</programArguments>
+            <workingDirectory>${installdir}</workingDirectory>
+        </runProgram>
+        <runProgram>
+            <runAs>Administrator</runAs>
+            <program>${installdir}/nssm.exe</program>
+            <programArguments>set "${be_service_name}" AppRestartDelay 300000</programArguments>
+            <workingDirectory>${installdir}</workingDirectory>
+        </runProgram>
+        <runProgram>
+            <runAs>Administrator</runAs>
+            <program>${installdir}/nssm.exe</program>
+            <programArguments>start "${be_service_name}" "SERVICE_AUTO_START"</programArguments>
+            <workingDirectory>${installdir}</workingDirectory>
+        </runProgram>
+    </postInstallationActionList>
+    <preUninstallationActionList>
+        <deleteWindowsService>
+            <displayName></displayName>
+            <serviceName>${be_service_name}</serviceName>
+        </deleteWindowsService>
+    </preUninstallationActionList>
     <enableRollback>1</enableRollback>
     <enableTimestamp>1</enableTimestamp>
-    <outputDirectory>.</outputDirectory>
     <vendor>Bitcredit Foundation</vendor>
     <parameterList>
         <directoryParameter>

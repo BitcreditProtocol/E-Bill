@@ -42,9 +42,13 @@ jobs:
       - name: Install BE dependencies
         run: ${{ matrix.config.pck }}
 
-    #   - name: Build BE
-    #     run: cargo build --features embedded-db --release
-    #     working-directory: ./be
+      # - name: Build BE
+      #   run: cargo build --features embedded-db --release
+      #   working-directory: ./be
+
+      # - name: Create Logs folder
+      #   run: mkdir logs
+      #   working-directory: ./be/target/release
       
       - name: Checkout FE repo
         uses: actions/checkout@v4
@@ -59,6 +63,13 @@ jobs:
             npm run build
         working-directory: ./fe
       
+      - run: tree
+
+      - name: Set work directory
+        uses: Mudlet/xmlstarlet-action@master
+        with:
+          args: ed -L --update '/project/initializationActionList/setInstallerVariable[@name="agent_workdir"]/@value' -v "${{ env.GITHUB_WORKSPACE }}" "./be/.github/workflows/wizard/spec.xml"
+
       - name: Install InstallBuilder
         run: |
             curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
@@ -66,7 +77,7 @@ jobs:
         
       - name: Build installer
         run: |
-            ${{ env.GITHUB_WORKSPACE }}/home/runner/installbuilder-24.11.1/bin/${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}
+            c://Program Files/installbuilder-24.11.1/bin/${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}
         working-directory: ./be/.github/workflows/wizard
 
       - name: Upload BE artifacts
