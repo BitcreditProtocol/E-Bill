@@ -65,8 +65,8 @@ jobs:
       
       - name: Show all environment variables
         run: |
-          echo "${{ toJSON(github) }}"
-          echo "${{ toJSON(runner) }}"
+          echo '${{ toJSON(github) }}'
+          echo '${{ toJSON(runner) }}'
 
       - name: Set work directory
         uses: richardrigutins/replace-in-files@v2
