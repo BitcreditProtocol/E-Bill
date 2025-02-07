@@ -24,7 +24,7 @@ jobs:
             installer: 
                 ver: windows-x64-installer.exe
                 target: windows
-                exec: builder-cli.exe
+                exec: c:/Program Files/installbuilder-24.11.1/bin/builder-cli.exe
         #   - os: macos-latest
         #     pck: brew install protobuf
         #     installer: 
@@ -82,8 +82,8 @@ jobs:
         
       - name: Build installer
         run: |
-            "c:/Program Files/installbuilder-24.11.1/bin/${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}"
-            tree
+            "${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}"
+            dir
         working-directory: ./be/.github/workflows/wizard
 
       - name: Upload BE artifacts
