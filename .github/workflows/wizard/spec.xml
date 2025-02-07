@@ -3,7 +3,7 @@
     <fullName>Bitcredit Client</fullName>
     <version>0.5</version>
     <initializationActionList>
-        <setInstallerVariable name="agent_workdir" value="WORKDIR_PLACEHOLDER" />
+        <setInstallerVariable name="agent_workdir" value="C:\Users\Jack\Documents\InstallBuilder\projects" />
     </initializationActionList>
     <componentList>
         <component>
@@ -115,7 +115,7 @@
                     <name>${product_fullname}</name>
                     <runInTerminal>0</runInTerminal>
                     <windowsExec>http://localhost:${http_port}</windowsExec>
-                    <windowsIco>${installdir}/bitcredit.ico</windowsIco>
+                    <windowsIcon>${installdir}/bitcredit.ico</windowsIcon>
                 </shortcut>
             </desktopShortcutList>
         </component>

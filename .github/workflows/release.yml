@@ -82,8 +82,7 @@ jobs:
         
       - name: Build installer
         run: |
-            "${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}"
-            dir
+            & "${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}"
         working-directory: ./be/.github/workflows/wizard
 
       - name: Upload BE artifacts
