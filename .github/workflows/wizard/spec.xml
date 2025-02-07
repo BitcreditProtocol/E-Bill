@@ -194,15 +194,5 @@
             <mustExist>0</mustExist>
             <width>40</width>
         </directoryParameter>
-        <stringParameter>
-            <name>user_be_port</name>
-            <title>Backend Port</title>
-            <description>Backend Port</description>
-            <explanation>Please specify avaliable port for Backend Service</explanation>
-            <value></value>
-            <default>${be_port}</default>
-            <allowEmptyValue>0</allowEmptyValue>
-            <width>40</width>
-        </stringParameter>
     </parameterList>
 </project>
