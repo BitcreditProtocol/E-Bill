@@ -1,7 +1,7 @@
 <project>
     <shortName>bitcredit</shortName>
     <fullName>Bitcredit Client</fullName>
-    <version>0.4</version>
+    <version>0.5</version>
     <initializationActionList>
         <setInstallerVariable name="agent_workdir" value="WORKDIR_PLACEHOLDER" />
     </initializationActionList>
@@ -179,6 +179,7 @@
     <enableRollback>1</enableRollback>
     <enableTimestamp>1</enableTimestamp>
     <vendor>Bitcredit Foundation</vendor>
+    <outputDirectory>.</outputDirectory>
     <parameterList>
         <directoryParameter>
             <name>installdir</name>
