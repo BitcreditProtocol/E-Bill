@@ -52,15 +52,10 @@ jobs:
             repository: BitcreditProtocol/E-Bill-frontend
             ref: fixes/api-integration
             path: fe
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: v22.11.0
-
+          
       - name: Build FE
         run: |
-            npm ci
+            npm install
             npm run build
         working-directory: ./fe
       
