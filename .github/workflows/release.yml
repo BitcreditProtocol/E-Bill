@@ -47,13 +47,13 @@ jobs:
       - name: Install BE dependencies
         run: ${{ matrix.config.pck }}
 
-      # - name: Build BE
-      #   run: cargo build --features embedded-db --release
-      #   working-directory: ./be
+      - name: Build BE
+        run: cargo build --features embedded-db --release
+        working-directory: ./be
 
-      # - name: Create Logs folder
-      #   run: mkdir logs
-      #   working-directory: ./be/target/release
+      - name: Create Logs folder
+        run: mkdir logs
+        working-directory: ./be/target/release
       
       - name: Checkout FE repo
         uses: actions/checkout@v4
@@ -85,14 +85,6 @@ jobs:
         with:
             name: bitcredit-${{ env.version }}-${{ matrix.config.installer.ver }}
             path: ./be/.github/workflows/wizard/bitcredit-${{ env.version }}-${{ matrix.config.installer.ver }}
-  
-#   build_installer:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Download artifacts
-#         uses: actions/download-artifact@v4
-#         with:
-#             path: be
 
 #       - name: Discover filesystem
 #         run: find ~ -type d
