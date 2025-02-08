@@ -37,7 +37,7 @@ jobs:
       run:
         shell: bash
     env:
-      Version: 0.5
+      version: 0.5
     steps:
       - name: Checkout BE repo
         uses: actions/checkout@v4
@@ -68,13 +68,6 @@ jobs:
             npm run build
         working-directory: ./fe
 
-      - name: Set work directory
-        uses: richardrigutins/replace-in-files@v2
-        with:
-          files: ./be/.github/workflows/wizard/spec.xml
-          search-text: WORKDIR_PLACEHOLDER
-          replacement-text: ${{ github.workspace }}
-
       - name: Install InstallBuilder
         run: |
             curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
@@ -83,15 +76,15 @@ jobs:
         
       - name: Build installer
         run: |
-            "${{ matrix.config.installer.exec }}" build spec.xml ${{ matrix.config.installer.target }} --setvars sourcedir=${{ github.workspace }} version=$Version
+            "${{ matrix.config.installer.exec }}" build spec.xml ${{ matrix.config.installer.target }} --setvars sourcedir="${{ github.workspace }}" version=${{ env.version }}
             ls
         working-directory: ./be/.github/workflows/wizard
 
       - name: Upload BE artifacts
         uses: actions/upload-artifact@v4
         with:
-            name: bitcredit-$Version-${{ matrix.config.installer.ver }}
-            path: ./be/.github/workflows/wizard/bitcredit-$Version-${{ matrix.config.installer.ver }}
+            name: bitcredit-${{ env.version }}-${{ matrix.config.installer.ver }}
+            path: ./be/.github/workflows/wizard/bitcredit-${{ env.version }}-${{ matrix.config.installer.ver }}
   
 #   build_installer:
 #     runs-on: ubuntu-latest
