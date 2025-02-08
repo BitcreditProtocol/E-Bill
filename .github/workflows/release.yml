@@ -79,7 +79,7 @@ jobs:
         run: |
             curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
             dir
-            & 'installbuilder-${{ matrix.config.installer.ver }} --mode unattended'
+            .\installbuilder-${{ matrix.config.installer.ver }} --mode unattended
             dir "c:/Program Files"
         
       - name: Build installer
