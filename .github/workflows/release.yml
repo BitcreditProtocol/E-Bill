@@ -65,11 +65,6 @@ jobs:
             npm install
             npm run build
         working-directory: ./fe
-      
-      - name: Show all environment variables
-        run: |
-          echo '${{ toJSON(github) }}'
-          echo '${{ toJSON(runner) }}'
 
       - name: Set work directory
         uses: richardrigutins/replace-in-files@v2
@@ -81,13 +76,11 @@ jobs:
       - name: Install InstallBuilder
         run: |
             curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
-            ls
             ./installbuilder-${{ matrix.config.installer.ver }} --mode unattended
-            ls "c:\Program Files"
         
       - name: Build installer
         run: |
-            & "${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}"
+            "${{ matrix.config.installer.exec }} build spec.xml ${{ matrix.config.installer.target }}"
         working-directory: ./be/.github/workflows/wizard
 
       - name: Upload BE artifacts
