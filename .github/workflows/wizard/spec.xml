@@ -1,10 +1,7 @@
 <project>
     <shortName>bitcredit</shortName>
     <fullName>Bitcredit Client</fullName>
-    <version>0.5</version>
-    <preBuildActionList>
-        <setInstallerVariable name="agent_workdir" value="WORKDIR_PLACEHOLDER" />
-    </preBuildActionList>
+    <version>0.0</version>
     <componentList>
         <component>
             <name>default</name>
@@ -20,7 +17,7 @@
                     <platforms>all</platforms>
                     <distributionFileList>
                         <distributionDirectory>
-                            <origin>${agent_workdir}/be/target/release/*</origin>
+                            <origin>${sourcedir}/be/target/release/*</origin>
                             <allowWildcards>1</allowWildcards>
                         </distributionDirectory>
                     </distributionFileList>
@@ -78,7 +75,7 @@
                     <platforms>all</platforms>
                     <distributionFileList>
                         <distributionDirectory>
-                            <origin>${agent_workdir}/fe/dist/*</origin>
+                            <origin>${sourcedir}/fe/dist/*</origin>
                             <allowWildcards>1</allowWildcards>
                         </distributionDirectory>
                     </distributionFileList>
@@ -90,10 +87,10 @@
                     <platforms>windows-x64</platforms>
                     <distributionFileList>
                         <distributionFile>
-                            <origin>${agent_workdir}/be/.github/workflows/wizard/nssm.exe</origin>
+                            <origin>${sourcedir}/be/.github/workflows/wizard/nssm.exe</origin>
                         </distributionFile>
                         <distributionFile>
-                            <origin>${agent_workdir}/be/.github/workflows/wizard/bitcredit.ico</origin>
+                            <origin>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</origin>
                         </distributionFile>
                     </distributionFileList>
                 </folder>

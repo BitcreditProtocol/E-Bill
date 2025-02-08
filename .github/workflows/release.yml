@@ -36,6 +36,8 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      Version: 0.5
     steps:
       - name: Checkout BE repo
         uses: actions/checkout@v4
@@ -81,15 +83,15 @@ jobs:
         
       - name: Build installer
         run: |
-            "${{ matrix.config.installer.exec }}" build spec.xml ${{ matrix.config.installer.target }}
+            "${{ matrix.config.installer.exec }}" build spec.xml ${{ matrix.config.installer.target }} --setvars sourcedir=${{ github.workspace }} version=$Version
             ls
         working-directory: ./be/.github/workflows/wizard
 
       - name: Upload BE artifacts
         uses: actions/upload-artifact@v4
         with:
-            name: bitcredit-0.5-${{ matrix.config.installer.ver }}
-            path: ./be/.github/workflows/wizard/bitcredit-0.5-${{ matrix.config.installer.ver }}
+            name: bitcredit-$Version-${{ matrix.config.installer.ver }}
+            path: ./be/.github/workflows/wizard/bitcredit-$Version-${{ matrix.config.installer.ver }}
   
 #   build_installer:
 #     runs-on: ubuntu-latest
