@@ -33,6 +33,9 @@ jobs:
         #         exec: builder
     
     runs-on: ${{ matrix.config.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout BE repo
         uses: actions/checkout@v4
@@ -76,10 +79,10 @@ jobs:
           replacement-text: ${{ github.workspace }}
 
       - name: Install InstallBuilder
-        shell: bash
         run: |
             curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
-            .\installbuilder-${{ matrix.config.installer.ver }} --mode unattended
+            ls
+            ./installbuilder-${{ matrix.config.installer.ver }} --mode unattended
             ls "c:\Program Files"
         
       - name: Build installer
