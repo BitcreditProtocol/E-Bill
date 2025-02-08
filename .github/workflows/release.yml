@@ -54,7 +54,7 @@ jobs:
         uses: actions/checkout@v4
         with:
             repository: BitcreditProtocol/E-Bill-frontend
-            ref: fixes/api-integration
+            ref: 7546a09713e07a09e209184c50c73faf9e1a8f12
             path: fe
           
       - name: Build FE
@@ -76,11 +76,11 @@ jobs:
           replacement-text: ${{ github.workspace }}
 
       - name: Install InstallBuilder
+        shell: bash
         run: |
             curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
-            dir
             .\installbuilder-${{ matrix.config.installer.ver }} --mode unattended
-            dir "c:/Program Files"
+            ls "c:\Program Files"
         
       - name: Build installer
         run: |
