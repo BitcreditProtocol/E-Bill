@@ -2,9 +2,9 @@
     <shortName>bitcredit</shortName>
     <fullName>Bitcredit Client</fullName>
     <version>0.5</version>
-    <initializationActionList>
+    <preBuildActionList>
         <setInstallerVariable name="agent_workdir" value="WORKDIR_PLACEHOLDER" />
-    </initializationActionList>
+    </preBuildActionList>
     <componentList>
         <component>
             <name>default</name>
