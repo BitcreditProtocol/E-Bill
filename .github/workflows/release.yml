@@ -47,12 +47,12 @@ jobs:
       - name: Install BE dependencies
         run: |
           ${{ matrix.config.pck }}
-          ls "c:/Program Files"
+          ls "c:/Program Files/OpenSSL" -r
 
       - name: Build BE
         env:
-          OPENSSL_DIR: C:\Program Files\OpenSSL-Win64
-          OPENSSL_LIB_DIR: C:\Program Files\OpenSSL-Win64\lib\VC\x64\MD
+          OPENSSL_DIR: C:\Program Files\OpenSSL
+          OPENSSL_LIB_DIR: C:\Program Files\OpenSSL\lib\VC\x64\MD
         run: cargo build --features embedded-db --release
         working-directory: ./be
 
