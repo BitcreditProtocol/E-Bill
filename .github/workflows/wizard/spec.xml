@@ -8,9 +8,12 @@
     <leftImage>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</leftImage>
     <initializationActionList>
         <setInstallerVariable>
-            <name>project.installationType</name>
-            <value>upgrade</value>
+            <name>skip_vc_install</name>
+            <value>1</value>
             <ruleList>
+                <platformTest>
+                    <type>windows-x64</type>
+                </platformTest>
                 <registryTest>
                     <key>HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64\</key>
                     <logic>exists</logic>
@@ -18,7 +21,20 @@
                 </registryTest>
             </ruleList>
         </setInstallerVariable>
-        Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OpenSSL Light (64-bit)_is1
+        <setInstallerVariable>
+            <name>skip_openssl_install</name>
+            <value>1</value>
+            <ruleList>
+                <platformTest>
+                    <type>windows-x64</type>
+                </platformTest>
+                <registryTest>
+                    <key>HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OpenSSL Light (64-bit)_is1</key>
+                    <logic>exists</logic>
+                    <name>DispalyName</name>
+                </registryTest>
+            </ruleList>
+        </setInstallerVariable>
     </initializationActionList>
     <componentList>
         <component>
@@ -192,6 +208,9 @@
         <deleteWindowsService>
             <displayName></displayName>
             <serviceName>${be_service_name}</serviceName>
+            <ruleList>
+                <windowsServiceTest service="${be_service_name}" condition="exists"/>
+            </ruleList>
         </deleteWindowsService>
     </preUninstallationActionList>
     <enableRollback>1</enableRollback>

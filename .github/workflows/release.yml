@@ -20,7 +20,10 @@ jobs:
       matrix:
         config: 
           # - os: windows-latest
-          #   pck: choco install protoc openssl -y
+          #   pck: |
+          #     choco install protoc openssl -y
+          #     echo "OPENSSL_DIR=C:\Program Files\OpenSSL" >> $GITHUB_ENV
+          #     echo "OPENSSL_LIB_DIR=C:\Program Files\OpenSSL\lib\VC\x64\MD" >> $GITHUB_ENV
           #   installer: 
           #       ver: windows-x64-installer.exe
           #       target: windows-x64
@@ -47,12 +50,8 @@ jobs:
       - name: Install BE dependencies
         run: |
           ${{ matrix.config.pck }}
-          ls "c:/Program Files/OpenSSL" -r
 
-      - name: Build BE
-        env:
-          OPENSSL_DIR: C:\Program Files\OpenSSL
-          OPENSSL_LIB_DIR: C:\Program Files\OpenSSL\lib\VC\x64\MD
+      - name: Build BE         
         run: cargo build --features embedded-db --release
         working-directory: ./be
 
@@ -82,7 +81,6 @@ jobs:
       - name: Build installer
         run: |
             "${{ matrix.config.installer.exec }}" build spec.xml ${{ matrix.config.installer.target }} --setvars sourcedir="${{ github.workspace }}" version=${{ env.version }}
-            ls
         working-directory: ./be/.github/workflows/wizard
 
       - name: Upload BE artifacts
