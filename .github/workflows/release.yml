@@ -85,9 +85,8 @@ jobs:
             MOUNTDEV=$(hdiutil mount $dmgFilePath | awk '/dev.disk/{print$1}')
             MOUNTDIR="$(mount | grep $MOUNTDEV | awk '{$1=$2="";sub(" [(].*","");sub("^  ","");print}')"
             ls "$MOUNTDIR"
-            sudo installer -pkg "${MOUNTDIR}/"*.pkg -target /
+            sudo "$MOUNTDIR/installbuilder-professional-24.11.1-osx-installer.app" --mode unattended
             hdiutil unmount "$MOUNTDIR"
-            ls /
 
       - name: Build installer
         run: |
