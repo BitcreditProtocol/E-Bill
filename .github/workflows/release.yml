@@ -33,7 +33,7 @@ jobs:
             installer: 
                 ver: osx-installer.dmg
                 target: osx
-                exec: $MOUNTDIR/installbuilder-professional-24.11.1-osx-installer.app
+                exec: /Volumes/InstallBuilder Professional/installbuilder-professional-24.11.1-osx-installer.app
     
     runs-on: ${{ matrix.config.os }}
     defaults:
