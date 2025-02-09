@@ -84,7 +84,7 @@ jobs:
             curl -L -o $dmgFilePath https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
             MOUNTDEV=$(hdiutil mount $dmgFilePath | awk '/dev.disk/{print$1}')
             MOUNTDIR="$(mount | grep $MOUNTDEV | awk '{$1=$2="";sub(" [(].*","");sub("^  ","");print}')"
-            ls $MOUNTDIR
+            ls "$MOUNTDIR"
             sudo installer -pkg "${MOUNTDIR}/"*.pkg -target /
             hdiutil unmount "$MOUNTDIR"
             ls /
