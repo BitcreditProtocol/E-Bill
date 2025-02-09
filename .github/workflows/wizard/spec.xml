@@ -115,7 +115,6 @@
                     </distributionFileList>
                 </folder>
                 <folder>
-                    <description>nssm</description>
                     <destination>${installdir}</destination>
                     <name>nssm</name>
                     <platforms>windows-x64</platforms>
@@ -128,6 +127,9 @@
                         </distributionFile>
                         <distributionFile>
                             <origin>${sourcedir}/be/.github/workflows/wizard/Win64OpenSSL_Light-3_4_0.exe</origin>
+                        </distributionFile>
+                        <distributionFile>
+                            <origin>${sourcedir}/be/.github/workflows/wizard/VC_redist.x64.v14_42.exe</origin>
                         </distributionFile>
                     </distributionFileList>
                 </folder>

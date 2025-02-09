@@ -47,13 +47,13 @@ jobs:
         with:
             path: be
     
-      - name: Install BE dependencies
-        run: |
-          ${{ matrix.config.pck }}
+      # - name: Install BE dependencies
+      #   run: |
+      #     ${{ matrix.config.pck }}
 
-      - name: Build BE         
-        run: cargo build --features embedded-db --release
-        working-directory: ./be
+      # - name: Build BE         
+      #   run: cargo build --features embedded-db --release
+      #   working-directory: ./be
 
       - name: Create Logs folder
         run: mkdir logs
@@ -72,12 +72,22 @@ jobs:
             npm run build
         working-directory: ./fe
 
+      # - name: Install InstallBuilder
+      #   run: |
+      #       curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
+      #       chmod +x installbuilder-${{ matrix.config.installer.ver }}
+      #       ./installbuilder-${{ matrix.config.installer.ver }} --mode unattended
+        
       - name: Install InstallBuilder
         run: |
-            curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
-            chmod +x installbuilder-${{ matrix.config.installer.ver }}
-            ./installbuilder-${{ matrix.config.installer.ver }} --mode unattended
-        
+            $dmgFilePath = installbuilder-${{ matrix.config.installer.ver }}
+            curl -L -o $dmgFilePath https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
+            MOUNTDEV=$(hdiutil mount $dmgFilePath | awk '/dev.disk/{print$1}')
+            MOUNTDIR="$(mount | grep $MOUNTDEV | awk '{$1=$2="";sub(" [(].*","");sub("^  ","");print}')"
+            sudo installer -pkg "${MOUNTDIR}/"*.pkg -target /
+            hdiutil unmount "$MOUNTDIR"
+            ls /
+
       - name: Build installer
         run: |
             "${{ matrix.config.installer.exec }}" build spec.xml ${{ matrix.config.installer.target }} --setvars sourcedir="${{ github.workspace }}" version=${{ env.version }}
