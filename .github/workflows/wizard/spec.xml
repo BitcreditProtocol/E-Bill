@@ -2,6 +2,24 @@
     <shortName>bitcredit</shortName>
     <fullName>Bitcredit Client</fullName>
     <version>0.0</version>
+    <splashImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</splashImage>
+    <windowsExecutableIcon>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</windowsExecutableIcon>
+    <logoImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</logoImage>
+    <leftImage>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</leftImage>
+    <initializationActionList>
+        <setInstallerVariable>
+            <name>project.installationType</name>
+            <value>upgrade</value>
+            <ruleList>
+                <registryTest>
+                    <key>HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64\</key>
+                    <logic>exists</logic>
+                    <name>Version</name>
+                </registryTest>
+            </ruleList>
+        </setInstallerVariable>
+        Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OpenSSL Light (64-bit)_is1
+    </initializationActionList>
     <componentList>
         <component>
             <name>default</name>
@@ -91,6 +109,9 @@
                         </distributionFile>
                         <distributionFile>
                             <origin>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</origin>
+                        </distributionFile>
+                        <distributionFile>
+                            <origin>${sourcedir}/be/.github/workflows/wizard/Win64OpenSSL_Light-3_4_0.exe</origin>
                         </distributionFile>
                     </distributionFileList>
                 </folder>

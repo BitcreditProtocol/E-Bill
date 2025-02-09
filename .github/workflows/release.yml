@@ -19,18 +19,18 @@ jobs:
     strategy:
       matrix:
         config: 
-          - os: windows-latest
-            pck: choco install protoc openssl -y
-            installer: 
-                ver: windows-x64-installer.exe
-                target: windows-x64
-                exec: c:/Program Files/InstallBuilder Professional 24.11.1/bin/builder-cli.exe
-          # - os: macos-latest
-          #   pck: brew install protobuf
+          # - os: windows-latest
+          #   pck: choco install protoc openssl -y
           #   installer: 
-          #       ver: osx-installer.dmg
-          #       target: osx
-          #       exec: builder
+          #       ver: windows-x64-installer.exe
+          #       target: windows-x64
+          #       exec: c:/Program Files/InstallBuilder Professional 24.11.1/bin/builder-cli.exe
+          - os: macos-latest
+            pck: brew install protobuf
+            installer: 
+                ver: osx-installer.dmg
+                target: osx
+                exec: builder
     
     runs-on: ${{ matrix.config.os }}
     defaults:
