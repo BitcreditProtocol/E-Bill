@@ -869,13 +869,17 @@ impl Client {
     pub async fn receive_updates_for_all_bills_topics(&mut self) -> Result<()> {
         let bill_ids = self.bill_store.get_ids().await?;
 
-        for bill in bill_ids {
-            let event =
-                GossipsubEvent::new(GossipsubEventId::CommandGetBillBlockchain, vec![0; 24]);
-            let message = event.to_byte_array()?;
-
-            self.add_message_to_bill_topic(message, &bill).await?;
+        for bill_id in bill_ids {
+            self.receive_updates_for_bill_topic(&bill_id).await?;
         }
+        Ok(())
+    }
+
+    pub async fn receive_updates_for_bill_topic(&mut self, bill_id: &str) -> Result<()> {
+        let event = GossipsubEvent::new(GossipsubEventId::CommandGetBillBlockchain, vec![0; 24]);
+        let message = event.to_byte_array()?;
+
+        self.add_message_to_bill_topic(message, bill_id).await?;
         Ok(())
     }
 

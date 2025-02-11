@@ -342,6 +342,7 @@ impl EventLoop {
                                         if let Ok(mut local_chain) =
                                             self.bill_blockchain_store.get_chain(bill_id).await
                                         {
+                                            info!("Received blockchain for bill: {bill_id} from peer: {node_id}, local block height: {}, remote block height: {}", local_chain.block_height(), remote_chain.block_height());
                                             let blocks_to_add = local_chain
                                                 .get_blocks_to_add_from_other_chain(&remote_chain);
                                             for block in blocks_to_add {

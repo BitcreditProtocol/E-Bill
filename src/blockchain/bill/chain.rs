@@ -89,6 +89,22 @@ impl BillBlockchain {
         })
     }
 
+    /// Counts the number of endorsement blocks (mint, sell, endorse, recourse)
+    pub fn get_endorsements_count(&self) -> u64 {
+        self.blocks
+            .iter()
+            .filter(|block| {
+                matches!(
+                    block.op_code,
+                    BillOpCode::Mint
+                        | BillOpCode::Sell
+                        | BillOpCode::Endorse
+                        | BillOpCode::Recourse
+                )
+            })
+            .count() as u64
+    }
+
     /// Checks if the the chain has Endorse, or Sell blocks in it
     pub fn has_been_endorsed_or_sold(&self) -> bool {
         self.blocks

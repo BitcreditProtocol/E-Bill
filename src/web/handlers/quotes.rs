@@ -28,9 +28,11 @@ pub async fn return_quote(
     if !quote.bill_id.is_empty() && quote.quote_id.is_empty() {
         // Usage of thread::spawn is necessary here, because we spawn a new tokio runtime in the
         // thread, but this logic will be replaced soon
-        thread::spawn(move || check_bitcredit_quote(&copy_id_hex, &local_node_id, copy_id_base58))
-            .join()
-            .expect("Thread panicked");
+        thread::spawn(move || {
+            check_bitcredit_quote(&copy_id_hex, &local_node_id, copy_id_base58, quote.clone())
+        })
+        .join()
+        .expect("Thread panicked");
     }
     quote = get_quote_from_map(&id).ok_or(Error::NotFound)?;
     Ok(Json(quote))

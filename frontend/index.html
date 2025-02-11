@@ -17,7 +17,7 @@
     <script>
         async function fetchIdentity() {
             try {
-                const response = await fetch('/identity/detail'); 
+                const response = await fetch('/api/identity/detail');
                 if (!response.ok) {
                     let resp = await response.json();
                     throw new Error(`${response.status} - ${resp.error}/${resp.message}`);
@@ -31,5 +31,6 @@
         }
         fetchIdentity();
     </script>
+    <script src="./main.js"></script>
 </body>
 </html>

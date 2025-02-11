@@ -11,7 +11,7 @@ The following options are available:
 * `DATA_DIR` - the data directory root (default: ".")
 * `SURREAL_DB_CONNECTION` - the surreal DB connection (default: "ws://localhost:8800") - set to `rocksdb://data/surreal` for embedded mode
 * `TERMINAL_CLIENT` - whether to start a debug terminal client (default: false)
-* `ENVIRONMENT` - environment to start the app in (default: development)
+* `BITCOIN_NETWORK` - bitcoin network to use (default: testnet), possible values: `mainnet`, `regtest` and `testnet`
 * `RUST_LOG` - the log level, e.g.: info, trace, debug, error (default: error)
 * `NOSTR_RELAY` - nostr relay endpoint (default: ws://localhost:8080)
 * `MINT_URL` - cashu mint endpoint (default: https://moksha.minibill.tech)

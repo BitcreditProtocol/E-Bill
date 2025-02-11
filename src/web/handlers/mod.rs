@@ -5,9 +5,11 @@ use super::data::{
 use crate::{
     constants::VALID_CURRENCIES,
     service::{Error, Result, ServiceContext},
+    CONFIG,
 };
 use bill::get_current_identity_node_id;
-use rocket::{get, post, serde::json::Json, Shutdown, State};
+use rocket::{fs::NamedFile, get, post, serde::json::Json, Shutdown, State};
+use std::path::Path;
 
 pub mod bill;
 pub mod company;
@@ -16,6 +18,13 @@ pub mod identity;
 pub mod middleware;
 pub mod notifications;
 pub mod quotes;
+
+#[get("/<_..>", rank = 10)]
+pub async fn serve_frontend() -> Option<NamedFile> {
+    NamedFile::open(Path::new(&CONFIG.frontend_serve_folder).join("index.html"))
+        .await
+        .ok()
+}
 
 #[get("/")]
 pub async fn exit(shutdown: Shutdown, state: &State<ServiceContext>) {

@@ -5,6 +5,7 @@ use crate::util::base58_decode;
 use crate::web::data::RequestToMintBitcreditBillPayload;
 use crate::CONFIG;
 use borsh::{to_vec, BorshDeserialize};
+use log::error;
 use moksha_core::primitives::CheckBitcreditQuoteResponse;
 use moksha_core::primitives::{
     BillKeys, CurrencyUnit, PaymentMethod, PostMintQuoteBitcreditResponse,
@@ -49,10 +50,15 @@ pub async fn accept_mint_bitcredit(
     req.await.unwrap()
 }
 
-// Usage of tokio::main to spawn a new runtime is necessary here, because Wallet is'nt Send - but
+// Usage of tokio::main to spawn a new runtime is necessary here, because Wallet isn't Send - but
 // this logic will be replaced soon
 #[tokio::main]
-pub async fn check_bitcredit_quote(bill_id_hex: &str, node_id: &str, bill_id_base58: String) {
+pub async fn check_bitcredit_quote(
+    bill_id_hex: &str,
+    node_id: &str,
+    bill_id_base58: String,
+    quote: BitcreditEbillQuote,
+) {
     let dir = PathBuf::from("./data/wallet".to_string());
     let db_path = dir.join("wallet.db").to_str().unwrap().to_string();
     let localstore = SqliteLocalStore::with_path(db_path.clone())
@@ -71,7 +77,13 @@ pub async fn check_bitcredit_quote(bill_id_hex: &str, node_id: &str, bill_id_bas
         .check_bitcredit_quote(&mint_url, bill_id_hex.to_owned(), node_id.to_owned())
         .await;
 
-    let quote = result.unwrap();
+    let quote = result.unwrap_or_else(|e| {
+        error!("{}", e);
+        CheckBitcreditQuoteResponse {
+            quote: quote.quote_id,
+            amount: quote.sum,
+        }
+    });
 
     if !quote.quote.is_empty() {
         add_bitcredit_quote_and_amount_in_quotes_map(quote.clone(), bill_id_base58);

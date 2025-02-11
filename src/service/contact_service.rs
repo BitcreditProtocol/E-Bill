@@ -412,6 +412,34 @@ impl From<BillIdentityBlockData> for LightIdentityPublicData {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct LightIdentityPublicDataWithAddress {
+    pub name: String,
+    pub node_id: String,
+    #[serde(flatten)]
+    pub postal_address: PostalAddress,
+}
+
+impl From<IdentityPublicData> for LightIdentityPublicDataWithAddress {
+    fn from(value: IdentityPublicData) -> Self {
+        Self {
+            name: value.name,
+            node_id: value.node_id,
+            postal_address: value.postal_address,
+        }
+    }
+}
+
+impl From<BillIdentityBlockData> for LightIdentityPublicDataWithAddress {
+    fn from(value: BillIdentityBlockData) -> Self {
+        Self {
+            name: value.name,
+            node_id: value.node_id,
+            postal_address: value.postal_address,
+        }
+    }
+}
+
 impl From<Contact> for IdentityPublicData {
     fn from(value: Contact) -> Self {
         Self {

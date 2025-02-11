@@ -25,8 +25,8 @@ pub struct Config {
     pub surreal_db_connection: String,
     #[arg(default_value_t = false, long, env = "TERMINAL_CLIENT")]
     pub terminal_client: bool,
-    #[arg(default_value_t = String::from("development"),  env = "development")]
-    pub environment: String,
+    #[arg(default_value_t = String::from("bitcoin_network"),  env = "BITCOIN_NETWORK")]
+    pub bitcoin_network: String,
     #[arg(default_value_t = String::from("ws://localhost:8080"), long, env = "NOSTR_RELAY")]
     pub nostr_relay: String,
     #[arg(default_value_t = String::from("https://moksha.minibill.tech"), long, env = "MINT_URL")]
@@ -60,9 +60,10 @@ impl Config {
     }
 
     pub fn bitcoin_network(&self) -> Network {
-        match self.environment.as_str() {
-            "production" => Network::Bitcoin,
-            "development" => Network::Testnet,
+        match self.bitcoin_network.as_str() {
+            "mainnet" => Network::Bitcoin,
+            "testnet" => Network::Testnet,
+            "regtest" => Network::Regtest,
             _ => Network::Testnet,
         }
     }

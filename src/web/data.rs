@@ -1,3 +1,4 @@
+use crate::service::contact_service::LightIdentityPublicDataWithAddress;
 use crate::service::identity_service::IdentityType;
 use crate::service::{
     bill_service::LightBitcreditBillToReturn,
@@ -13,6 +14,19 @@ use std::fmt;
 use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct EndorsementsResponse {
+    pub endorsements: Vec<Endorsement>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct Endorsement {
+    pub pay_to_the_order_of: LightIdentityPublicDataWithAddress,
+    pub signed: LightSignedBy,
+    pub signing_timestamp: u64,
+    pub signing_address: PostalAddress,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PastEndorseesResponse {
     pub past_endorsees: Vec<PastEndorsee>,
 }
@@ -22,6 +36,7 @@ pub struct PastEndorsee {
     pub pay_to_the_order_of: LightIdentityPublicData,
     pub signed: LightSignedBy,
     pub signing_timestamp: u64,
+    pub signing_address: PostalAddress,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

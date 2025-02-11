@@ -984,7 +984,7 @@ impl BillBlock {
         }
     }
 
-    /// If the block is a non-recourse, holder-changing block (issue, endorse, sell, mint), returns
+    /// If the block is holder-changing block (issue, endorse, sell, mint, recourse), returns
     /// the new holder and signer data from the block
     pub fn get_holder_from_block(&self, bill_keys: &BillKeys) -> Result<Option<HolderFromBlock>> {
         match self.op_code {
@@ -1017,6 +1017,14 @@ impl BillBlock {
                 Ok(Some(HolderFromBlock {
                     holder: block.buyer,
                     signer: block.seller,
+                    signatory: block.signatory,
+                }))
+            }
+            Recourse => {
+                let block: BillRecourseBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                Ok(Some(HolderFromBlock {
+                    holder: block.recoursee,
+                    signer: block.recourser,
                     signatory: block.signatory,
                 }))
             }

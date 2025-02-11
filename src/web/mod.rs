@@ -1,10 +1,9 @@
 use crate::service::ServiceContext;
 use api_docs::ApiDocs;
 use log::info;
-use rocket::fs::FileServer;
 use rocket::http::{Method, Status};
 use rocket::{catch, catchers, routes, Build, Config, Request, Rocket};
-use rocket_cors::{AllowedOrigins, CorsOptions};
+use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
 use serde::Serialize;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -17,6 +16,7 @@ use crate::constants::MAX_FILE_SIZE_BYTES;
 use crate::CONFIG;
 use rocket::data::ByteUnit;
 use rocket::figment::Figment;
+use rocket::fs::FileServer;
 use rocket::serde::json::Json;
 use serde_json::json;
 
@@ -55,6 +55,7 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
 
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::all())
+        .allowed_headers(AllowedHeaders::all())
         .allowed_methods(
             vec![
                 Method::Get,
@@ -68,17 +69,22 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
             .map(From::from)
             .collect(),
         )
-        .allow_credentials(true);
+        .allow_credentials(true)
+        .to_cors()
+        .expect("Cors setup failed");
 
     let rocket = rocket::custom(config)
+        .attach(cors.clone())
+        .mount("/api/", rocket_cors::catch_all_options_routes())
         .register("/", catchers![default_catcher, not_found])
         .manage(context)
-        .mount("/exit", routes![handlers::exit])
-        .mount("/currencies", routes![handlers::currencies])
-        .mount("/overview", routes![handlers::overview])
-        .mount("/search", routes![handlers::search])
+        .manage(cors)
+        .mount("/api/exit", routes![handlers::exit])
+        .mount("/api/currencies", routes![handlers::currencies])
+        .mount("/api/overview", routes![handlers::overview])
+        .mount("/api/search", routes![handlers::search])
         .mount(
-            "/identity",
+            "/api/identity",
             routes![
                 handlers::identity::create_identity,
                 handlers::identity::change_identity,
@@ -94,11 +100,7 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
             ],
         )
         .mount(
-            &CONFIG.frontend_url_path,
-            FileServer::from(&CONFIG.frontend_serve_folder),
-        )
-        .mount(
-            "/contacts",
+            "/api/contacts",
             routes![
                 handlers::contacts::new_contact,
                 handlers::contacts::edit_contact,
@@ -110,7 +112,7 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
             ],
         )
         .mount(
-            "/company",
+            "/api/company",
             routes![
                 handlers::company::check_companies_in_dht,
                 handlers::company::list,
@@ -125,8 +127,9 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
             ],
         )
         .mount(
-            "/bill",
+            "/api/bill",
             routes![
+                handlers::bill::all_bills_from_all_identities,
                 handlers::bill::issue_bill,
                 handlers::bill::bill_detail,
                 handlers::bill::list,
@@ -144,11 +147,12 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
                 handlers::bill::check_payment,
                 handlers::bill::bitcoin_key,
                 handlers::bill::numbers_to_words_for_sum,
-                handlers::bill::find_bill_in_dht,
+                handlers::bill::find_and_sync_with_bill_in_dht,
                 handlers::bill::check_dht_for_bills,
                 handlers::bill::holder,
                 handlers::bill::search,
                 handlers::bill::get_past_endorsees_for_bill,
+                handlers::bill::get_endorsements_for_bill,
                 handlers::bill::reject_to_accept_bill,
                 handlers::bill::reject_to_pay_bill,
                 handlers::bill::reject_to_buy_bill,
@@ -158,14 +162,14 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
             ],
         )
         .mount(
-            "/quote",
+            "/api/quote",
             routes![
                 handlers::quotes::return_quote,
                 handlers::quotes::accept_quote
             ],
         )
         .mount(
-            "/",
+            "/api/",
             routes![
                 handlers::notifications::list_notifications,
                 handlers::notifications::mark_notification_done,
@@ -175,10 +179,15 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
             ],
         )
         .mount(
-            "/",
+            "/api/",
             SwaggerUi::new("/swagger-ui/<_..>").url("/api-docs/openapi.json", ApiDocs::openapi()),
         )
-        .attach(cors.to_cors().expect("Cors setup failed"));
+        .mount(
+            &CONFIG.frontend_url_path,
+            FileServer::from(&CONFIG.frontend_serve_folder).rank(5),
+        )
+        // TODO: fall back to index, but serve static files first
+        .mount(&CONFIG.frontend_url_path, routes![handlers::serve_frontend]);
 
     info!("HTTP Server Listening on {}", conf.http_listen_url());
 
