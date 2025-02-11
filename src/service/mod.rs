@@ -83,6 +83,10 @@ pub enum Error {
     /// std io
     #[error("Io error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// error returned if the given file upload id is not a temp file we have
+    #[error("No file found for file upload id")]
+    NoFileForFileUploadId,
 }
 
 /// Map from service errors directly to rocket status codes. This allows us to
@@ -91,6 +95,15 @@ pub enum Error {
 impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
     fn respond_to(self, req: &rocket::Request) -> rocket::response::Result<'o> {
         match self {
+            Error::NoFileForFileUploadId => {
+                let body =
+                    ErrorResponse::new("bad_request", self.to_string(), 400).to_json_string();
+                Response::build()
+                    .status(Status::BadRequest)
+                    .header(ContentType::JSON)
+                    .sized_body(body.len(), Cursor::new(body))
+                    .ok()
+            }
             // for now, DHT errors are InternalServerError
             Error::Dht(e) => {
                 error!("{e}");
@@ -227,7 +240,7 @@ pub async fn create_service_context(
     let notification_service =
         create_notification_service(nostr_client.clone(), db.notification_store.clone()).await?;
 
-    let bill_service = BillService::new(
+    let bill_service = Arc::new(BillService::new(
         client.clone(),
         db.bill_store,
         db.bill_blockchain_store.clone(),
@@ -239,7 +252,7 @@ pub async fn create_service_context(
         db.company_chain_store.clone(),
         db.contact_store.clone(),
         db.company_store.clone(),
-    );
+    ));
     let identity_service = IdentityService::new(
         db.identity_store.clone(),
         db.file_upload_store.clone(),
@@ -268,7 +281,7 @@ pub async fn create_service_context(
     .await?;
 
     let search_service = SearchService::new(
-        Arc::new(bill_service.clone()),
+        bill_service.clone(),
         contact_service.clone(),
         Arc::new(company_service.clone()),
     );
@@ -285,7 +298,7 @@ pub async fn create_service_context(
         dht_client: client,
         contact_service,
         search_service: Arc::new(search_service),
-        bill_service: Arc::new(bill_service),
+        bill_service,
         identity_service: Arc::new(identity_service),
         company_service: Arc::new(company_service),
         file_upload_service: Arc::new(file_upload_service),

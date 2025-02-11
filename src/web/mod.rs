@@ -1,7 +1,7 @@
 use crate::service::ServiceContext;
 use api_docs::ApiDocs;
 use log::info;
-use rocket::http::{Method, Status};
+use rocket::http::Method;
 use rocket::{catch, catchers, routes, Build, Config, Request, Rocket};
 use rocket_cors::{AllowedHeaders, AllowedOrigins, CorsOptions};
 use serde::Serialize;
@@ -75,14 +75,17 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
 
     let rocket = rocket::custom(config)
         .attach(cors.clone())
+        // catchers for CORS and API errors
         .mount("/api/", rocket_cors::catch_all_options_routes())
-        .register("/", catchers![default_catcher, not_found])
+        .mount("/api/", routes![handlers::default_api_error_catcher])
+        .register("/api/", catchers![not_found])
         .manage(context)
         .manage(cors)
         .mount("/api/exit", routes![handlers::exit])
         .mount("/api/currencies", routes![handlers::currencies])
         .mount("/api/overview", routes![handlers::overview])
         .mount("/api/search", routes![handlers::search])
+        .mount("/api/temp_file", routes![handlers::get_temp_file])
         .mount(
             "/api/identity",
             routes![
@@ -179,14 +182,17 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
             ],
         )
         .mount(
-            "/api/",
-            SwaggerUi::new("/swagger-ui/<_..>").url("/api-docs/openapi.json", ApiDocs::openapi()),
+            "/",
+            SwaggerUi::new("/api/swagger-ui/<_..>")
+                .url("/api/api-docs/openapi.json", ApiDocs::openapi()),
         )
+        // Routes for the frontend - lower rank means higher prio
         .mount(
             &CONFIG.frontend_url_path,
-            FileServer::from(&CONFIG.frontend_serve_folder).rank(5),
+            FileServer::from(&CONFIG.frontend_serve_folder).rank(5), // lower rank than index.html
+                                                                     // fallback, means it's higher
+                                                                     // prio
         )
-        // TODO: fall back to index, but serve static files first
         .mount(&CONFIG.frontend_url_path, routes![handlers::serve_frontend]);
 
     info!("HTTP Server Listening on {}", conf.http_listen_url());
@@ -205,17 +211,8 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
     rocket
 }
 
-#[catch(default)]
-pub fn default_catcher(status: Status, _req: &Request) -> Json<ErrorResponse> {
-    Json(ErrorResponse::new(
-        "error",
-        status.reason().unwrap_or("Unknown error").to_string(),
-        status.code,
-    ))
-}
-
 #[catch(404)]
-pub fn not_found(req: &Request) -> Json<ErrorResponse> {
+fn not_found(req: &Request) -> Json<ErrorResponse> {
     Json(ErrorResponse::new(
         "not_found",
         format!("We couldn't find the requested path '{}'", req.uri()),

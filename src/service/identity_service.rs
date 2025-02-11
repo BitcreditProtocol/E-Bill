@@ -122,7 +122,8 @@ impl IdentityService {
             let files = self
                 .file_upload_store
                 .read_temp_upload_files(upload_id)
-                .await?;
+                .await
+                .map_err(|_| crate::service::Error::NoFileForFileUploadId)?;
             if !files.is_empty() {
                 let (file_name, file_bytes) = &files[0];
                 let file = self

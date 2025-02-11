@@ -15,8 +15,9 @@ pub trait NotificationHandlerApi: Send + Sync {
     /// Handle the event. This is called by the notification processor which should
     /// have checked the event type before calling this method. The actual implementation
     /// should be able to deserialize the data into its T type because the EventType
-    /// determines the T type.
-    async fn handle_event(&self, event: EventEnvelope) -> Result<()>;
+    /// determines the T type. Identity represents the active identity that is receiving
+    /// the event.
+    async fn handle_event(&self, event: EventEnvelope, node_id: &str) -> Result<()>;
 }
 
 /// Logs all events that are received and registered in the event_types.
@@ -31,9 +32,9 @@ impl NotificationHandlerApi for LoggingEventHandler {
         self.event_types.contains(event_type)
     }
 
-    async fn handle_event(&self, event: EventEnvelope) -> Result<()> {
+    async fn handle_event(&self, event: EventEnvelope, identity: &str) -> Result<()> {
         info!("########### EVENT RECEIVED #############");
-        info!("Received event: {event:?}");
+        info!("Received event: {event:?} for identity: {identity}");
         info!("########################################");
         Ok(())
     }
@@ -61,7 +62,7 @@ mod tests {
 
         // handler should run successfully
         event_handler
-            .handle_event(envelope)
+            .handle_event(envelope, "identity")
             .await
             .expect("event was not handled");
 

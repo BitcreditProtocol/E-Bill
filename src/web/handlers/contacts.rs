@@ -2,10 +2,11 @@ use super::super::data::{EditContactPayload, NewContactPayload};
 use super::middleware::IdentityCheck;
 use crate::service::contact_service::Contact;
 use crate::service::{self, Result, ServiceContext};
+use crate::util;
 use crate::util::file::{detect_content_type_for_bytes, UploadFileHandler};
-use crate::web::data::{ContactsResponse, UploadFileForm, UploadFilesResponse};
+use crate::web::data::{ContactsResponse, SuccessResponse, UploadFileForm, UploadFilesResponse};
 use rocket::form::Form;
-use rocket::http::{ContentType, Status};
+use rocket::http::ContentType;
 use rocket::serde::json::Json;
 use rocket::{delete, get, post, put, State};
 
@@ -88,9 +89,9 @@ pub async fn remove_contact(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     node_id: &str,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     state.contact_service.delete(node_id).await?;
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[post("/create", format = "json", data = "<new_contact_payload>")]
@@ -100,6 +101,10 @@ pub async fn new_contact(
     new_contact_payload: Json<NewContactPayload>,
 ) -> Result<Json<Contact>> {
     let payload = new_contact_payload.0;
+
+    util::file::validate_file_upload_id(&payload.avatar_file_upload_id)?;
+    util::file::validate_file_upload_id(&payload.proof_document_file_upload_id)?;
+
     let contact = state
         .contact_service
         .add_contact(
@@ -124,7 +129,7 @@ pub async fn edit_contact(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     edit_contact_payload: Json<EditContactPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let payload = edit_contact_payload.0;
     state
         .contact_service
@@ -136,5 +141,5 @@ pub async fn edit_contact(
             payload.avatar_file_upload_id,
         )
         .await?;
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }

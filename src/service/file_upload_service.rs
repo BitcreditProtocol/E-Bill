@@ -12,11 +12,14 @@ pub trait FileUploadServiceApi: Send + Sync {
     /// validates the given uploaded file
     async fn validate_attached_file(&self, file: &dyn util::file::UploadFileHandler) -> Result<()>;
 
-    /// uploads files for use in a bill
+    /// uploads files
     async fn upload_files(
         &self,
         files: Vec<&dyn util::file::UploadFileHandler>,
     ) -> Result<UploadFilesResponse>;
+
+    /// returns a temp upload file
+    async fn get_temp_file(&self, file_upload_id: &str) -> Result<Option<(String, Vec<u8>)>>;
 }
 
 #[derive(Clone)]
@@ -100,6 +103,20 @@ impl FileUploadServiceApi for FileUploadService {
                 .await?;
         }
         Ok(UploadFilesResponse { file_upload_id })
+    }
+
+    async fn get_temp_file(&self, file_upload_id: &str) -> Result<Option<(String, Vec<u8>)>> {
+        let mut files = self
+            .file_upload_store
+            .read_temp_upload_files(file_upload_id)
+            .await
+            .map_err(|_| crate::service::Error::NoFileForFileUploadId)?;
+        // return the first file in the folder
+        if !files.is_empty() {
+            let (file_name, file_bytes) = files.remove(0);
+            return Ok(Some((file_name, file_bytes)));
+        }
+        Ok(None)
     }
 }
 
@@ -332,5 +349,52 @@ mod tests {
         let res = service.validate_attached_file(&file).await;
 
         assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn get_temp_file_baseline() {
+        let mut storage = MockFileUploadStoreApi::new();
+        storage.expect_read_temp_upload_files().returning(|_| {
+            Ok(vec![(
+                "some_file".to_string(),
+                "hello_world".as_bytes().to_vec(),
+            )])
+        });
+        let service = get_service(storage);
+
+        let res = service.get_temp_file("1234").await;
+        assert!(res.is_ok());
+        assert_eq!(
+            res.unwrap(),
+            Some(("some_file".to_string(), "hello_world".as_bytes().to_vec()))
+        );
+    }
+
+    #[tokio::test]
+    async fn get_temp_file_no_file() {
+        let mut storage = MockFileUploadStoreApi::new();
+        storage
+            .expect_read_temp_upload_files()
+            .returning(|_| Ok(vec![]));
+        let service = get_service(storage);
+
+        let res = service.get_temp_file("1234").await;
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn get_temp_file_err() {
+        let mut storage = MockFileUploadStoreApi::new();
+        storage.expect_read_temp_upload_files().returning(|_| {
+            Err(persistence::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "test error",
+            )))
+        });
+        let service = get_service(storage);
+
+        let res = service.get_temp_file("1234").await;
+        assert!(res.is_err());
     }
 }

@@ -1,19 +1,19 @@
 use std::env;
 
 use super::middleware::IdentityCheck;
-use crate::external;
 use crate::service::identity_service::IdentityType;
-use crate::service::Result;
+use crate::service::{Error, Result};
 use crate::util::date::{format_date_string, now};
 use crate::util::file::{detect_content_type_for_bytes, UploadFileHandler};
 use crate::web::data::{
-    ChangeIdentityPayload, NewIdentityPayload, SeedPhrase, SwitchIdentity, UploadFileForm,
-    UploadFilesResponse,
+    ChangeIdentityPayload, NewIdentityPayload, SeedPhrase, SuccessResponse, SwitchIdentity,
+    UploadFileForm, UploadFilesResponse,
 };
+use crate::{external, util};
 use crate::{service::identity_service::IdentityToReturn, service::ServiceContext};
 use log::info;
 use rocket::form::Form;
-use rocket::http::{ContentType, Status};
+use rocket::http::ContentType;
 use rocket::response::Responder;
 use rocket::serde::json::Json;
 use rocket::{get, post, put, Response, Shutdown, State};
@@ -32,13 +32,13 @@ pub async fn get_file(
         .identity_service
         .open_and_decrypt_file(&id, file_name, &private_key)
         .await
-        .map_err(|_| crate::service::Error::NotFound)?;
+        .map_err(|_| Error::NotFound)?;
 
     let content_type = match detect_content_type_for_bytes(&file_bytes) {
         None => None,
         Some(t) => ContentType::parse_flexible(&t),
     }
-    .ok_or(crate::service::Error::Validation(String::from(
+    .ok_or(Error::Validation(String::from(
         "Content Type of the requested file could not be determined",
     )))?;
 
@@ -78,7 +78,7 @@ pub async fn upload_file(
 #[get("/detail")]
 pub async fn return_identity(state: &State<ServiceContext>) -> Result<Json<IdentityToReturn>> {
     let my_identity = if !state.identity_service.identity_exists().await {
-        return Err(crate::service::Error::NotFound);
+        return Err(Error::NotFound);
     } else {
         let full_identity = state.identity_service.get_full_identity().await?;
         IdentityToReturn::from(full_identity.identity, full_identity.key_pair)?
@@ -99,9 +99,13 @@ pub async fn return_identity(state: &State<ServiceContext>) -> Result<Json<Ident
 pub async fn create_identity(
     state: &State<ServiceContext>,
     identity_payload: Json<NewIdentityPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let identity = identity_payload.into_inner();
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
+
+    util::file::validate_file_upload_id(&identity.profile_picture_file_upload_id)?;
+    util::file::validate_file_upload_id(&identity.identity_document_file_upload_id)?;
+
     state
         .identity_service
         .create_identity(
@@ -117,7 +121,7 @@ pub async fn create_identity(
             timestamp,
         )
         .await?;
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[utoipa::path(
@@ -134,14 +138,14 @@ pub async fn change_identity(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     identity_payload: Json<ChangeIdentityPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let identity_payload = identity_payload.into_inner();
     if identity_payload.name.is_none()
         && identity_payload.email.is_none()
         && identity_payload.postal_address.is_none()
         && identity_payload.profile_picture_file_upload_id.is_none()
     {
-        return Ok(Status::Ok);
+        return Ok(Json(SuccessResponse::new()));
     }
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     state
@@ -154,7 +158,7 @@ pub async fn change_identity(
             timestamp,
         )
         .await?;
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[utoipa::path(
@@ -191,14 +195,14 @@ pub async fn active(state: &State<ServiceContext>) -> Result<Json<SwitchIdentity
 pub async fn switch(
     state: &State<ServiceContext>,
     switch_identity_payload: Json<SwitchIdentity>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let node_id = switch_identity_payload.0.node_id;
     let personal_node_id = state.identity_service.get_identity().await?.node_id;
 
     // if it's the personal node id, set it
     if node_id == personal_node_id {
         state.set_current_personal_identity(node_id).await;
-        return Ok(Status::Ok);
+        return Ok(Json(SuccessResponse::new()));
     }
 
     // if it's one of our companies, set it
@@ -210,11 +214,11 @@ pub async fn switch(
         .any(|c| c.id == node_id)
     {
         state.set_current_company_identity(node_id).await;
-        return Ok(Status::Ok);
+        return Ok(Json(SuccessResponse::new()));
     }
 
     // otherwise, return an error
-    Err(crate::service::Error::Validation(format!(
+    Err(Error::Validation(format!(
         "The provided node_id: {node_id} is not a valid company id, or personal node_id"
     )))
 }
@@ -246,12 +250,12 @@ pub async fn get_seed_phrase(state: &State<ServiceContext>) -> Result<Json<SeedP
 pub async fn recover_from_seed_phrase(
     state: &State<ServiceContext>,
     payload: Json<SeedPhrase>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     state
         .identity_service
         .recover_from_seedphrase(&payload.into_inner().seed_phrase)
         .await?;
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[utoipa::path(
@@ -286,7 +290,7 @@ pub async fn restore_identity(
     state: &State<ServiceContext>,
     shutdown: Shutdown,
     mut data: Form<UploadFileForm<'_>>,
-) -> Result<()> {
+) -> Result<Json<SuccessResponse>> {
     let dir = env::temp_dir();
     let target = dir.join("restore.ecies");
     data.file.persist_to(target.as_path()).await?;
@@ -294,7 +298,7 @@ pub async fn restore_identity(
     info!("Identity has been restored. Restarting system ...");
     shutdown.notify();
     state.shutdown();
-    Ok(())
+    Ok(Json(SuccessResponse::new()))
 }
 
 /// Just a wrapper struct to allow setting a content disposition header

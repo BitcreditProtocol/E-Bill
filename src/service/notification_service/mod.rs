@@ -1,6 +1,7 @@
+use std::fmt::Display;
 use std::sync::Arc;
 
-use crate::persistence::notification::NotificationStoreApi;
+use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
 use crate::persistence::NostrEventOffsetStoreApi;
 use crate::persistence::{self, identity::IdentityStoreApi};
 use crate::service::contact_service::IdentityPublicData;
@@ -242,8 +243,11 @@ pub trait NotificationServiceApi: Send + Sync {
     /// Receiver: Mint (new holder), Action: CheckBill
     async fn send_quote_is_approved_event(&self, quote: &BitcreditBill) -> Result<()>;
 
-    /// Returns active client notifications
-    async fn get_client_notifications(&self) -> Result<Vec<Notification>>;
+    /// Returns filtered client notifications
+    async fn get_client_notifications(
+        &self,
+        filter: NotificationFilter,
+    ) -> Result<Vec<Notification>>;
 
     /// Marks the notification with given id as done
     async fn mark_notification_as_done(&self, notification_id: &str) -> Result<()>;
@@ -278,6 +282,8 @@ pub trait NotificationServiceApi: Send + Sync {
 pub struct Notification {
     /// The unique id of the notification
     pub id: String,
+    /// Id of the identity that the notification is for
+    pub node_id: Option<String>,
     /// The type/topic of the notification
     pub notification_type: NotificationType,
     /// An optional reference to some other entity
@@ -295,9 +301,15 @@ pub struct Notification {
 }
 
 impl Notification {
-    pub fn new_bill_notification(bill_id: &str, description: &str, payload: Option<Value>) -> Self {
+    pub fn new_bill_notification(
+        bill_id: &str,
+        node_id: &str,
+        description: &str,
+        payload: Option<Value>,
+    ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
+            node_id: Some(node_id.to_string()),
             notification_type: NotificationType::Bill,
             reference_id: Some(bill_id.to_string()),
             description: description.to_string(),
@@ -313,4 +325,10 @@ impl Notification {
 pub enum NotificationType {
     General,
     Bill,
+}
+
+impl Display for NotificationType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(format!("{:?}", self).as_str())
+    }
 }

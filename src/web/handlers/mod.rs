@@ -1,15 +1,19 @@
-use super::data::{
-    BalanceResponse, CurrenciesResponse, CurrencyResponse, GeneralSearchFilterPayload,
-    GeneralSearchResponse, OverviewBalanceResponse, OverviewResponse,
+use super::{
+    data::{
+        BalanceResponse, CurrenciesResponse, CurrencyResponse, GeneralSearchFilterPayload,
+        GeneralSearchResponse, OverviewBalanceResponse, OverviewResponse, SuccessResponse,
+    },
+    ErrorResponse,
 };
 use crate::{
     constants::VALID_CURRENCIES,
     service::{Error, Result, ServiceContext},
+    util::file::detect_content_type_for_bytes,
     CONFIG,
 };
 use bill::get_current_identity_node_id;
-use rocket::{fs::NamedFile, get, post, serde::json::Json, Shutdown, State};
-use std::path::Path;
+use rocket::{fs::NamedFile, get, http::ContentType, post, serde::json::Json, Shutdown, State};
+use std::path::{Path, PathBuf};
 
 pub mod bill;
 pub mod company;
@@ -19,6 +23,7 @@ pub mod middleware;
 pub mod notifications;
 pub mod quotes;
 
+// Lowest prio, fall back to index.html if nothing matches
 #[get("/<_..>", rank = 10)]
 pub async fn serve_frontend() -> Option<NamedFile> {
     NamedFile::open(Path::new(&CONFIG.frontend_serve_folder).join("index.html"))
@@ -26,11 +31,25 @@ pub async fn serve_frontend() -> Option<NamedFile> {
         .ok()
 }
 
+// Higher prio than file server and index.html fallback
+#[get("/<path..>", rank = 3)]
+pub async fn default_api_error_catcher(path: PathBuf) -> Json<ErrorResponse> {
+    Json(ErrorResponse::new(
+        "not_found",
+        format!("We couldn't find the requested path '{}'", path.display()),
+        404,
+    ))
+}
+
 #[get("/")]
-pub async fn exit(shutdown: Shutdown, state: &State<ServiceContext>) {
+pub async fn exit(
+    shutdown: Shutdown,
+    state: &State<ServiceContext>,
+) -> Result<Json<SuccessResponse>> {
     log::info!("Exit called - shutting down...");
     shutdown.notify();
     state.shutdown();
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[get("/")]
@@ -43,6 +62,36 @@ pub async fn currencies(_state: &State<ServiceContext>) -> Result<Json<Currencie
             })
             .collect(),
     }))
+}
+
+#[get("/<file_upload_id>")]
+pub async fn get_temp_file(
+    state: &State<ServiceContext>,
+    file_upload_id: &str,
+) -> Result<(ContentType, Vec<u8>)> {
+    if file_upload_id.is_empty() {
+        return Err(Error::Validation(format!(
+            "Invalid file upload id: {}",
+            file_upload_id
+        )));
+    }
+    match state
+        .file_upload_service
+        .get_temp_file(file_upload_id)
+        .await
+    {
+        Ok(Some((_file_name, file_bytes))) => {
+            let content_type = match detect_content_type_for_bytes(&file_bytes) {
+                None => None,
+                Some(t) => ContentType::parse_flexible(&t),
+            }
+            .ok_or(Error::Validation(String::from(
+                "Content Type of the requested file could not be determined",
+            )))?;
+            Ok((content_type, file_bytes))
+        }
+        _ => Err(Error::NotFound),
+    }
 }
 
 #[get("/?<currency>")]

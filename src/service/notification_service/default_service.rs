@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use super::event::{ActionType, BillActionEventPayload, Event, EventType};
 use super::transport::NotificationJsonTransportApi;
 use super::{Notification, NotificationServiceApi, NotificationType, Result};
-use crate::persistence::notification::NotificationStoreApi;
+use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
 use crate::service::bill_service::BitcreditBill;
 use crate::service::contact_service::IdentityPublicData;
 
@@ -291,8 +291,11 @@ impl NotificationServiceApi for DefaultNotificationService {
         Ok(())
     }
 
-    async fn get_client_notifications(&self) -> Result<Vec<Notification>> {
-        let result = self.notification_store.list().await?;
+    async fn get_client_notifications(
+        &self,
+        filter: NotificationFilter,
+    ) -> Result<Vec<Notification>> {
+        let result = self.notification_store.list(filter).await?;
         Ok(result)
     }
 
@@ -777,11 +780,14 @@ mod tests {
     #[tokio::test]
     async fn get_client_notifications() {
         let mut mock_store = MockNotificationStoreApi::new();
-        let result = Notification::new_bill_notification("bill_id", "desc", None);
+        let result = Notification::new_bill_notification("bill_id", "node_id", "desc", None);
         let returning = result.clone();
+        let mut filter = NotificationFilter::default();
+        filter.active = Some(true);
         mock_store
             .expect_list()
-            .returning(move || Ok(vec![returning.clone()]));
+            .with(eq(filter.clone()))
+            .returning(move |_| Ok(vec![returning.clone()]));
 
         let service = DefaultNotificationService::new(
             Box::new(MockNotificationJsonTransportApi::new()),
@@ -789,7 +795,7 @@ mod tests {
         );
 
         let res = service
-            .get_client_notifications()
+            .get_client_notifications(filter)
             .await
             .expect("could not get notifications");
         assert!(!res.is_empty());

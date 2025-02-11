@@ -50,16 +50,19 @@ impl NostrConfig {
 /// @see https://nips.nostr.com/59 and https://nips.nostr.com/17
 #[derive(Clone, Debug)]
 pub struct NostrClient {
-    pub public_key: PublicKey,
+    pub keys: BcrKeys,
     pub client: Client,
 }
 
 impl NostrClient {
     #[allow(dead_code)]
     pub async fn new(config: &NostrConfig) -> Result<Self> {
-        let keys = config.keys.get_nostr_keys();
+        let keys = config.keys.clone();
         let options = Options::new();
-        let client = Client::builder().signer(keys.clone()).opts(options).build();
+        let client = Client::builder()
+            .signer(keys.get_nostr_keys().clone())
+            .opts(options)
+            .build();
         for relay in &config.relays {
             client.add_relay(relay).await?;
         }
@@ -68,10 +71,7 @@ impl NostrClient {
             .name(&config.name)
             .display_name(&config.name);
         client.set_metadata(&metadata).await?;
-        Ok(Self {
-            public_key: keys.public_key(),
-            client,
-        })
+        Ok(Self { keys, client })
     }
 
     /// Subscribe to some nostr events with a filter
@@ -162,17 +162,19 @@ impl NostrConsumer {
         // move dependencies into thread scope
         let client = self.client.clone();
         let event_handlers = self.event_handlers.clone();
-        let contact_service = self.contact_service.clone();
+        let _contact_service = self.contact_service.clone();
         let offset_store = self.offset_store.clone();
 
         // continue where we left off
         let offset_ts = get_offset(&offset_store).await;
+        let public_key = client.keys.get_nostr_keys().public_key();
+        let node_id = client.keys.get_public_key();
 
         // subscribe only to private messages sent to our pubkey
         client
             .subscribe(
                 Filter::new()
-                    .pubkey(client.public_key)
+                    .pubkey(public_key)
                     .kind(Kind::GiftWrap)
                     .since(offset_ts),
             )
@@ -192,10 +194,10 @@ impl NostrConsumer {
                                 let sender_node_id = sender.to_hex();
                                 trace!("Received event: {envelope:?} from {sender_npub:?} (hex: {sender_node_id})");
                                 // We use hex here, so we can compare it with our node_ids
-                                if contact_service.is_known_npub(&sender_node_id).await? {
-                                    trace!("Received event: {envelope:?} from {sender_node_id:?} (hex: {sender_node_id})");
-                                    handle_event(envelope, &event_handlers).await?;
-                                }
+                                // TODO: re-enable after presentation: if contact_service.is_known_npub(&sender_node_id).await? {
+                                    trace!("Processing event: {envelope:?}");
+                                    handle_event(envelope, &node_id, &event_handlers).await?;
+                                // }
                             }
 
                             // store the new event offset
@@ -254,13 +256,14 @@ fn extract_event_envelope(rumor: UnsignedEvent) -> Option<EventEnvelope> {
 /// Handle extracted event with given handlers.
 async fn handle_event(
     event: EventEnvelope,
+    node_id: &str,
     handlers: &Arc<Vec<Box<dyn NotificationHandlerApi>>>,
 ) -> Result<()> {
     let event_type = &event.event_type;
     let mut times = 0;
     for handler in handlers.iter() {
         if handler.handles_event(event_type) {
-            match handler.handle_event(event.to_owned()).await {
+            match handler.handle_event(event.to_owned(), node_id).await {
                 Ok(_) => times += 1,
                 Err(e) => error!("Nostr event handler failed: {e}"),
             }
@@ -349,16 +352,17 @@ mod tests {
         let expected_event: Event<TestEventPayload> = event.clone();
         handler
             .expect_handle_event()
-            .withf(move |e| {
+            .withf(move |e, i| {
                 let expected = expected_event.clone();
                 let received: Event<TestEventPayload> =
                     e.clone().try_into().expect("could not convert event");
                 let valid_type = received.event_type == expected.event_type;
                 let valid_receiver = received.node_id == expected.node_id;
                 let valid_payload = received.data.foo == expected.data.foo;
-                valid_type && valid_receiver && valid_payload
+                let valid_identity = i == keys2.get_public_key();
+                valid_type && valid_receiver && valid_payload && valid_identity
             })
-            .returning(|_| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let mut offset_store = MockNostrEventOffsetStoreApi::new();
 

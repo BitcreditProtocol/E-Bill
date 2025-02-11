@@ -67,7 +67,7 @@ impl NotificationHandlerApi for TestEventHandler<TestEventPayload> {
         }
     }
 
-    async fn handle_event(&self, event: EventEnvelope) -> Result<()> {
+    async fn handle_event(&self, event: EventEnvelope, _: &str) -> Result<()> {
         *self.called.lock().await = true;
         let event: Event<TestEventPayload> = event.try_into()?;
         *self.received_event.lock().await = Some(event);

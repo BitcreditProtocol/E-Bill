@@ -1,34 +1,26 @@
 use super::middleware::IdentityCheck;
+use crate::util;
+use crate::web::data::{
+    AddSignatoryPayload, CreateCompanyPayload, EditCompanyPayload, ListSignatoriesResponse,
+    RemoveSignatoryPayload,
+};
 use crate::{
     dht::{GossipsubEvent, GossipsubEventId},
     external,
     service::{self, company_service::CompanyToReturn, Result, ServiceContext},
     util::file::{detect_content_type_for_bytes, UploadFileHandler},
-    web::data::{CompaniesResponse, UploadFileForm, UploadFilesResponse},
-};
-use data::{
-    AddSignatoryPayload, CreateCompanyPayload, EditCompanyPayload, ListSignatoriesResponse,
-    RemoveSignatoryPayload,
+    web::data::{CompaniesResponse, SuccessResponse, UploadFileForm, UploadFilesResponse},
 };
 use log::error;
-use rocket::{
-    form::Form,
-    get,
-    http::{ContentType, Status},
-    post, put,
-    serde::json::Json,
-    State,
-};
-
-pub mod data;
+use rocket::{form::Form, get, http::ContentType, post, put, serde::json::Json, State};
 
 #[get("/check_dht")]
 pub async fn check_companies_in_dht(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     state.dht_client().check_companies().await?;
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[get("/list")]
@@ -122,6 +114,10 @@ pub async fn create(
 ) -> Result<Json<CompanyToReturn>> {
     let payload = create_company_payload.0;
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
+
+    util::file::validate_file_upload_id(&payload.logo_file_upload_id)?;
+    util::file::validate_file_upload_id(&payload.proof_of_registration_file_upload_id)?;
+
     let created_company = state
         .company_service
         .create_company(
@@ -169,14 +165,14 @@ pub async fn edit(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     edit_company_payload: Json<EditCompanyPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let payload = edit_company_payload.0;
     if payload.name.is_none()
         && payload.email.is_none()
         && payload.postal_address.is_none()
         && payload.logo_file_upload_id.is_none()
     {
-        return Ok(Status::Ok);
+        return Ok(Json(SuccessResponse::new()));
     }
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     state
@@ -191,7 +187,7 @@ pub async fn edit(
         )
         .await?;
 
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[put("/add_signatory", format = "json", data = "<add_signatory_payload>")]
@@ -199,7 +195,7 @@ pub async fn add_signatory(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     add_signatory_payload: Json<AddSignatoryPayload>,
-) -> Result<()> {
+) -> Result<Json<SuccessResponse>> {
     let payload = add_signatory_payload.0;
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     state
@@ -238,7 +234,7 @@ pub async fn add_signatory(
         };
     });
 
-    Ok(())
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[put(
@@ -250,7 +246,7 @@ pub async fn remove_signatory(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     remove_signatory_payload: Json<RemoveSignatoryPayload>,
-) -> Result<()> {
+) -> Result<Json<SuccessResponse>> {
     let payload = remove_signatory_payload.0;
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     state
@@ -298,5 +294,5 @@ pub async fn remove_signatory(
         }
     });
 
-    Ok(())
+    Ok(Json(SuccessResponse::new()))
 }

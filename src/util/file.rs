@@ -50,6 +50,17 @@ impl UploadFileHandler for TempFile<'_> {
     }
 }
 
+pub fn validate_file_upload_id(file_upload_id: &Option<String>) -> crate::service::Result<()> {
+    if let Some(ref id) = file_upload_id {
+        if id.is_empty() {
+            return Err(crate::service::Error::Validation(
+                "Empty string is not a valid file upload id".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Function to sanitize the filename by removing unwanted characters.
 pub fn sanitize_filename(filename: &str) -> String {
     filename
@@ -145,5 +156,11 @@ mod tests {
             generate_unique_filename("file_name", Some(String::from("tar.gz"))),
             String::from("file_name_00000000-0000-0000-0000-000000000000.tar.gz")
         );
+    }
+
+    #[test]
+    fn validate_file_upload_id_baseline() {
+        assert!(validate_file_upload_id(&Some(String::from(""))).is_err(),);
+        assert!(validate_file_upload_id(&Some(String::from("test"))).is_ok(),);
     }
 }

@@ -13,13 +13,13 @@ use crate::web::data::{
     MintBitcreditBillPayload, OfferToSellBitcreditBillPayload, PastEndorseesResponse,
     RejectActionBillPayload, RequestRecourseForAcceptancePayload, RequestRecourseForPaymentPayload,
     RequestToAcceptBitcreditBillPayload, RequestToMintBitcreditBillPayload,
-    RequestToPayBitcreditBillPayload, UploadBillFilesForm, UploadFilesResponse,
+    RequestToPayBitcreditBillPayload, SuccessResponse, UploadBillFilesForm, UploadFilesResponse,
 };
 use crate::{external, service};
 use crate::{service::bill_service::BitcreditBillToReturn, service::ServiceContext};
 use log::error;
 use rocket::form::Form;
-use rocket::http::{ContentType, Status};
+use rocket::http::ContentType;
 use rocket::serde::json::Json;
 use rocket::{get, post, put, State};
 use std::thread;
@@ -284,12 +284,12 @@ pub async fn find_and_sync_with_bill_in_dht(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     bill_id: &str,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     state
         .bill_service
         .find_and_sync_with_bill_in_dht(bill_id)
         .await?;
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[utoipa::path(
@@ -325,7 +325,7 @@ pub async fn bill_detail(
 }
 
 #[get("/check_payment")]
-pub async fn check_payment(state: &State<ServiceContext>) -> Result<Status> {
+pub async fn check_payment(state: &State<ServiceContext>) -> Result<Json<SuccessResponse>> {
     if !state.identity_service.identity_exists().await {
         return Err(service::Error::PreconditionFailed);
     }
@@ -338,18 +338,18 @@ pub async fn check_payment(state: &State<ServiceContext>) -> Result<Status> {
         error!("Error while checking bills offer to sell payment: {e}");
     }
 
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[get("/dht")]
 pub async fn check_dht_for_bills(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let mut client = state.dht_client();
     client.check_new_bills().await?;
 
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[post("/upload_files", data = "<files_upload_form>")]
@@ -391,6 +391,8 @@ pub async fn issue_bill(
     bill_payload: Json<BitcreditBillPayload>,
 ) -> Result<Json<BillId>> {
     let sum = util::currency::parse_sum(&bill_payload.sum)?;
+
+    util::file::validate_file_upload_id(&bill_payload.file_upload_id)?;
 
     if util::date::date_string_to_i64_timestamp(&bill_payload.issue_date, None).is_none() {
         return Err(service::Error::Validation(String::from(
@@ -547,7 +549,7 @@ pub async fn offer_to_sell_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     offer_to_sell_payload: Json<OfferToSellBitcreditBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let public_data_buyer = match state
         .contact_service
         .get_identity_by_node_id(&offer_to_sell_payload.buyer)
@@ -597,7 +599,7 @@ pub async fn offer_to_sell_bill(
             error!("Error propagating bill for node on DHT: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[put("/endorse", format = "json", data = "<endorse_bill_payload>")]
@@ -605,7 +607,7 @@ pub async fn endorse_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     endorse_bill_payload: Json<EndorseBitcreditBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let public_data_endorsee = match state
         .contact_service
         .get_identity_by_node_id(&endorse_bill_payload.endorsee)
@@ -651,7 +653,7 @@ pub async fn endorse_bill(
             error!("Error propagating bill for node on DHT: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[put(
@@ -663,7 +665,7 @@ pub async fn request_to_pay_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     request_to_pay_bill_payload: Json<RequestToPayBitcreditBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
 
@@ -690,7 +692,7 @@ pub async fn request_to_pay_bill(
             error!("Error propagating block: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[put(
@@ -702,7 +704,7 @@ pub async fn request_to_accept_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     request_to_accept_bill_payload: Json<RequestToAcceptBitcreditBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
 
@@ -729,7 +731,7 @@ pub async fn request_to_accept_bill(
             error!("Error propagating block: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[put("/accept", format = "json", data = "<accept_bill_payload>")]
@@ -737,7 +739,7 @@ pub async fn accept_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     accept_bill_payload: Json<AcceptBitcreditBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
 
@@ -760,7 +762,7 @@ pub async fn accept_bill(
             error!("Error propagating block: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 // Mint
@@ -774,7 +776,7 @@ pub async fn request_to_mint_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     request_to_mint_bill_payload: Json<RequestToMintBitcreditBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let public_mint_node = state
         .contact_service
         .get_identity_by_node_id(&request_to_mint_bill_payload.mint_node)
@@ -809,7 +811,7 @@ pub async fn request_to_mint_bill(
     })
     .join()
     .expect("Thread panicked");
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 //This is function for mint software
@@ -818,7 +820,7 @@ pub async fn accept_mint_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     accept_mint_bill_payload: Json<AcceptMintBitcreditBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let bill = state
         .bill_service
         .get_bill(&accept_mint_bill_payload.bill_id)
@@ -840,7 +842,7 @@ pub async fn accept_mint_bill(
     .join()
     .expect("Thread panicked");
 
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 //After accept mint on client side
@@ -849,7 +851,7 @@ pub async fn mint_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     mint_bill_payload: Json<MintBitcreditBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let sum = util::currency::parse_sum(&mint_bill_payload.sum)?;
 
@@ -900,7 +902,7 @@ pub async fn mint_bill(
         }
     });
 
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 // Rejection
@@ -909,7 +911,7 @@ pub async fn reject_to_accept_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     reject_payload: Json<RejectActionBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
 
@@ -933,7 +935,7 @@ pub async fn reject_to_accept_bill(
             error!("Error propagating block: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[put("/reject_to_pay", format = "json", data = "<reject_payload>")]
@@ -941,7 +943,7 @@ pub async fn reject_to_pay_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     reject_payload: Json<RejectActionBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
 
@@ -965,7 +967,7 @@ pub async fn reject_to_pay_bill(
             error!("Error propagating block: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[put("/reject_to_buy", format = "json", data = "<reject_payload>")]
@@ -973,7 +975,7 @@ pub async fn reject_to_buy_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     reject_payload: Json<RejectActionBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
 
@@ -997,7 +999,7 @@ pub async fn reject_to_buy_bill(
             error!("Error propagating block: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 #[put("/reject_to_pay_recourse", format = "json", data = "<reject_payload>")]
@@ -1005,7 +1007,7 @@ pub async fn reject_to_pay_recourse_bill(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     reject_payload: Json<RejectActionBillPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
 
@@ -1029,7 +1031,7 @@ pub async fn reject_to_pay_recourse_bill(
             error!("Error propagating block: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }
 
 // Recourse
@@ -1042,7 +1044,7 @@ pub async fn request_to_recourse_bill_payment(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     request_recourse_payload: Json<RequestRecourseForPaymentPayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let sum = util::currency::parse_sum(&request_recourse_payload.sum)?;
     request_recourse(
         state,
@@ -1062,7 +1064,7 @@ pub async fn request_to_recourse_bill_acceptance(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     request_recourse_payload: Json<RequestRecourseForAcceptancePayload>,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     request_recourse(
         state,
         RecourseReason::Accept,
@@ -1077,7 +1079,7 @@ async fn request_recourse(
     recourse_reason: RecourseReason,
     bill_id: &str,
     recoursee_node_id: &str,
-) -> Result<Status> {
+) -> Result<Json<SuccessResponse>> {
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
 
@@ -1116,5 +1118,5 @@ async fn request_recourse(
             error!("Error propagating block: {e}");
         }
     });
-    Ok(Status::Ok)
+    Ok(Json(SuccessResponse::new()))
 }

@@ -62,12 +62,13 @@ impl NotificationHandlerApi for BillActionEventHandler {
         true
     }
 
-    async fn handle_event(&self, event: EventEnvelope) -> Result<()> {
+    async fn handle_event(&self, event: EventEnvelope, node_id: &str) -> Result<()> {
         let event: Option<Event<BillActionEventPayload>> = event.try_into().ok();
         if let Some(event) = event {
             // create notification
             let notification = Notification::new_bill_notification(
                 &event.data.bill_id,
+                node_id,
                 &self.event_description(&event.event_type),
                 Some(serde_json::to_value(&event.data)?),
             );
