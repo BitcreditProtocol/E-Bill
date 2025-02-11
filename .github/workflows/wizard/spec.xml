@@ -182,7 +182,7 @@
             <files>${fe_index_file_path}</files>
             <type>exact</type>
             <substitutionList>
-                <substitution pattern="%BITCR_BE_URL%" value="http://localhost:${http_port}" />
+                <substitution pattern="%BITCR_BE_URL%" value="http://localhost:${http_port}/api" />
             </substitutionList>
             <progressText>Configuring Frontend</progressText>
         </substitute>
