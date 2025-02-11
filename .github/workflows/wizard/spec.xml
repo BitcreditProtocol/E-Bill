@@ -173,16 +173,20 @@
         </setInstallerVariable>
     </preInstallationActionList>
     <postInstallationActionList>
-        <runProgram>
-            <runAs>Administrator</runAs>
-            <program>powershell</program>
-            <programArguments>-Command "(gc *.js) -replace 'BITCR_BE_URL', 'http://localhost:${http_port}' | Out-File (gci *.js)[0].Name"</programArguments>
-            <workingDirectory>${installdir}/frontend/assests</workingDirectory>
-            <ruleList>
-                <platformTest type="windows-x64"/>
-            </ruleList>
+        <findFile>
+            <baseDirectory>${installdir}/frontend/assets</baseDirectory>
+            <pattern>index-*.js</pattern>
+            <variable>fe_index_file_path</variable>
             <progressText>Configuring Frontend</progressText>
-        </runProgram>
+        </findFile>
+        <substitute>
+            <files>${fe_index_file_path}</files>
+            <type>exact</type>
+            <substitutionList>
+                <substitution pattern="%BITCR_BE_URL%" value="http://localhost:${http_port}" />
+            </substitutionList>
+            <progressText>Configuring Frontend</progressText>
+        </substitute>
         <runProgram>
             <runAs>Administrator</runAs>
             <program>${installdir}/VC_redist.x64.v14_42.exe</program>
