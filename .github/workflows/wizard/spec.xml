@@ -2,12 +2,11 @@
     <shortName>bitcredit</shortName>
     <fullName>Bitcredit Client</fullName>
     <version>0.0</version>
-    <disableSplashScreen>1</disableSplashScreen>
-    <!-- <splashImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</splashImage> -->
+    <splashImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</splashImage>
     <windowsExecutableIcon>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</windowsExecutableIcon>
     <windowsUninstallerExecutableIcon>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</windowsUninstallerExecutableIcon>
-    <!-- <logoImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</logoImage>
-    <leftImage>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</leftImage> -->
+    <logoImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</logoImage>
+    <!-- <leftImage>${sourcedir}/be/.github/workflows/wizard/bitcredit.png</leftImage> -->
     <initializationActionList>
         <setInstallerVariable>
             <name>skip_vc_install</name>
