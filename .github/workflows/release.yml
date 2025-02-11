@@ -19,28 +19,28 @@ jobs:
     strategy:
       matrix:
         config: 
-          # - os: windows-latest
-          #   pck: |
-          #     choco install protoc openssl -y
-          #     echo "OPENSSL_DIR=C:\Program Files\OpenSSL" >> $GITHUB_ENV
-          #     echo "OPENSSL_LIB_DIR=C:\Program Files\OpenSSL\lib\VC\x64\MD" >> $GITHUB_ENV
-          #   installer: 
-          #       ver: windows-x64-installer.exe
-          #       target: windows-x64
-          #       exec: c:/Program Files/InstallBuilder Professional 24.11.1/bin/builder-cli.exe
-          - os: macos-latest
-            pck: brew install protobuf
+          - os: windows-latest
+            pck: |
+              choco install protoc openssl -y
+              echo "OPENSSL_DIR=C:\Program Files\OpenSSL" >> $GITHUB_ENV
+              echo "OPENSSL_LIB_DIR=C:\Program Files\OpenSSL\lib\VC\x64\MD" >> $GITHUB_ENV
             installer: 
-                ver: osx-installer.dmg
-                target: osx
-                exec: /Volumes/InstallBuilder Professional/installbuilder-professional-24.11.1-osx-installer.app
+                ver: windows-x64-installer.exe
+                target: windows-x64
+                exec: c:/Program Files/InstallBuilder Professional 24.11.1/bin/builder-cli.exe
+          # - os: macos-latest
+          #   pck: brew install protobuf
+          #   installer: 
+          #       ver: osx-installer.dmg
+          #       target: osx
+          #       exec: /Volumes/InstallBuilder Professional/installbuilder-professional-24.11.1-osx-installer.app
     
     runs-on: ${{ matrix.config.os }}
     defaults:
       run:
         shell: bash
     env:
-      version: 0.5
+      version: 0.7
     steps:
       - name: Checkout BE repo
         uses: actions/checkout@v4
@@ -63,30 +63,39 @@ jobs:
         uses: actions/checkout@v4
         with:
             repository: BitcreditProtocol/E-Bill-frontend
-            ref: 7546a09713e07a09e209184c50c73faf9e1a8f12
             path: fe
-          
-      - name: Build FE
+      
+      - name: Prepare FE for PROD
         run: |
+          cat > .env.production << EOF
+          VITE_API_BASE_URL=%BITCR_BE_URL%
+          EOF
+        working-directory: ./fe
+
+      - name: Build FE
+        env:
+          NODE_ENV: production
+        run: |
+            rm -f package-lock.json
             npm install
             npm run build
         working-directory: ./fe
 
-      # - name: Install InstallBuilder
-      #   run: |
-      #       curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
-      #       chmod +x installbuilder-${{ matrix.config.installer.ver }}
-      #       ./installbuilder-${{ matrix.config.installer.ver }} --mode unattended
-        
       - name: Install InstallBuilder
         run: |
-            dmgFilePath='installbuilder-${{ matrix.config.installer.ver }}'
-            curl -L -o $dmgFilePath https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
-            MOUNTDEV=$(hdiutil mount $dmgFilePath | awk '/dev.disk/{print$1}')
-            MOUNTDIR="$(mount | grep $MOUNTDEV | awk '{$1=$2="";sub(" [(].*","");sub("^  ","");print}')"
-            cd "$MOUNTDIR"
-            chmod +x installbuilder-professional-24.11.1-osx-installer.app
-            ./installbuilder-professional-24.11.1-osx-installer.app --mode unattended
+            curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
+            chmod +x installbuilder-${{ matrix.config.installer.ver }}
+            ./installbuilder-${{ matrix.config.installer.ver }} --mode unattended
+        
+      # - name: Install InstallBuilder
+      #   run: |
+      #       dmgFilePath='installbuilder-${{ matrix.config.installer.ver }}'
+      #       curl -L -o $dmgFilePath https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
+      #       MOUNTDEV=$(hdiutil mount $dmgFilePath | awk '/dev.disk/{print$1}')
+      #       MOUNTDIR="$(mount | grep $MOUNTDEV | awk '{$1=$2="";sub(" [(].*","");sub("^  ","");print}')"
+      #       cd "$MOUNTDIR"
+      #       chmod +x installbuilder-professional-24.11.1-osx-installer.app
+      #       ./installbuilder-professional-24.11.1-osx-installer.app --mode unattended
 
       - name: Build installer
         run: |

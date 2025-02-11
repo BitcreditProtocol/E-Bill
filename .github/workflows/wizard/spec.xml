@@ -2,10 +2,12 @@
     <shortName>bitcredit</shortName>
     <fullName>Bitcredit Client</fullName>
     <version>0.0</version>
-    <splashImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</splashImage>
+    <disableSplashScreen>1</disableSplashScreen>
+    <!-- <splashImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</splashImage> -->
     <windowsExecutableIcon>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</windowsExecutableIcon>
-    <logoImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</logoImage>
-    <leftImage>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</leftImage>
+    <windowsUninstallerExecutableIcon>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</windowsUninstallerExecutableIcon>
+    <!-- <logoImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</logoImage>
+    <leftImage>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</leftImage> -->
     <initializationActionList>
         <setInstallerVariable>
             <name>skip_vc_install</name>
@@ -31,7 +33,7 @@
                 <registryTest>
                     <key>HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\OpenSSL Light (64-bit)_is1</key>
                     <logic>exists</logic>
-                    <name>DispalyName</name>
+                    <name>DisplayName</name>
                 </registryTest>
             </ruleList>
         </setInstallerVariable>
@@ -49,12 +51,6 @@
                     <destination>${installdir}</destination>
                     <name>programfiles</name>
                     <platforms>all</platforms>
-                    <distributionFileList>
-                        <distributionDirectory>
-                            <origin>${sourcedir}/be/target/release/*</origin>
-                            <allowWildcards>1</allowWildcards>
-                        </distributionDirectory>
-                    </distributionFileList>
                     <shortcutList>
                         <shortcut>
                             <comment>Uninstall</comment>
@@ -120,6 +116,9 @@
                     <platforms>windows-x64</platforms>
                     <distributionFileList>
                         <distributionFile>
+                            <origin>${sourcedir}//be/target/release/bitcredit.exe</origin>
+                        </distributionFile>
+                        <distributionFile>
                             <origin>${sourcedir}/be/.github/workflows/wizard/nssm.exe</origin>
                         </distributionFile>
                         <distributionFile>
@@ -162,48 +161,107 @@
             <initialPort>8000</initialPort>
             <variable>http_port</variable>
         </getFreePort>
-    </preInstallationActionList>
-    <postInstallationActionList>
+        <getFreePort>
+            <finalPort>1910</finalPort>
+            <initialPort>1200</initialPort>
+            <variable>p2p_port</variable>
+        </getFreePort>
         <setInstallerVariable>
             <name>be_service_name</name>
             <persist>1</persist>
             <value>bitcreditclient</value>
         </setInstallerVariable>
+    </preInstallationActionList>
+    <postInstallationActionList>
+        <runProgram>
+            <runAs>Administrator</runAs>
+            <program>powershell</program>
+            <programArguments>-Command "(gc *.js) -replace 'BITCR_BE_URL', 'http://localhost:${http_port}' | Out-File (gci *.js)[0].Name"</programArguments>
+            <workingDirectory>${installdir}/frontend/assests</workingDirectory>
+            <ruleList>
+                <platformTest type="windows-x64"/>
+            </ruleList>
+            <progressText>Configuring Frontend</progressText>
+        </runProgram>
+        <runProgram>
+            <runAs>Administrator</runAs>
+            <program>${installdir}/VC_redist.x64.v14_42.exe</program>
+            <programArguments>/quiet /norestart</programArguments>
+            <ruleList>
+                <platformTest type="windows-x64"/>
+                <isFalse value="${skip_vc_install}"/>
+            </ruleList>
+            <progressText>Installing Visual C++ Redistributable</progressText>
+        </runProgram>
+        <runProgram>
+            <runAs>Administrator</runAs>
+            <program>${installdir}/Win64OpenSSL_Light-3_4_0.exe</program>
+            <programArguments>/SP /VERYSILENT /NORESTART</programArguments>
+            <ruleList>
+                <platformTest type="windows-x64"/>
+                <isFalse value="${skip_openssl_install}"/>
+            </ruleList>
+            <progressText>Installing OpenSSL</progressText>
+        </runProgram>
         <runProgram>
             <runAs>Administrator</runAs>
             <program>${installdir}/nssm.exe</program>
-            <programArguments>install "${be_service_name}" "${installdir}\bitcredit.exe" "--http-port ${http_port} --surreal-db-connection rocksdb://data/surreal --nostr-relay wss://bitcr-cloud-run-03-550030097098.europe-west1.run.app"</programArguments>
+            <programArguments>install "${be_service_name}" "${installdir}\bitcredit.exe" "--http-port ${http_port} --p2p-port ${p2p_port} --surreal-db-connection rocksdb://data/surreal --nostr-relay wss://bitcr-cloud-run-03-550030097098.europe-west1.run.app"</programArguments>
             <workingDirectory>${installdir}</workingDirectory>
+            <ruleList>
+                <platformTest type="windows-x64"/>
+            </ruleList>
+            <progressText>Installing Bitcredit Client Service</progressText>
         </runProgram>
         <runProgram>
             <runAs>Administrator</runAs>
             <program>${installdir}/nssm.exe</program>
             <programArguments>set "${be_service_name}" DisplayName "Bitcredit Client"</programArguments>
             <workingDirectory>${installdir}</workingDirectory>
+            <ruleList>
+                <platformTest type="windows-x64"/>
+            </ruleList>
+            <progressText>Installing Bitcredit Client Service</progressText>
         </runProgram>
         <runProgram>
             <runAs>Administrator</runAs>
             <program>${installdir}/nssm.exe</program>
             <programArguments>set "${be_service_name}" AppStdout "${installdir}\logs\stdout.txt"</programArguments>
             <workingDirectory>${installdir}</workingDirectory>
+            <ruleList>
+                <platformTest type="windows-x64"/>
+            </ruleList>
+            <progressText>Installing Bitcredit Client Service</progressText>
         </runProgram>
         <runProgram>
             <runAs>Administrator</runAs>
             <program>${installdir}/nssm.exe</program>
             <programArguments>set "${be_service_name}" AppStderr "${installdir}\logs\stderr.txt"</programArguments>
             <workingDirectory>${installdir}</workingDirectory>
+            <ruleList>
+                <platformTest type="windows-x64"/>
+            </ruleList>
+            <progressText>Installing Bitcredit Client Service</progressText>
         </runProgram>
         <runProgram>
             <runAs>Administrator</runAs>
             <program>${installdir}/nssm.exe</program>
             <programArguments>set "${be_service_name}" AppRestartDelay 300000</programArguments>
             <workingDirectory>${installdir}</workingDirectory>
+            <ruleList>
+                <platformTest type="windows-x64"/>
+            </ruleList>
+            <progressText>Installing Bitcredit Client Service</progressText>
         </runProgram>
         <runProgram>
             <runAs>Administrator</runAs>
             <program>${installdir}/nssm.exe</program>
             <programArguments>start "${be_service_name}" "SERVICE_AUTO_START"</programArguments>
             <workingDirectory>${installdir}</workingDirectory>
+            <ruleList>
+                <platformTest type="windows-x64"/>
+            </ruleList>
+            <progressText>Starting Bitcredit Client Service</progressText>
         </runProgram>
     </postInstallationActionList>
     <preUninstallationActionList>
