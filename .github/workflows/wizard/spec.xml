@@ -7,6 +7,8 @@
     <windowsUninstallerExecutableIcon>${sourcedir}/be/.github/workflows/wizard/bitcredit.ico</windowsUninstallerExecutableIcon>
     <logoImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</logoImage>
     <!-- <leftImage>${sourcedir}/be/.github/workflows/wizard/bitcredit.png</leftImage> -->
+    <createOsxBundleDmg>1</createOsxBundleDmg>
+    <osxDmgBackgroundImage>${build_project_directory}/bitcredit.png</osxDmgBackgroundImage>
     <initializationActionList>
         <setInstallerVariable>
             <name>skip_vc_install</name>
@@ -68,37 +70,6 @@
                     </shortcutList>
                 </folder>
                 <folder>
-                    <description>Program Files</description>
-                    <destination>${installdir}</destination>
-                    <name>programfileslinux</name>
-                    <platforms>linux</platforms>
-                </folder>
-                <folder>
-                    <description>Program Files</description>
-                    <destination>${installdir}</destination>
-                    <name>programfileslinux64</name>
-                    <platforms>linux-x64</platforms>
-                </folder>
-                <folder>
-                    <description>Program Files</description>
-                    <destination>${installdir}</destination>
-                    <name>programfileswindows</name>
-                    <platforms>windows</platforms>
-                </folder>
-                <folder>
-                    <description>Program Files</description>
-                    <destination>${installdir}</destination>
-                    <name>programfileswindows64</name>
-                    <platforms>windows-x64</platforms>
-                </folder>
-                <folder>
-                    <description>Program Files</description>
-                    <destination>${installdir}</destination>
-                    <name>programfilesosx</name>
-                    <platforms>osx</platforms>
-                </folder>
-                <folder>
-                    <description>Frontend</description>
                     <destination>${installdir}/frontend</destination>
                     <name>frontend</name>
                     <platforms>all</platforms>
@@ -111,11 +82,11 @@
                 </folder>
                 <folder>
                     <destination>${installdir}</destination>
-                    <name>nssm</name>
+                    <name>windows-only-files</name>
                     <platforms>windows-x64</platforms>
                     <distributionFileList>
                         <distributionFile>
-                            <origin>${sourcedir}//be/target/release/bitcredit.exe</origin>
+                            <origin>${sourcedir}/be/target/release/bitcredit.exe</origin>
                         </distributionFile>
                         <distributionFile>
                             <origin>${sourcedir}/be/.github/workflows/wizard/nssm.exe</origin>
@@ -128,6 +99,16 @@
                         </distributionFile>
                         <distributionFile>
                             <origin>${sourcedir}/be/.github/workflows/wizard/VC_redist.x64.v14_42.exe</origin>
+                        </distributionFile>
+                    </distributionFileList>
+                </folder>
+                <folder>
+                    <destination>${installdir}</destination>
+                    <name>osx-only-files</name>
+                    <platforms>osx</platforms>
+                    <distributionFileList>
+                        <distributionFile>
+                            <origin>${sourcedir}/be/target/release/bitcredit.app</origin>
                         </distributionFile>
                     </distributionFileList>
                 </folder>
@@ -159,11 +140,6 @@
             <finalPort>9000</finalPort>
             <initialPort>8000</initialPort>
             <variable>http_port</variable>
-        </getFreePort>
-        <getFreePort>
-            <finalPort>1910</finalPort>
-            <initialPort>1200</initialPort>
-            <variable>p2p_port</variable>
         </getFreePort>
         <setInstallerVariable>
             <name>be_service_name</name>
@@ -209,7 +185,7 @@
         <runProgram>
             <runAs>Administrator</runAs>
             <program>${installdir}/nssm.exe</program>
-            <programArguments>install "${be_service_name}" "${installdir}\bitcredit.exe" "--http-port ${http_port} --p2p-port ${p2p_port} --surreal-db-connection rocksdb://data/surreal --nostr-relay wss://bitcr-cloud-run-03-550030097098.europe-west1.run.app"</programArguments>
+            <programArguments>install "${be_service_name}" "${installdir}\bitcredit.exe" "--http-port ${http_port} --p2p-port 0 --surreal-db-connection rocksdb://data/surreal --nostr-relay wss://bitcr-cloud-run-03-550030097098.europe-west1.run.app"</programArguments>
             <workingDirectory>${installdir}</workingDirectory>
             <ruleList>
                 <platformTest type="windows-x64"/>
