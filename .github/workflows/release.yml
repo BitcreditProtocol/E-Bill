@@ -33,7 +33,7 @@ jobs:
             installer: 
                 ver: osx-installer.dmg
                 target: osx
-                exec: /Volumes/InstallBuilder Professional/installbuilder-professional-24.11.1-osx-installer.app
+                exec: /Applications/InstallBuilder Professional 24.11.1/bin/builder
     
     runs-on: ${{ matrix.config.os }}
     defaults:
@@ -89,10 +89,12 @@ jobs:
         run: |
             dmgFilePath='installbuilder-${{ matrix.config.installer.ver }}'
             curl -L -o $dmgFilePath https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
+            
             MOUNTDEV=$(hdiutil mount $dmgFilePath | awk '/dev.disk/{print$1}')
-            MOUNTDIR="$(mount | grep $MOUNTDEV | awk '{$1=$2="";sub(" [(].*","");sub("^  ","");print}')"
-            cd "$MOUNTDIR"
-            sudo ./installbuilder-professional-24.11.1-osx-installer.app --mode unattended
+            MOUNTDIR="$(mount | grep $MOUNTDEV | awk '{$1=$2="";sub(" [(].*","");sub("^  ","");print}')"            
+            cd "$MOUNTDIR/installbuilder-professional-24.11.1-osx-installer.app/Contents/MacOS"
+
+            ./installbuilder.sh --mode unattended
 
       - name: Build installer
         run: |
