@@ -9,6 +9,7 @@
     <!-- <leftImage>${sourcedir}/be/.github/workflows/wizard/bitcredit.png</leftImage> -->
     <createOsxBundleDmg>1</createOsxBundleDmg>
     <osxDmgBackgroundImage>${build_project_directory}/bitcredit.png</osxDmgBackgroundImage>
+    <requireInstallationByRootUser>1</requireInstallationByRootUser>
     <initializationActionList>
         <setInstallerVariable>
             <name>skip_vc_install</name>
@@ -85,7 +86,7 @@
                 </folder>
                 <folder>
                     <destination>${installdir}</destination>
-                    <name>windows-only-files</name>
+                    <name>windows_only_files</name>
                     <platforms>windows-x64</platforms>
                     <distributionFileList>
                         <distributionFile>
@@ -107,7 +108,7 @@
                 </folder>
                 <folder>
                     <destination>${installdir}</destination>
-                    <name>osx-only-files</name>
+                    <name>osx_only_files</name>
                     <platforms>osx</platforms>
                     <distributionFileList>
                         <distributionFile>
@@ -244,6 +245,55 @@
                 <platformTest type="windows-x64"/>
             </ruleList>
             <progressText>Starting Bitcredit Client Service</progressText>
+        </runProgram>
+        <if>
+            <actionList>
+                <runProgram>
+                    <program>NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</program>
+                    <progressText>Installing Brew</progressText>
+                </runProgram>
+            </actionList>
+            <conditionRuleList>
+                <platformTest type="osx"/>
+                <programTest>
+                    <condition>is_not_in_path</condition>
+                    <name>brew</name>
+                </programTest>
+            </conditionRuleList>
+        </if>
+        <if>
+            <actionList>
+                <runProgram>
+                    <program></program>
+                    <progressText>Installing OpenSSL</progressText>
+                </runProgram>
+            </actionList>
+            <conditionRuleList>
+                <platformTest type="osx"/>
+                <programTest>
+                    <condition>is_not_in_path</condition>
+                    <name>brew</name>
+                </programTest>
+            </conditionRuleList>
+        </if>
+        <runProgram>
+            <program>brew</program>
+            <programArguments>list openssl</programArguments>
+            <ruleList>
+                <platformTest type="osx"/>
+            </ruleList>
+        </runProgram>
+        <runProgram>
+            <program>brew</program>
+            <programArguments>install openssl -q</programArguments>
+            <ruleList>
+                <platformTest type="osx"/>
+                <compareValues>
+                    <logic>does_not_equal</logic>
+                    <value1>${program_exit_code}</value1>
+                    <value2>0</value2>
+                </compareValues>
+            </ruleList>
         </runProgram>
         <createOSXService>
             <keepAlive>1</keepAlive>
