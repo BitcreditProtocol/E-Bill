@@ -56,18 +56,21 @@
                         <shortcut>
                             <comment>Uninstall</comment>
                             <exec>${installdir}/${uninstallerName}</exec>
-                            <icon></icon>
+                            <icon>${installdir}/bitcredit.png</icon>
                             <name>Uninstall ${product_fullname}</name>
                             <path>${installdir}</path>
                             <platforms>all</platforms>
                             <runAsAdmin>0</runAsAdmin>
                             <runInTerminal>0</runInTerminal>
                             <windowsExec>${installdir}/${uninstallerName}.exe</windowsExec>
-                            <windowsExecArgs></windowsExecArgs>
-                            <windowsIcon></windowsIcon>
                             <windowsPath>${installdir}</windowsPath>
                         </shortcut>
                     </shortcutList>
+                    <distributionFileList>
+                        <distributionFile>
+                            <origin>${build_project_directory}/bitcredit.png</origin>
+                        </distributionFile>
+                    </distributionFileList>
                 </folder>
                 <folder>
                     <destination>${installdir}/frontend</destination>
@@ -108,7 +111,7 @@
                     <platforms>osx</platforms>
                     <distributionFileList>
                         <distributionFile>
-                            <origin>${sourcedir}/be/target/release/bitcredit.app</origin>
+                            <origin>${sourcedir}/be/target/release/bitcredit</origin>
                         </distributionFile>
                     </distributionFileList>
                 </folder>
@@ -128,9 +131,9 @@
             <desktopShortcutList>
                 <shortcut>
                     <name>${product_fullname}</name>
-                    <runInTerminal>0</runInTerminal>
-                    <windowsExec>http://localhost:${http_port}</windowsExec>
-                    <windowsIcon>${installdir}/bitcredit.ico</windowsIcon>
+                    <runInTerminal>0</runInTerminal>                    
+                    <exec>http://localhost:${http_port}</exec>
+                    <icon>${installdir}/bitcredit.png</icon>
                 </shortcut>
             </desktopShortcutList>
         </component>
@@ -242,6 +245,20 @@
             </ruleList>
             <progressText>Starting Bitcredit Client Service</progressText>
         </runProgram>
+        <createOSXService>
+            <keepAlive>1</keepAlive>
+            <program>${installdir}/bitcredit.app/Contents/MacOS/bitcredit</program>
+            <programArguments>--http-port ${http_port} --p2p-port 0 --surreal-db-connection rocksdb://data/surreal --nostr-relay wss://bitcr-cloud-run-03-550030097098.europe-west1.run.app</programArguments>
+            <serviceName>${be_service_name}</serviceName>
+            <scope>system</scope>
+            <username>daemon</username>
+            <groupname>wheel</groupname>
+            <progressText>Installing Bitcredit Client Service</progressText>
+        </createOSXService>
+        <startOSXService>
+            <serviceName>${be_service_name}</serviceName>
+            <progressText>Starting Bitcredit Client Service</progressText>
+        </startOSXService>
     </postInstallationActionList>
     <preUninstallationActionList>
         <deleteWindowsService>
@@ -251,6 +268,9 @@
                 <windowsServiceTest service="${be_service_name}" condition="exists"/>
             </ruleList>
         </deleteWindowsService>
+        <deleteOSXService>
+            <serviceName>${be_service_name}</serviceName>
+        </deleteOSXService>
     </preUninstallationActionList>
     <enableRollback>1</enableRollback>
     <enableTimestamp>1</enableTimestamp>
