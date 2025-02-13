@@ -8,7 +8,6 @@
     <logoImage>${sourcedir}/be/.github/workflows/wizard/bitcredit_logo_long.png</logoImage>
     <!-- <leftImage>${sourcedir}/be/.github/workflows/wizard/bitcredit.png</leftImage> -->
     <createOsxBundleDmg>1</createOsxBundleDmg>
-    <osxDmgBackgroundImage>${build_project_directory}/bitcredit.png</osxDmgBackgroundImage>
     <requireInstallationByRootUser>1</requireInstallationByRootUser>
     <initializationActionList>
         <setInstallerVariable>
