@@ -169,6 +169,7 @@ pub trait NotificationServiceApi: Send + Sync {
     async fn send_offer_to_sell_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         buyer: &IdentityPublicData,
     ) -> Result<()>;
 
@@ -177,6 +178,7 @@ pub trait NotificationServiceApi: Send + Sync {
     async fn send_bill_is_sold_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         buyer: &IdentityPublicData,
     ) -> Result<()>;
 
@@ -185,6 +187,7 @@ pub trait NotificationServiceApi: Send + Sync {
     async fn send_bill_recourse_paid_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         recoursee: &IdentityPublicData,
     ) -> Result<()>;
 
@@ -198,6 +201,7 @@ pub trait NotificationServiceApi: Send + Sync {
     async fn send_request_to_action_rejected_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         rejected_action: event::ActionType,
         recipients: Vec<IdentityPublicData>,
     ) -> Result<()>;
@@ -212,6 +216,7 @@ pub trait NotificationServiceApi: Send + Sync {
     async fn send_request_to_action_timed_out_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         timed_out_action: event::ActionType,
         recipients: Vec<IdentityPublicData>,
     ) -> Result<()>;
@@ -227,6 +232,7 @@ pub trait NotificationServiceApi: Send + Sync {
     async fn send_recourse_action_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         action: event::ActionType,
         recipient: &IdentityPublicData,
     ) -> Result<()>;

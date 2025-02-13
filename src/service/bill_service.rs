@@ -1400,9 +1400,14 @@ impl BillService {
                 .await?;
 
             if !sent {
-                let current_identity = IdentityPublicData::new(self.identity_store.get().await?);
+                let identity = self.identity_store.get().await?;
+                let current_identity = IdentityPublicData::new(identity.clone());
                 let participants = chain.get_all_nodes_from_bill(&bill_keys)?;
                 let mut recipient_options = vec![current_identity];
+                let bill = self
+                    .get_last_version_bill(&chain, &bill_keys, &identity)
+                    .await?;
+
                 for node_id in participants {
                     let contact: Option<IdentityPublicData> =
                         self.contact_store.get(&node_id).await?.map(|c| c.into());
@@ -1415,7 +1420,12 @@ impl BillService {
                     .collect::<Vec<IdentityPublicData>>();
 
                 self.notification_service
-                    .send_request_to_action_timed_out_event(bill_id, action.to_owned(), recipients)
+                    .send_request_to_action_timed_out_event(
+                        bill_id,
+                        Some(bill.sum),
+                        action.to_owned(),
+                        recipients,
+                    )
                     .await?;
 
                 // remember we have sent the notification
@@ -1709,6 +1719,7 @@ impl BillService {
                 self.notification_service
                     .send_request_to_action_rejected_event(
                         bill_id,
+                        Some(bill.sum),
                         ActionType::AcceptBill,
                         recipients,
                     )
@@ -1716,18 +1727,29 @@ impl BillService {
             }
             BillOpCode::RejectToBuy => {
                 self.notification_service
-                    .send_request_to_action_rejected_event(bill_id, ActionType::BuyBill, recipients)
+                    .send_request_to_action_rejected_event(
+                        bill_id,
+                        Some(bill.sum),
+                        ActionType::BuyBill,
+                        recipients,
+                    )
                     .await?;
             }
             BillOpCode::RejectToPay => {
                 self.notification_service
-                    .send_request_to_action_rejected_event(bill_id, ActionType::PayBill, recipients)
+                    .send_request_to_action_rejected_event(
+                        bill_id,
+                        Some(bill.sum),
+                        ActionType::PayBill,
+                        recipients,
+                    )
                     .await?;
             }
             BillOpCode::RejectToPayRecourse => {
                 self.notification_service
                     .send_request_to_action_rejected_event(
                         bill_id,
+                        Some(bill.sum),
                         ActionType::RecourseBill,
                         recipients,
                     )
@@ -2525,7 +2547,7 @@ impl BillServiceApi for BillService {
             RecourseReason::Pay(_, _) => ActionType::PayBill,
         };
         self.notification_service
-            .send_recourse_action_event(bill_id, action_type, recoursee)
+            .send_recourse_action_event(bill_id, Some(sum), action_type, recoursee)
             .await?;
 
         Ok(blockchain)
@@ -2605,7 +2627,7 @@ impl BillServiceApi for BillService {
             .await?;
 
             self.notification_service
-                .send_bill_recourse_paid_event(bill_id, &recoursee)
+                .send_bill_recourse_paid_event(bill_id, Some(payment_info.sum), &recoursee)
                 .await?;
 
             return Ok(blockchain);
@@ -2765,7 +2787,7 @@ impl BillServiceApi for BillService {
             .await?;
 
             self.notification_service
-                .send_offer_to_sell_event(bill_id, &buyer)
+                .send_offer_to_sell_event(bill_id, Some(sum), &buyer)
                 .await?;
 
             return Ok(blockchain);
@@ -2849,7 +2871,7 @@ impl BillServiceApi for BillService {
                 .await?;
 
                 self.notification_service
-                    .send_bill_is_sold_event(bill_id, &buyer)
+                    .send_bill_is_sold_event(bill_id, Some(payment_info.sum), &buyer)
                     .await?;
 
                 return Ok(blockchain);
@@ -5417,7 +5439,7 @@ pub mod tests {
         // Request to sell event should be sent
         notification_service
             .expect_send_offer_to_sell_event()
-            .returning(|_, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -5558,7 +5580,7 @@ pub mod tests {
         // Request to sell event should be sent
         notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -5647,7 +5669,7 @@ pub mod tests {
         // Sold event should be sent
         notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -5711,7 +5733,7 @@ pub mod tests {
         // Request to sell event should be sent
         notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -6197,7 +6219,7 @@ pub mod tests {
         let mut notification_service = MockNotificationServiceApi::new();
         notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -6293,7 +6315,7 @@ pub mod tests {
         let mut notification_service = MockNotificationServiceApi::new();
         notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -6559,16 +6581,22 @@ pub mod tests {
             .expect_send_request_to_action_timed_out_event()
             .with(
                 eq("1234"),
+                always(),
                 eq(ActionType::AcceptBill),
                 recipient_check.clone(),
             )
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         // send pay timeout notification
         notification_service
             .expect_send_request_to_action_timed_out_event()
-            .with(eq("4321"), eq(ActionType::PayBill), recipient_check)
-            .returning(|_, _, _| Ok(()));
+            .with(
+                eq("4321"),
+                always(),
+                eq(ActionType::PayBill),
+                recipient_check,
+            )
+            .returning(|_, _, _, _| Ok(()));
 
         // marks accept bill timeout as sent
         notification_service
@@ -7224,8 +7252,8 @@ pub mod tests {
         let mut notification_service = MockNotificationServiceApi::new();
         notification_service
             .expect_send_request_to_action_rejected_event()
-            .with(eq("1234"), eq(ActionType::AcceptBill), always())
-            .returning(|_, _, _| Ok(()));
+            .with(eq("1234"), always(), eq(ActionType::AcceptBill), always())
+            .returning(|_, _, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -7314,8 +7342,8 @@ pub mod tests {
         let mut notification_service = MockNotificationServiceApi::new();
         notification_service
             .expect_send_request_to_action_rejected_event()
-            .with(eq("1234"), eq(ActionType::BuyBill), always())
-            .returning(|_, _, _| Ok(()));
+            .with(eq("1234"), always(), eq(ActionType::BuyBill), always())
+            .returning(|_, _, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -7400,8 +7428,8 @@ pub mod tests {
         let mut notification_service = MockNotificationServiceApi::new();
         notification_service
             .expect_send_request_to_action_rejected_event()
-            .with(eq("1234"), eq(ActionType::PayBill), always())
-            .returning(|_, _, _| Ok(()));
+            .with(eq("1234"), always(), eq(ActionType::PayBill), always())
+            .returning(|_, _, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -7489,8 +7517,8 @@ pub mod tests {
         let mut notification_service = MockNotificationServiceApi::new();
         notification_service
             .expect_send_request_to_action_rejected_event()
-            .with(eq("1234"), eq(ActionType::RecourseBill), always())
-            .returning(|_, _, _| Ok(()));
+            .with(eq("1234"), always(), eq(ActionType::RecourseBill), always())
+            .returning(|_, _, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -7582,7 +7610,7 @@ pub mod tests {
         let mut notification_service = MockNotificationServiceApi::new();
         notification_service
             .expect_send_bill_recourse_paid_event()
-            .returning(|_, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -7677,7 +7705,7 @@ pub mod tests {
         let mut notification_service = MockNotificationServiceApi::new();
         notification_service
             .expect_send_bill_recourse_paid_event()
-            .returning(|_, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -7784,7 +7812,7 @@ pub mod tests {
         // Request to recourse event should be sent
         notification_service
             .expect_send_recourse_action_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -7904,7 +7932,7 @@ pub mod tests {
         // Request to recourse event should be sent
         notification_service
             .expect_send_recourse_action_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
 
         let service = get_service_base(
             storage,
@@ -7996,7 +8024,7 @@ pub mod tests {
         // Recourse paid event should be sent
         notification_service
             .expect_send_bill_recourse_paid_event()
-            .returning(|_, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
 
         let service = get_service_base(
             storage,

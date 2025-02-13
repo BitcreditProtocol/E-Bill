@@ -34,13 +34,13 @@ impl DefaultNotificationService {
 impl NotificationServiceApi for DefaultNotificationService {
     async fn send_bill_is_signed_event(&self, bill: &BitcreditBill) -> Result<()> {
         let event_type = EventType::BillSigned;
-
         let payer_event = Event::new(
             event_type.to_owned(),
             &bill.drawee.node_id,
             BillActionEventPayload {
                 bill_id: bill.id.clone(),
                 action_type: ActionType::AcceptBill,
+                sum: Some(bill.sum),
             },
         );
         let payee_event = Event::new(
@@ -49,6 +49,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill.id.clone(),
                 action_type: ActionType::CheckBill,
+                sum: Some(bill.sum),
             },
         );
 
@@ -70,6 +71,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill.id.clone(),
                 action_type: ActionType::CheckBill,
+                sum: Some(bill.sum),
             },
         );
 
@@ -86,6 +88,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill.id.clone(),
                 action_type: ActionType::AcceptBill,
+                sum: Some(bill.sum),
             },
         );
         self.notification_transport
@@ -101,6 +104,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill.id.clone(),
                 action_type: ActionType::PayBill,
+                sum: Some(bill.sum),
             },
         );
         self.notification_transport
@@ -116,6 +120,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill.id.clone(),
                 action_type: ActionType::CheckBill,
+                sum: Some(bill.sum),
             },
         );
 
@@ -132,6 +137,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill.id.clone(),
                 action_type: ActionType::CheckBill,
+                sum: Some(bill.sum),
             },
         );
 
@@ -144,6 +150,7 @@ impl NotificationServiceApi for DefaultNotificationService {
     async fn send_offer_to_sell_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         buyer: &IdentityPublicData,
     ) -> Result<()> {
         let event = Event::new(
@@ -152,6 +159,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill_id.to_owned(),
                 action_type: ActionType::CheckBill,
+                sum,
             },
         );
         self.notification_transport
@@ -163,6 +171,7 @@ impl NotificationServiceApi for DefaultNotificationService {
     async fn send_bill_is_sold_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         buyer: &IdentityPublicData,
     ) -> Result<()> {
         let event = Event::new(
@@ -171,6 +180,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill_id.to_owned(),
                 action_type: ActionType::CheckBill,
+                sum,
             },
         );
         self.notification_transport
@@ -182,6 +192,7 @@ impl NotificationServiceApi for DefaultNotificationService {
     async fn send_bill_recourse_paid_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         recoursee: &IdentityPublicData,
     ) -> Result<()> {
         let event = Event::new(
@@ -190,6 +201,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill_id.to_owned(),
                 action_type: ActionType::CheckBill,
+                sum,
             },
         );
         self.notification_transport
@@ -205,6 +217,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             BillActionEventPayload {
                 bill_id: bill.id.clone(),
                 action_type: ActionType::CheckBill,
+                sum: Some(bill.sum),
             },
         );
         self.notification_transport
@@ -216,6 +229,7 @@ impl NotificationServiceApi for DefaultNotificationService {
     async fn send_request_to_action_rejected_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         rejected_action: ActionType,
         recipients: Vec<IdentityPublicData>,
     ) -> Result<()> {
@@ -223,6 +237,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             let payload = BillActionEventPayload {
                 bill_id: bill_id.to_owned(),
                 action_type: ActionType::CheckBill,
+                sum,
             };
             for recipient in recipients {
                 let event = Event::new(event_type.to_owned(), &recipient.node_id, payload.clone());
@@ -237,6 +252,7 @@ impl NotificationServiceApi for DefaultNotificationService {
     async fn send_request_to_action_timed_out_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         timed_out_action: ActionType,
         recipients: Vec<IdentityPublicData>,
     ) -> Result<()> {
@@ -248,6 +264,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             let payload = BillActionEventPayload {
                 bill_id: bill_id.to_owned(),
                 action_type: ActionType::CheckBill,
+                sum,
             };
             for (_, recipient) in unique {
                 let event = Event::new(event_type.to_owned(), &recipient.node_id, payload.clone());
@@ -262,6 +279,7 @@ impl NotificationServiceApi for DefaultNotificationService {
     async fn send_recourse_action_event(
         &self,
         bill_id: &str,
+        sum: Option<u64>,
         action: ActionType,
         recipient: &IdentityPublicData,
     ) -> Result<()> {
@@ -272,6 +290,7 @@ impl NotificationServiceApi for DefaultNotificationService {
                 BillActionEventPayload {
                     bill_id: bill_id.to_owned(),
                     action_type: action,
+                    sum,
                 },
             );
             self.notification_transport
@@ -401,6 +420,7 @@ mod tests {
         service
             .send_request_to_action_rejected_event(
                 "bill_id",
+                Some(100),
                 ActionType::PayBill,
                 recipients.clone(),
             )
@@ -410,6 +430,7 @@ mod tests {
         service
             .send_request_to_action_rejected_event(
                 "bill_id",
+                Some(100),
                 ActionType::AcceptBill,
                 recipients.clone(),
             )
@@ -419,6 +440,7 @@ mod tests {
         service
             .send_request_to_action_rejected_event(
                 "bill_id",
+                Some(100),
                 ActionType::BuyBill,
                 recipients.clone(),
             )
@@ -428,6 +450,7 @@ mod tests {
         service
             .send_request_to_action_rejected_event(
                 "bill_id",
+                Some(100),
                 ActionType::RecourseBill,
                 recipients.clone(),
             )
@@ -456,6 +479,7 @@ mod tests {
         service
             .send_request_to_action_rejected_event(
                 "bill_id",
+                Some(100),
                 ActionType::CheckBill,
                 recipients.clone(),
             )
@@ -493,6 +517,7 @@ mod tests {
         service
             .send_request_to_action_timed_out_event(
                 "bill_id",
+                Some(100),
                 ActionType::PayBill,
                 recipients.clone(),
             )
@@ -502,6 +527,7 @@ mod tests {
         service
             .send_request_to_action_timed_out_event(
                 "bill_id",
+                Some(100),
                 ActionType::AcceptBill,
                 recipients.clone(),
             )
@@ -530,6 +556,7 @@ mod tests {
         service
             .send_request_to_action_timed_out_event(
                 "bill_id",
+                Some(100),
                 ActionType::CheckBill,
                 recipients.clone(),
             )
@@ -561,12 +588,12 @@ mod tests {
         };
 
         service
-            .send_recourse_action_event("bill_id", ActionType::PayBill, &recipient)
+            .send_recourse_action_event("bill_id", Some(100), ActionType::PayBill, &recipient)
             .await
             .expect("failed to send event");
 
         service
-            .send_recourse_action_event("bill_id", ActionType::AcceptBill, &recipient)
+            .send_recourse_action_event("bill_id", Some(100), ActionType::AcceptBill, &recipient)
             .await
             .expect("failed to send event");
     }
@@ -586,7 +613,7 @@ mod tests {
         };
 
         service
-            .send_recourse_action_event("bill_id", ActionType::CheckBill, &recipient)
+            .send_recourse_action_event("bill_id", Some(100), ActionType::CheckBill, &recipient)
             .await
             .expect("failed to send event");
     }
@@ -717,6 +744,7 @@ mod tests {
         service
             .send_offer_to_sell_event(
                 &bill.id,
+                Some(100),
                 &get_identity_public_data("buyer", "buyer@example.com", None),
             )
             .await
@@ -734,6 +762,7 @@ mod tests {
         service
             .send_bill_is_sold_event(
                 &bill.id,
+                Some(100),
                 &get_identity_public_data("buyer", "buyer@example.com", None),
             )
             .await
@@ -754,6 +783,7 @@ mod tests {
         service
             .send_bill_recourse_paid_event(
                 &bill.id,
+                Some(100),
                 &get_identity_public_data("recoursee", "recoursee@example.com", None),
             )
             .await

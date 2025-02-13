@@ -114,6 +114,7 @@ impl ActionType {
 pub struct BillActionEventPayload {
     pub bill_id: String,
     pub action_type: ActionType,
+    pub sum: Option<u64>,
 }
 
 /// A generic event that can be sent to a specific recipient
