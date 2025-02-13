@@ -250,10 +250,13 @@
         </runProgram>
         <if>
             <actionList>
+                <changePermissions>
+                    <permissions>0755</permissions>
+                    <files>${installdir}/brew_install.sh</files>
+                </changePermissions>
                 <runProgram>
                     <program>/bin/bash</program>
                     <programArguments>-c "${installdir}/brew_install.sh"</programArguments>
-                    <runAs>$localuser</runAs>
                     <workingDirectory>${installdir}</workingDirectory>
                     <progressText>Installing Brew</progressText>
                 </runProgram>
