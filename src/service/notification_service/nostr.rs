@@ -76,7 +76,7 @@ impl NostrClient {
 
     /// Subscribe to some nostr events with a filter
     pub async fn subscribe(&self, subscription: Filter) -> Result<()> {
-        self.client.subscribe(vec![subscription], None).await?;
+        self.client.subscribe(subscription, None).await?;
         Ok(())
     }
 
