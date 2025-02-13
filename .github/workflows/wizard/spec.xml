@@ -252,7 +252,7 @@
         <if>
             <actionList>
                 <runProgram>
-                    <program>NONINTERACTIVE=1 /bin/bash</program>
+                    <program>/bin/bash</program>
                     <programArguments>-c "${installdir}/brew_install.sh"</programArguments>
                     <workingDirectory>${installdir}</workingDirectory>
                     <progressText>Installing Brew</progressText>
