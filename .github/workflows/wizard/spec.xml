@@ -114,6 +114,9 @@
                         <distributionFile>
                             <origin>${sourcedir}/be/target/release/bitcredit</origin>
                         </distributionFile>
+                        <distributionFile>
+                            <origin>${build_project_directory}/brew_install.sh</origin>
+                        </distributionFile>
                     </distributionFileList>
                 </folder>
             </folderList>
@@ -249,23 +252,10 @@
         <if>
             <actionList>
                 <runProgram>
-                    <program>NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</program>
+                    <program>NONINTERACTIVE=1 /bin/bash</program>
+                    <programArguments>-c "${installdir}/brew_install.sh"</programArguments>
+                    <workingDirectory>${installdir}</workingDirectory>
                     <progressText>Installing Brew</progressText>
-                </runProgram>
-            </actionList>
-            <conditionRuleList>
-                <platformTest type="osx"/>
-                <programTest>
-                    <condition>is_not_in_path</condition>
-                    <name>brew</name>
-                </programTest>
-            </conditionRuleList>
-        </if>
-        <if>
-            <actionList>
-                <runProgram>
-                    <program></program>
-                    <progressText>Installing OpenSSL</progressText>
                 </runProgram>
             </actionList>
             <conditionRuleList>
@@ -294,6 +284,7 @@
                     <value2>0</value2>
                 </compareValues>
             </ruleList>
+            <progressText>Installing OpenSSL</progressText>
         </runProgram>
         <createOSXService>
             <keepAlive>1</keepAlive>
