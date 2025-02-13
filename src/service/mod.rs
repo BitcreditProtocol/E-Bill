@@ -45,10 +45,6 @@ pub enum Error {
     #[error("Persistence error: {0}")]
     Persistence(#[from] persistence::Error),
 
-    /// errors that currently return early http status code Status::NotAcceptable
-    #[error("not acceptable")]
-    PreconditionFailed,
-
     /// errors that currently return early http status code Status::NotFound
     #[error("not found")]
     NotFound,
@@ -123,7 +119,6 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
                 error!("{e}");
                 Status::InternalServerError.respond_to(req)
             }
-            Error::PreconditionFailed => Status::NotAcceptable.respond_to(req),
             Error::NotFound => {
                 let body =
                     ErrorResponse::new("not_found", "not found".to_string(), 404).to_json_string();
