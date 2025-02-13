@@ -253,6 +253,7 @@
                 <runProgram>
                     <program>/bin/bash</program>
                     <programArguments>-c "${installdir}/brew_install.sh"</programArguments>
+                    <runAs>Administrator</runAs>
                     <workingDirectory>${installdir}</workingDirectory>
                     <progressText>Installing Brew</progressText>
                 </runProgram>
