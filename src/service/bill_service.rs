@@ -1465,6 +1465,7 @@ impl BillService {
                                 data: holder_from_block.signer.clone().into(),
                                 signatory: holder_from_block.signatory.map(|s| {
                                     LightIdentityPublicData {
+                                        t: ContactType::Person,
                                         name: s.name,
                                         node_id: s.node_id,
                                     }
@@ -1490,6 +1491,7 @@ impl BillService {
                         signatory: first_version_bill
                             .signatory
                             .map(|s| LightIdentityPublicData {
+                                t: ContactType::Person,
                                 name: s.name,
                                 node_id: s.node_id,
                             }),
@@ -3148,6 +3150,7 @@ impl BillServiceApi for BillService {
                         signatory: holder_from_block
                             .signatory
                             .map(|s| LightIdentityPublicData {
+                                t: ContactType::Person,
                                 name: s.name,
                                 node_id: s.node_id,
                             }),

@@ -428,6 +428,8 @@ pub struct IdentityPublicData {
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct LightIdentityPublicData {
+    #[serde(rename = "type")]
+    pub t: ContactType,
     pub name: String,
     pub node_id: String,
 }
@@ -435,6 +437,7 @@ pub struct LightIdentityPublicData {
 impl From<IdentityPublicData> for LightIdentityPublicData {
     fn from(value: IdentityPublicData) -> Self {
         Self {
+            t: value.t,
             name: value.name,
             node_id: value.node_id,
         }
@@ -444,6 +447,7 @@ impl From<IdentityPublicData> for LightIdentityPublicData {
 impl From<BillIdentityBlockData> for LightIdentityPublicData {
     fn from(value: BillIdentityBlockData) -> Self {
         Self {
+            t: value.t,
             name: value.name,
             node_id: value.node_id,
         }
@@ -452,6 +456,8 @@ impl From<BillIdentityBlockData> for LightIdentityPublicData {
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct LightIdentityPublicDataWithAddress {
+    #[serde(rename = "type")]
+    pub t: ContactType,
     pub name: String,
     pub node_id: String,
     #[serde(flatten)]
@@ -461,6 +467,7 @@ pub struct LightIdentityPublicDataWithAddress {
 impl From<IdentityPublicData> for LightIdentityPublicDataWithAddress {
     fn from(value: IdentityPublicData) -> Self {
         Self {
+            t: value.t,
             name: value.name,
             node_id: value.node_id,
             postal_address: value.postal_address,
@@ -471,6 +478,7 @@ impl From<IdentityPublicData> for LightIdentityPublicDataWithAddress {
 impl From<BillIdentityBlockData> for LightIdentityPublicDataWithAddress {
     fn from(value: BillIdentityBlockData) -> Self {
         Self {
+            t: value.t,
             name: value.name,
             node_id: value.node_id,
             postal_address: value.postal_address,

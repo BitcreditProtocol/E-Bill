@@ -13,6 +13,12 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use utoipa::ToSchema;
 
+#[derive(Debug, Serialize, ToSchema)]
+pub struct StatusResponse {
+    pub bitcoin_network: String,
+    pub app_version: String,
+}
+
 /// A dummy response type signaling success of a request
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SuccessResponse {
