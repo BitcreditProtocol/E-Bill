@@ -1,7 +1,8 @@
 use super::{
     data::{
         BalanceResponse, CurrenciesResponse, CurrencyResponse, GeneralSearchFilterPayload,
-        GeneralSearchResponse, OverviewBalanceResponse, OverviewResponse, SuccessResponse,
+        GeneralSearchResponse, OverviewBalanceResponse, OverviewResponse, StatusResponse,
+        SuccessResponse,
     },
     ErrorResponse,
 };
@@ -39,6 +40,14 @@ pub async fn default_api_error_catcher(path: PathBuf) -> Json<ErrorResponse> {
         format!("We couldn't find the requested path '{}'", path.display()),
         404,
     ))
+}
+
+#[get("/")]
+pub async fn status() -> Result<Json<StatusResponse>> {
+    Ok(Json(StatusResponse {
+        bitcoin_network: CONFIG.bitcoin_network().to_string(),
+        app_version: std::env::var("CARGO_PKG_VERSION").unwrap_or(String::from("unknown")),
+    }))
 }
 
 #[get("/")]

@@ -82,6 +82,7 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
         .manage(context)
         .manage(cors)
         .mount("/api/exit", routes![handlers::exit])
+        .mount("/api/status", routes![handlers::status])
         .mount("/api/currencies", routes![handlers::currencies])
         .mount("/api/overview", routes![handlers::overview])
         .mount("/api/search", routes![handlers::search])
