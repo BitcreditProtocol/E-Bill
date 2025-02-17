@@ -242,12 +242,6 @@ pub struct MintBitcreditBillPayload {
     pub currency: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AcceptMintBitcreditBillPayload {
-    pub sum: String,
-    pub bill_id: String,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RequestToMintBitcreditBillPayload {
     pub mint_node: String,

@@ -25,10 +25,6 @@ pub const MAX_FILE_NAME_CHARACTERS: usize = 200;
 pub const VALID_FILE_MIME_TYPES: [&str; 3] = ["image/jpeg", "image/png", "application/pdf"];
 pub const VALID_CURRENCIES: [&str; 2] = ["sat", "crsat"];
 
-// Paths
-pub const QUOTES_MAP_FOLDER_PATH: &str = "quotes";
-pub const QUOTE_MAP_FILE_PATH: &str = "quotes/quotes";
-
 // DB constants
 pub const DB_TABLE: &str = "table";
 

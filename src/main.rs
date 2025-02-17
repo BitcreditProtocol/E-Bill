@@ -1,4 +1,3 @@
-use crate::constants::QUOTES_MAP_FOLDER_PATH;
 use anyhow::Result;
 use clap::Parser;
 use config::Config;
@@ -6,9 +5,9 @@ use constants::SHUTDOWN_GRACE_PERIOD_MS;
 use log::{error, info};
 use persistence::get_db_context;
 use service::create_service_context;
-use std::path::Path;
-use std::{env, fs};
+use std::env;
 use tokio::spawn;
+
 mod blockchain;
 mod config;
 mod constants;
@@ -37,7 +36,6 @@ async fn main() -> Result<()> {
     info!("Chosen Network: {:?}", CONFIG.bitcoin_network());
 
     let conf = CONFIG.clone();
-    init_folders();
 
     loop {
         let (reboot_sender, mut reboot_receiver) = tokio::sync::watch::channel(false);
@@ -60,8 +58,6 @@ async fn main() -> Result<()> {
 }
 
 async fn start(conf: Config, reboot_sender: tokio::sync::watch::Sender<bool>) -> Result<()> {
-    external::mint::init_wallet().await;
-
     // Initialize the database context
     let db = get_db_context(&conf).await?;
 
@@ -170,10 +166,4 @@ async fn start(conf: Config, reboot_sender: tokio::sync::watch::Sender<bool>) ->
     tokio::time::sleep(std::time::Duration::from_millis(SHUTDOWN_GRACE_PERIOD_MS)).await;
 
     Ok(())
-}
-
-fn init_folders() {
-    if !Path::new(QUOTES_MAP_FOLDER_PATH).exists() {
-        fs::create_dir(QUOTES_MAP_FOLDER_PATH).expect("Can't create folder quotes.");
-    }
 }

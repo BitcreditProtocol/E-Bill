@@ -427,6 +427,7 @@ pub trait BillServiceApi: Send + Sync {
     ) -> Result<BillBlockchain>;
 
     /// mint bitcredit bill
+    #[allow(dead_code)]
     async fn mint_bitcredit_bill(
         &self,
         bill_id: &str,

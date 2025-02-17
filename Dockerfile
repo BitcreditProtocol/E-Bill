@@ -5,7 +5,7 @@ FROM rust:latest AS rust-builder
 
 RUN update-ca-certificates
 
-RUN apt-get update && apt-get install -y protobuf-compiler libclang-dev
+RUN apt-get update && apt-get install -y libclang-dev
 
 WORKDIR /ebills
 
