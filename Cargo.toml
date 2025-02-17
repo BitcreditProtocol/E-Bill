@@ -69,7 +69,7 @@ lazy_static = "1.5.0"
 bs58 = "0.5.1"
 utoipa = { version = "5", features = ["rocket_extras", "chrono"] }
 utoipa-swagger-ui = { version = "8", features = ["rocket", "vendored"] }
-ecies = { version = "0.2.6", default-features = false, features = ["pure"] }
+ecies = { version = "0.2.7", default-features = false, features = ["pure"] }
 bip39 = { version = "2.1.0", features = ["rand"] }
 hex = "0.4.3"
 
