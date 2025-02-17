@@ -44,7 +44,7 @@ impl BillStoreApi for SurrealBillStore {
         {
             Ok(mut res) => {
                 res.take::<Option<BillIdDb>>(0)
-                    .map(|_| true)
+                    .map(|results| results.map(|_| true).unwrap_or(false))
                     .unwrap_or(false)
                     && self.get_keys(id).await.map(|_| true).unwrap_or(false)
             }

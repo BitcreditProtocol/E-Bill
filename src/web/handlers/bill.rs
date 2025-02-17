@@ -325,11 +325,10 @@ pub async fn bill_detail(
 }
 
 #[get("/check_payment")]
-pub async fn check_payment(state: &State<ServiceContext>) -> Result<Json<SuccessResponse>> {
-    if !state.identity_service.identity_exists().await {
-        return Err(service::Error::PreconditionFailed);
-    }
-
+pub async fn check_payment(
+    _identity: IdentityCheck,
+    state: &State<ServiceContext>,
+) -> Result<Json<SuccessResponse>> {
     if let Err(e) = state.bill_service.check_bills_payment().await {
         error!("Error while checking bills payment: {e}");
     }
@@ -359,7 +358,9 @@ pub async fn upload_files(
     files_upload_form: Form<UploadBillFilesForm<'_>>,
 ) -> Result<Json<UploadFilesResponse>> {
     if files_upload_form.files.is_empty() {
-        return Err(service::Error::PreconditionFailed);
+        return Err(service::Error::Validation(String::from(
+            "File upload form has empty files field",
+        )));
     }
 
     let files = &files_upload_form.files;

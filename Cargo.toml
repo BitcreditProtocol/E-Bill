@@ -4,11 +4,11 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-sha2 = "0.10"
-borsh = "1.5.1"
-borsh-derive = "1.0.0"
-env_logger = "0.11.5"
-chrono = "0.4.38"
+sha2 = "0.10.8"
+borsh = "1.5.5"
+borsh-derive = "1.5.5"
+env_logger = "0.11.6"
+chrono = "0.4.39"
 libp2p = { version = "0.51.4", features = [
   "tcp",
   "dns",
@@ -25,7 +25,7 @@ libp2p = { version = "0.51.4", features = [
   "dcutr",
   "secp256k1",
 ] }
-tokio = { version = "1.40.0", features = [
+tokio = { version = "1.43.0", features = [
   "rt",
   "rt-multi-thread",
   "macros",
@@ -34,49 +34,47 @@ tokio = { version = "1.40.0", features = [
   "io-std",
   "fs",
 ] }
-async-trait = "0.1.83"
+async-trait = "0.1.86"
 rocket = { version = "0.5.1", features = ["json"] }
 rocket_cors = "0.6.0"
 rocket_ws = "0.1.1"
-rocket_dyn_templates = { version = "0.2.0", features = ["handlebars"] }
-open = "5.3.0"
-serde_json = "1.0.129"
-serde = { version = "1.0.210", features = ["derive"] }
+open = "5.3.2"
+serde_json = "1.0.138"
+serde = { version = "1.0.217", features = ["derive"] }
 serde_repr = "0.1.19"
-log = "0.4.22"
+log = "0.4.25"
 futures = "0.3.31"
-bitcoin = { version = "0.32.3", features = ["rand", "rand-std"] }
-reqwest = { version = "0.12.8", features = ["json"] }
-anyhow = "1"
-clap = { version = "4.5.20", features = ["derive", "env"] }
-url = "2.5.2"
-thiserror = "2"
+bitcoin = { version = "0.32.5", features = ["rand", "rand-std"] }
+reqwest = { version = "0.12.12", features = ["json"] }
+anyhow = "1.0.95"
+clap = { version = "4.5.29", features = ["derive", "env"] }
+url = "2.5.4"
+thiserror = "2.0.11"
 moksha-core = { git = "https://github.com/mtbitcr/moksha" }
-moksha-mint = { git = "https://github.com/mtbitcr/moksha" }
 moksha-wallet = { git = "https://github.com/mtbitcr/moksha" }
-hf = { version = "0.3.6", default-features = false }
-lettre = { version = "0.11.10", features = [
+hf = { version = "0.3.10", default-features = false }
+lettre = { version = "0.11.12", features = [
   "tokio1",
   "tokio1-native-tls",
   "file-transport",
 ] }
-rust_decimal = { version = "1.35.0", default-features = false, features = ["std"] }
-nostr-sdk = { version = "0.38.0", features = ["nip59"] }
-uuid = { version = "1.11.0", features = ["v4"] }
-infer = { version = "0.16", default-features = false }
-surrealdb = "2"
+rust_decimal = { version = "1.36.0", default-features = false, features = ["std"] }
+nostr-sdk = { version = "0.39.0", features = ["nip59"] }
+uuid = { version = "1.13.1", features = ["v4"] }
+infer = { version = "0.19.0", default-features = false }
+surrealdb = "2.2.0"
 lazy_static = "1.5.0"
 bs58 = "0.5.1"
-utoipa = { version = "5", features = ["rocket_extras", "chrono"] }
-utoipa-swagger-ui = { version = "8", features = ["rocket", "vendored"] }
-ecies = { version = "0.2", features = ["std"] }
+utoipa = { version = "5.3.1", features = ["rocket_extras", "chrono"] }
+utoipa-swagger-ui = { version = "9.0.0", features = ["rocket", "vendored"] }
+ecies = { version = "0.2.6", default-features = false, features = ["pure"] }
 bip39 = { version = "2.1.0", features = ["rand"] }
 hex = "0.4.3"
 
 [dev-dependencies]
-mockall = "0.13.0"
-nostr-relay-builder = "0.38.0"
-surrealdb = { version = "2", features = ["kv-mem"] }
+mockall = "0.13.1"
+nostr-relay-builder = "0.39.0"
+surrealdb = { version = "2.2.0", features = ["kv-mem"] }
 
 [features]
 embedded-db = ["surrealdb/kv-rocksdb"]
