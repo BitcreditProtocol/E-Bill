@@ -1,6 +1,5 @@
 use super::{email::EmailMessage, NotificationEmailTransportApi, Result};
 use async_trait::async_trait;
-use rocket::serde::json;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -60,7 +59,7 @@ impl TryFrom<EmailMessage> for SendgridMessage {
     fn try_from(message: EmailMessage) -> Result<Self> {
         let from = SendgridAddress::new(message.from);
         let to = SendgridAddress::new(message.to);
-        let personalizations = vec![json::to_value(&from)?, json::to_value(to)?];
+        let personalizations = vec![serde_json::to_value(&from)?, serde_json::to_value(to)?];
         let m = SendgridMessage {
             personalizations,
             from,

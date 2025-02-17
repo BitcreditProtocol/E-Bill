@@ -6,11 +6,14 @@ use crate::service::{
     contact_service::{Contact, LightIdentityPublicData},
     Error,
 };
+use crate::util::file::{detect_content_type_for_bytes, UploadFileHandler};
+use async_trait::async_trait;
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use rocket::fs::TempFile;
 use rocket::FromForm;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tokio::io::AsyncReadExt;
 use utoipa::ToSchema;
 
 /// A dummy response type signaling success of a request
@@ -534,5 +537,34 @@ impl From<Contact> for SignatoryResponse {
             postal_address: value.postal_address,
             avatar_file: value.avatar_file,
         }
+    }
+}
+
+#[async_trait]
+impl UploadFileHandler for TempFile<'_> {
+    async fn get_contents(&self) -> std::io::Result<Vec<u8>> {
+        let mut opened = self.open().await?;
+        let mut buf = Vec::with_capacity(self.len() as usize);
+        opened.read_to_end(&mut buf).await?;
+        Ok(buf)
+    }
+
+    fn extension(&self) -> Option<String> {
+        self.content_type()
+            .and_then(|c| c.extension().map(|e| e.to_string()))
+    }
+
+    fn name(&self) -> Option<String> {
+        self.name().map(|s| s.to_owned())
+    }
+
+    fn len(&self) -> u64 {
+        self.len()
+    }
+    async fn detect_content_type(&self) -> std::io::Result<Option<String>> {
+        let mut buffer = vec![0; 256];
+        let mut opened = self.open().await?;
+        let _bytes_read = opened.read(&mut buffer).await?;
+        Ok(detect_content_type_for_bytes(&buffer))
     }
 }

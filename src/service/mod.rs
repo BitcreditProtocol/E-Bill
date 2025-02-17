@@ -11,7 +11,6 @@ use super::{dht::Client, Config};
 use crate::external::bitcoin::BitcoinClient;
 use crate::persistence::db::SurrealDbConfig;
 use crate::persistence::DbContext;
-use crate::web::ErrorResponse;
 use crate::{blockchain, dht, external};
 use crate::{persistence, util};
 use backup_service::{BackupService, BackupServiceApi};
@@ -26,11 +25,7 @@ use notification_service::{
     create_nostr_client, create_nostr_consumer, create_notification_service, NostrConsumer,
     NotificationServiceApi,
 };
-use rocket::http::ContentType;
-use rocket::Response;
-use rocket::{http::Status, response::Responder};
 use search_service::{SearchService, SearchServiceApi};
-use std::io::Cursor;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::{broadcast, watch, RwLock};
@@ -87,80 +82,6 @@ pub enum Error {
     /// error returned if the given file upload id is not a temp file we have
     #[error("No file found for file upload id")]
     NoFileForFileUploadId,
-}
-
-/// Map from service errors directly to rocket status codes. This allows us to
-/// write handlers that return `Result<T, service::Error>` and still return the correct
-/// status code.
-impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
-    fn respond_to(self, req: &rocket::Request) -> rocket::response::Result<'o> {
-        match self {
-            Error::NoFileForFileUploadId => {
-                let body =
-                    ErrorResponse::new("bad_request", self.to_string(), 400).to_json_string();
-                Response::build()
-                    .status(Status::BadRequest)
-                    .header(ContentType::JSON)
-                    .sized_body(body.len(), Cursor::new(body))
-                    .ok()
-            }
-            // for now, DHT errors are InternalServerError
-            Error::Dht(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::CryptoUtil(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            // for now handle all persistence errors as InternalServerError, there
-            // will be cases where we want to handle them differently (eg. 409 Conflict)
-            Error::Persistence(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::Blockchain(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::PreconditionFailed => Status::NotAcceptable.respond_to(req),
-            Error::NotFound => {
-                let body =
-                    ErrorResponse::new("not_found", "not found".to_string(), 404).to_json_string();
-                Response::build()
-                    .status(Status::NotFound)
-                    .header(ContentType::JSON)
-                    .sized_body(body.len(), Cursor::new(body))
-                    .ok()
-            }
-            Error::NotificationService(_) => Status::InternalServerError.respond_to(req),
-            Error::BillService(e) => {
-                error!("{e}");
-                e.respond_to(req)
-            }
-            Error::Validation(msg) => build_validation_response(msg),
-            // If an external API errors, we can only tell the caller that something went wrong on
-            // our end
-            Error::ExternalApi(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::Io(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-        }
-    }
-}
-
-fn build_validation_response<'o>(msg: String) -> rocket::response::Result<'o> {
-    let err_resp = ErrorResponse::new("validation_error", msg, 400);
-    let body = err_resp.to_json_string();
-    Response::build()
-        .status(Status::BadRequest)
-        .header(ContentType::JSON)
-        .sized_body(body.len(), Cursor::new(body))
-        .ok()
 }
 
 /// A dependency container for all services that are used by the application

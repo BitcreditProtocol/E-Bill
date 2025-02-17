@@ -1,7 +1,5 @@
 use async_trait::async_trait;
-use rocket::fs::TempFile;
 use std::{ffi::OsStr, path::Path};
-use tokio::io::AsyncReadExt;
 
 #[cfg(test)]
 use mockall::automock;
@@ -19,35 +17,6 @@ pub trait UploadFileHandler: Send + Sync {
     fn len(&self) -> u64;
     /// detects the content type of the file by checking the first bytes
     async fn detect_content_type(&self) -> std::io::Result<Option<String>>;
-}
-
-#[async_trait]
-impl UploadFileHandler for TempFile<'_> {
-    async fn get_contents(&self) -> std::io::Result<Vec<u8>> {
-        let mut opened = self.open().await?;
-        let mut buf = Vec::with_capacity(self.len() as usize);
-        opened.read_to_end(&mut buf).await?;
-        Ok(buf)
-    }
-
-    fn extension(&self) -> Option<String> {
-        self.content_type()
-            .and_then(|c| c.extension().map(|e| e.to_string()))
-    }
-
-    fn name(&self) -> Option<String> {
-        self.name().map(|s| s.to_owned())
-    }
-
-    fn len(&self) -> u64 {
-        self.len()
-    }
-    async fn detect_content_type(&self) -> std::io::Result<Option<String>> {
-        let mut buffer = vec![0; 256];
-        let mut opened = self.open().await?;
-        let _bytes_read = opened.read(&mut buffer).await?;
-        Ok(detect_content_type_for_bytes(&buffer))
-    }
 }
 
 pub fn validate_file_upload_id(file_upload_id: &Option<String>) -> crate::service::Result<()> {
