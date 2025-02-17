@@ -31,7 +31,6 @@ use crate::util::BcrKeys;
 use crate::web::data::{
     BillCombinedBitcoinKey, BillsFilterRole, Endorsement, File, LightSignedBy, PastEndorsee,
 };
-use crate::web::ErrorResponse;
 use crate::{dht, external, persistence, util};
 use crate::{
     dht::{Client, GossipsubEvent, GossipsubEventId},
@@ -45,12 +44,8 @@ use futures::future::try_join_all;
 use log::info;
 #[cfg(test)]
 use mockall::automock;
-use rocket::http::ContentType;
-use rocket::Response;
-use rocket::{http::Status, response::Responder};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::io::Cursor;
 use std::sync::Arc;
 use thiserror::Error;
 use utoipa::ToSchema;
@@ -190,81 +185,6 @@ pub enum Error {
 
     #[error("io error {0}")]
     Io(#[from] std::io::Error),
-}
-
-impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
-    fn respond_to(self, req: &rocket::Request) -> rocket::response::Result<'o> {
-        match self {
-            Error::RequestAlreadyExpired
-            | Error::BillAlreadyAccepted
-            | Error::BillWasNotOfferedToSell
-            | Error::BillWasNotRequestedToPay
-            | Error::BillWasNotRequestedToAccept
-            | Error::BillWasNotRequestedToRecourse
-            | Error::BillIsNotOfferToSellWaitingForPayment
-            | Error::BillIsOfferedToSellAndWaitingForPayment
-            | Error::BillIsInRecourseAndWaitingForPayment
-            | Error::BillRequestToAcceptDidNotExpireAndWasNotRejected
-            | Error::BillRequestToPayDidNotExpireAndWasNotRejected
-            | Error::BillIsNotRequestedToRecourseAndWaitingForPayment
-            | Error::BillSellDataInvalid
-            | Error::BillAlreadyPaid
-            | Error::BillRecourseDataInvalid
-            | Error::RecourseeNotPastHolder
-            | Error::CallerIsNotDrawee
-            | Error::CallerIsNotBuyer
-            | Error::CallerIsNotRecoursee
-            | Error::RequestAlreadyRejected
-            | Error::CallerIsNotHolder
-            | Error::NoFileForFileUploadId
-            | Error::InvalidOperation => {
-                let body =
-                    ErrorResponse::new("bad_request", self.to_string(), 400).to_json_string();
-                Response::build()
-                    .status(Status::BadRequest)
-                    .header(ContentType::JSON)
-                    .sized_body(body.len(), Cursor::new(body))
-                    .ok()
-            }
-            Error::Io(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::NotFound => {
-                let body =
-                    ErrorResponse::new("not_found", "not found".to_string(), 404).to_json_string();
-                Response::build()
-                    .status(Status::NotFound)
-                    .header(ContentType::JSON)
-                    .sized_body(body.len(), Cursor::new(body))
-                    .ok()
-            }
-            Error::Persistence(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::ExternalApi(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::Blockchain(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::Dht(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::Cryptography(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-            Error::Notification(e) => {
-                error!("{e}");
-                Status::InternalServerError.respond_to(req)
-            }
-        }
-    }
 }
 
 #[cfg_attr(test, automock)]
@@ -427,6 +347,7 @@ pub trait BillServiceApi: Send + Sync {
     ) -> Result<BillBlockchain>;
 
     /// mint bitcredit bill
+    #[allow(dead_code)]
     async fn mint_bitcredit_bill(
         &self,
         bill_id: &str,

@@ -4,40 +4,26 @@ Core for Bitcredit project.
 
 ### Backend
 
-Make sure to have at least Rust version 1.77 as well as a recent version of the toolchain installed. Furthermore protobuf and openssl are necesssary.
+Make sure to have at least Rust version 1.77 as well as a recent version of the toolchain installed.
 
 #### On Ubuntu
 ```bash
 # Install libs
-sudo apt install -y protobuf-compiler libclang-dev libssl-dev pkg-config build-essential
+sudo apt install -y libclang-dev pkg-config build-essential
 ```
 
 #### On Fedora
 ```bash
 # Install libs
 sudo dnf install -y make automake gcc gcc-c++ kernel-devel clang-devel
-sudo dnf install -y openssl-devel pkgconf-pkg-config @development-tools
-sudo dnf install -y protobuf-compiler
+sudo dnf install -y pkgconf-pkg-config @development-tools
 ```
 
 #### On Windows
 ```bash
 # Using MSYS2 terminal
-pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-make mingw-w64-x86_64-llvm 
-pacman -S mingw-w64-x86_64-protobuf base-devel pkgconf
-```
-
-For installation of Openssl use vcpkg:
-
-```bash
-# In vcpkg directory
-vcpkg install openssl:x64-windows
-
-# Set Openssl environment variables:
-set OPENSSL_DIR=C:\<path>\<to>\vcpkg\packages\openssl_x64-windows
-set OPENSSL_LIB_DIR=%OPENSSL_DIR%\lib
-set OPENSSL_INCLUDE_DIR=%OPENSSL_DIR%\include
-
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-make mingw-w64-x86_64-llvm
+pacman -S base-devel pkgconf
 ```
 
 Finally build the backend

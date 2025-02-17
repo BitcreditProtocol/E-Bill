@@ -46,21 +46,21 @@ serde_repr = "0.1.19"
 log = "0.4.22"
 futures = "0.3.31"
 bitcoin = { version = "0.32.3", features = ["rand", "rand-std"] }
-reqwest = { version = "0.12.8", features = ["json"] }
+reqwest = { version = "0.12.8", default-features = false, features = ["json", "rustls-tls", "charset", "http2", "macos-system-configuration"] }
 anyhow = "1"
 clap = { version = "4.5.20", features = ["derive", "env"] }
-url = "2.5.2"
 thiserror = "2"
-moksha-core = { git = "https://github.com/mtbitcr/moksha" }
-moksha-mint = { git = "https://github.com/mtbitcr/moksha" }
-moksha-wallet = { git = "https://github.com/mtbitcr/moksha" }
 hf = { version = "0.3.6", default-features = false }
-lettre = { version = "0.11.10", features = [
+lettre = { version = "0.11.10", default-features = false, features = [
+  "builder",
+  "hostname",
+  "pool",
+  "smtp-transport",
   "tokio1",
-  "tokio1-native-tls",
+  "tokio1-rustls-tls",
   "file-transport",
 ] }
-rust_decimal = { version = "1.35.0", default-features = false, features = ["std"] }
+rust_decimal = { version = "1.36.0", default-features = false }
 nostr-sdk = { version = "0.38.0", features = ["nip59"] }
 uuid = { version = "1.11.0", features = ["v4"] }
 infer = { version = "0.16", default-features = false }
@@ -69,7 +69,7 @@ lazy_static = "1.5.0"
 bs58 = "0.5.1"
 utoipa = { version = "5", features = ["rocket_extras", "chrono"] }
 utoipa-swagger-ui = { version = "8", features = ["rocket", "vendored"] }
-ecies = { version = "0.2", features = ["std"] }
+ecies = { version = "0.2.7", default-features = false, features = ["pure"] }
 bip39 = { version = "2.1.0", features = ["rand"] }
 hex = "0.4.3"
 

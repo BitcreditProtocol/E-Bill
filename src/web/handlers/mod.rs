@@ -7,12 +7,16 @@ use super::{
 };
 use crate::{
     constants::VALID_CURRENCIES,
-    service::{Error, Result, ServiceContext},
+    service::{bill_service, Error, Result, ServiceContext},
     util::file::detect_content_type_for_bytes,
     CONFIG,
 };
 use bill::get_current_identity_node_id;
+use log::error;
+use rocket::Response;
 use rocket::{fs::NamedFile, get, http::ContentType, post, serde::json::Json, Shutdown, State};
+use rocket::{http::Status, response::Responder};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 pub mod bill;
@@ -150,4 +154,150 @@ pub async fn search(
         .await?;
 
     Ok(Json(result))
+}
+
+/// Map from service errors directly to rocket status codes. This allows us to
+/// write handlers that return `Result<T, service::Error>` and still return the correct
+/// status code.
+impl<'r, 'o: 'r> Responder<'r, 'o> for Error {
+    fn respond_to(self, req: &rocket::Request) -> rocket::response::Result<'o> {
+        match self {
+            Error::NoFileForFileUploadId => {
+                let body =
+                    ErrorResponse::new("bad_request", self.to_string(), 400).to_json_string();
+                Response::build()
+                    .status(Status::BadRequest)
+                    .header(ContentType::JSON)
+                    .sized_body(body.len(), Cursor::new(body))
+                    .ok()
+            }
+            Error::PreconditionFailed => Status::NotAcceptable.respond_to(req),
+            Error::NotFound => {
+                let body =
+                    ErrorResponse::new("not_found", "not found".to_string(), 404).to_json_string();
+                Response::build()
+                    .status(Status::NotFound)
+                    .header(ContentType::JSON)
+                    .sized_body(body.len(), Cursor::new(body))
+                    .ok()
+            }
+            Error::NotificationService(_) => Status::InternalServerError.respond_to(req),
+            Error::BillService(e) => e.respond_to(req),
+            Error::Validation(msg) => build_validation_response(msg),
+            // If an external API errors, we can only tell the caller that something went wrong on
+            // our end
+            Error::ExternalApi(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            Error::Io(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            // for now, DHT errors are InternalServerError
+            Error::Dht(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            Error::CryptoUtil(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            // for now handle all persistence errors as InternalServerError, there
+            // will be cases where we want to handle them differently (eg. 409 Conflict)
+            Error::Persistence(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            Error::Blockchain(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+        }
+    }
+}
+
+impl<'r, 'o: 'r> Responder<'r, 'o> for bill_service::Error {
+    fn respond_to(self, req: &rocket::Request) -> rocket::response::Result<'o> {
+        match self {
+            bill_service::Error::RequestAlreadyExpired
+            | bill_service::Error::BillAlreadyAccepted
+            | bill_service::Error::BillWasNotOfferedToSell
+            | bill_service::Error::BillWasNotRequestedToPay
+            | bill_service::Error::BillWasNotRequestedToAccept
+            | bill_service::Error::BillWasNotRequestedToRecourse
+            | bill_service::Error::BillIsNotOfferToSellWaitingForPayment
+            | bill_service::Error::BillIsOfferedToSellAndWaitingForPayment
+            | bill_service::Error::BillIsInRecourseAndWaitingForPayment
+            | bill_service::Error::BillRequestToAcceptDidNotExpireAndWasNotRejected
+            | bill_service::Error::BillRequestToPayDidNotExpireAndWasNotRejected
+            | bill_service::Error::BillIsNotRequestedToRecourseAndWaitingForPayment
+            | bill_service::Error::BillSellDataInvalid
+            | bill_service::Error::BillAlreadyPaid
+            | bill_service::Error::BillRecourseDataInvalid
+            | bill_service::Error::RecourseeNotPastHolder
+            | bill_service::Error::CallerIsNotDrawee
+            | bill_service::Error::CallerIsNotBuyer
+            | bill_service::Error::CallerIsNotRecoursee
+            | bill_service::Error::RequestAlreadyRejected
+            | bill_service::Error::CallerIsNotHolder
+            | bill_service::Error::NoFileForFileUploadId
+            | bill_service::Error::InvalidOperation => {
+                let body =
+                    ErrorResponse::new("bad_request", self.to_string(), 400).to_json_string();
+                Response::build()
+                    .status(Status::BadRequest)
+                    .header(ContentType::JSON)
+                    .sized_body(body.len(), Cursor::new(body))
+                    .ok()
+            }
+            bill_service::Error::NotFound => {
+                let body =
+                    ErrorResponse::new("not_found", "not found".to_string(), 404).to_json_string();
+                Response::build()
+                    .status(Status::NotFound)
+                    .header(ContentType::JSON)
+                    .sized_body(body.len(), Cursor::new(body))
+                    .ok()
+            }
+            bill_service::Error::Io(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            bill_service::Error::Persistence(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            bill_service::Error::ExternalApi(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            bill_service::Error::Blockchain(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            bill_service::Error::Dht(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            bill_service::Error::Cryptography(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+            bill_service::Error::Notification(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+        }
+    }
+}
+
+fn build_validation_response<'o>(msg: String) -> rocket::response::Result<'o> {
+    let err_resp = ErrorResponse::new("validation_error", msg, 400);
+    let body = err_resp.to_json_string();
+    Response::build()
+        .status(Status::BadRequest)
+        .header(ContentType::JSON)
+        .sized_body(body.len(), Cursor::new(body))
+        .ok()
 }

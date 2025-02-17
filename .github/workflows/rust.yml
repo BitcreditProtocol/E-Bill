@@ -19,9 +19,6 @@ jobs:
       - name: Update rust
         run: rustup update
 
-      - name: Install protoc
-        run: sudo apt-get install -y protobuf-compiler
-
       - name: Cargo update
         run: cargo update --verbose
 

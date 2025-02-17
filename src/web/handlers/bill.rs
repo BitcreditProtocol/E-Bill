@@ -1,28 +1,25 @@
 use super::middleware::IdentityCheck;
 use crate::blockchain::Blockchain;
-use crate::external::mint::{accept_mint_bitcredit, request_to_mint_bitcredit};
 use crate::service::bill_service::{LightBitcreditBillToReturn, RecourseReason};
 use crate::service::{contact_service::IdentityPublicData, Result};
-use crate::util::date::date_string_to_i64_timestamp;
 use crate::util::file::{detect_content_type_for_bytes, UploadFileHandler};
 use crate::util::{self, base58_encode, BcrKeys};
 use crate::web::data::{
-    AcceptBitcreditBillPayload, AcceptMintBitcreditBillPayload, BillCombinedBitcoinKey, BillId,
-    BillNumbersToWordsForSum, BillType, BillsResponse, BillsSearchFilterPayload,
-    BitcreditBillPayload, EndorseBitcreditBillPayload, EndorsementsResponse,
-    MintBitcreditBillPayload, OfferToSellBitcreditBillPayload, PastEndorseesResponse,
-    RejectActionBillPayload, RequestRecourseForAcceptancePayload, RequestRecourseForPaymentPayload,
-    RequestToAcceptBitcreditBillPayload, RequestToMintBitcreditBillPayload,
-    RequestToPayBitcreditBillPayload, SuccessResponse, UploadBillFilesForm, UploadFilesResponse,
+    AcceptBitcreditBillPayload, BillCombinedBitcoinKey, BillId, BillNumbersToWordsForSum, BillType,
+    BillsResponse, BillsSearchFilterPayload, BitcreditBillPayload, EndorseBitcreditBillPayload,
+    EndorsementsResponse, MintBitcreditBillPayload, OfferToSellBitcreditBillPayload,
+    PastEndorseesResponse, RejectActionBillPayload, RequestRecourseForAcceptancePayload,
+    RequestRecourseForPaymentPayload, RequestToAcceptBitcreditBillPayload,
+    RequestToMintBitcreditBillPayload, RequestToPayBitcreditBillPayload, SuccessResponse,
+    UploadBillFilesForm, UploadFilesResponse,
 };
 use crate::{external, service};
 use crate::{service::bill_service::BitcreditBillToReturn, service::ServiceContext};
-use log::error;
+use log::{error, info};
 use rocket::form::Form;
 use rocket::http::ContentType;
 use rocket::serde::json::Json;
 use rocket::{get, post, put, State};
-use std::thread;
 
 pub async fn get_current_identity_node_id(state: &State<ServiceContext>) -> String {
     let current_identity = state.get_current_identity().await;
@@ -765,8 +762,6 @@ pub async fn accept_bill(
     Ok(Json(SuccessResponse::new()))
 }
 
-// Mint
-
 #[put(
     "/request_to_mint",
     format = "json",
@@ -774,134 +769,20 @@ pub async fn accept_bill(
 )]
 pub async fn request_to_mint_bill(
     _identity: IdentityCheck,
-    state: &State<ServiceContext>,
+    _state: &State<ServiceContext>,
     request_to_mint_bill_payload: Json<RequestToMintBitcreditBillPayload>,
 ) -> Result<Json<SuccessResponse>> {
-    let public_mint_node = state
-        .contact_service
-        .get_identity_by_node_id(&request_to_mint_bill_payload.mint_node)
-        .await?;
-    if let Some(public_mint) = public_mint_node {
-        state
-            .bill_service
-            .propagate_bill_for_node(&request_to_mint_bill_payload.bill_id, &public_mint.node_id)
-            .await?;
-    }
-    let bill_keys = state
-        .bill_service
-        .get_bill_keys(&request_to_mint_bill_payload.bill_id)
-        .await?;
-
-    let bill = state
-        .bill_service
-        .get_bill(&request_to_mint_bill_payload.bill_id)
-        .await?;
-
-    let maturity_date_timestamp = date_string_to_i64_timestamp(&bill.maturity_date, None).unwrap();
-
-    // Usage of thread::spawn is necessary here, because we spawn a new tokio runtime in the
-    // thread, but this logic will be replaced soon
-    thread::spawn(move || {
-        request_to_mint_bitcredit(
-            request_to_mint_bill_payload.into_inner(),
-            bill_keys,
-            maturity_date_timestamp,
-            bill.sum,
-        )
-    })
-    .join()
-    .expect("Thread panicked");
+    info!("request to mint bill called with payload {request_to_mint_bill_payload:?} - not implemented");
     Ok(Json(SuccessResponse::new()))
 }
 
-//This is function for mint software
-#[put("/accept_mint", format = "json", data = "<accept_mint_bill_payload>")]
-pub async fn accept_mint_bill(
-    _identity: IdentityCheck,
-    state: &State<ServiceContext>,
-    accept_mint_bill_payload: Json<AcceptMintBitcreditBillPayload>,
-) -> Result<Json<SuccessResponse>> {
-    let bill = state
-        .bill_service
-        .get_bill(&accept_mint_bill_payload.bill_id)
-        .await?;
-    let holder_node_id = bill.payee.node_id.clone();
-
-    let sum = util::currency::parse_sum(&accept_mint_bill_payload.sum)?;
-
-    //TODO: calculate percent
-    // Usage of thread::spawn is necessary here, because we spawn a new tokio runtime in the
-    // thread, but this logic will be replaced soon
-    thread::spawn(move || {
-        accept_mint_bitcredit(
-            sum,
-            accept_mint_bill_payload.bill_id.clone(),
-            holder_node_id,
-        )
-    })
-    .join()
-    .expect("Thread panicked");
-
-    Ok(Json(SuccessResponse::new()))
-}
-
-//After accept mint on client side
 #[put("/mint", format = "json", data = "<mint_bill_payload>")]
 pub async fn mint_bill(
     _identity: IdentityCheck,
-    state: &State<ServiceContext>,
+    _state: &State<ServiceContext>,
     mint_bill_payload: Json<MintBitcreditBillPayload>,
 ) -> Result<Json<SuccessResponse>> {
-    let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
-    let sum = util::currency::parse_sum(&mint_bill_payload.sum)?;
-
-    let public_mint_node = match state
-        .contact_service
-        .get_identity_by_node_id(&mint_bill_payload.mint_node)
-        .await
-    {
-        Ok(Some(drawee)) => drawee,
-        Ok(None) | Err(_) => {
-            return Err(service::Error::Validation(String::from(
-                "Can not get public mint node identity from contacts.",
-            )));
-        }
-    };
-    let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
-
-    let chain = state
-        .bill_service
-        .mint_bitcredit_bill(
-            &mint_bill_payload.bill_id,
-            sum,
-            &mint_bill_payload.currency,
-            public_mint_node.clone(),
-            &signer_public_data,
-            &signer_keys,
-            timestamp,
-        )
-        .await?;
-
-    let bill_service_clone = state.bill_service.clone();
-    tokio::spawn(async move {
-        if let Err(e) = bill_service_clone
-            .propagate_block(&mint_bill_payload.bill_id, chain.get_latest_block())
-            .await
-        {
-            error!("Error propagating block: {e}");
-        }
-
-        if let Err(e) = bill_service_clone
-            .propagate_bill_for_node(
-                &mint_bill_payload.bill_id,
-                &public_mint_node.node_id.to_string(),
-            )
-            .await
-        {
-            error!("Error propagating bill for node on DHT: {e}");
-        }
-    });
-
+    info!("mint bill called with payload {mint_bill_payload:?} - not implemented");
     Ok(Json(SuccessResponse::new()))
 }
 

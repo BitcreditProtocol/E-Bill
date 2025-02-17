@@ -145,7 +145,6 @@ pub fn rocket_main(context: ServiceContext) -> Rocket<Build> {
                 handlers::bill::request_to_pay_bill,
                 handlers::bill::offer_to_sell_bill,
                 handlers::bill::mint_bill,
-                handlers::bill::accept_mint_bill,
                 handlers::bill::request_to_mint_bill,
                 handlers::bill::check_payment,
                 handlers::bill::bitcoin_key,

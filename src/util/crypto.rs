@@ -31,7 +31,7 @@ pub enum Error {
     LibP2p(#[from] libp2p::identity::OtherVariantError),
 
     #[error("Ecies encryption error: {0}")]
-    Ecies(#[from] ecies::SecpError),
+    Ecies(String),
 
     #[error("Signature had invalid length")]
     InvalidSignatureLength,
@@ -308,14 +308,16 @@ pub fn verify(hash: &str, signature: &str, public_key: &str) -> Result<bool> {
 pub fn encrypt_ecies(bytes: &[u8], public_key: &str) -> Result<Vec<u8>> {
     let pub_key_parsed = PublicKey::from_str(public_key)?;
     let pub_key_bytes = pub_key_parsed.serialize();
-    let encrypted = ecies::encrypt(pub_key_bytes.as_slice(), bytes)?;
+    let encrypted =
+        ecies::encrypt(pub_key_bytes.as_slice(), bytes).map_err(|e| Error::Ecies(e.to_string()))?;
     Ok(encrypted)
 }
 
 /// Decrypt the given bytes with the given Secp256k1 key via ECIES
 pub fn decrypt_ecies(bytes: &[u8], private_key: &str) -> Result<Vec<u8>> {
     let keypair = BcrKeys::from_private_key(private_key)?;
-    let decrypted = ecies::decrypt(keypair.inner.secret_bytes().as_slice(), bytes)?;
+    let decrypted = ecies::decrypt(keypair.inner.secret_bytes().as_slice(), bytes)
+        .map_err(|e| Error::Ecies(e.to_string()))?;
     Ok(decrypted)
 }
 
