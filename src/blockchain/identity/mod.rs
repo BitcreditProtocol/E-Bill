@@ -1,9 +1,8 @@
 use super::bill::BillOpCode;
 use super::Result;
 use super::{Block, Blockchain, FIRST_BLOCK_ID};
-use crate::service::identity_service::Identity;
+use crate::data::{identity::Identity, File, OptionalPostalAddress};
 use crate::util::{self, crypto, BcrKeys};
-use crate::web::data::{File, OptionalPostalAddress};
 use borsh::to_vec;
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};

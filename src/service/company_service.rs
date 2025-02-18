@@ -1,4 +1,3 @@
-use super::contact_service::{Contact, ContactType};
 use super::Result;
 use crate::blockchain::company::{
     CompanyAddSignatoryBlockData, CompanyBlock, CompanyBlockchain, CompanyCreateBlockData,
@@ -9,22 +8,22 @@ use crate::blockchain::identity::{
     IdentityRemoveSignatoryBlockData,
 };
 use crate::blockchain::Blockchain;
+use crate::data::{
+    company::{Company, CompanyKeys},
+    contact::{Contact, ContactType},
+    File, OptionalPostalAddress, PostalAddress,
+};
 use crate::persistence::company::{CompanyChainStoreApi, CompanyStoreApi};
 use crate::persistence::identity::IdentityChainStoreApi;
 use crate::util::BcrKeys;
-use crate::web::data::{OptionalPostalAddress, PostalAddress};
 use crate::{
     error,
     persistence::{file_upload::FileUploadStoreApi, identity::IdentityStoreApi, ContactStoreApi},
     util,
-    web::data::File,
 };
 use async_trait::async_trait;
-use borsh_derive::{self, BorshDeserialize, BorshSerialize};
 use log::info;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use utoipa::ToSchema;
 
 #[async_trait]
 pub trait CompanyServiceApi: Send + Sync {
@@ -32,12 +31,12 @@ pub trait CompanyServiceApi: Send + Sync {
     async fn list_signatories(&self, id: &str) -> Result<Vec<Contact>>;
 
     /// Search companies
-    async fn search(&self, search_term: &str) -> Result<Vec<CompanyToReturn>>;
+    async fn search(&self, search_term: &str) -> Result<Vec<Company>>;
     /// Get a list of companies
-    async fn get_list_of_companies(&self) -> Result<Vec<CompanyToReturn>>;
+    async fn get_list_of_companies(&self) -> Result<Vec<Company>>;
 
     /// Get a company by id
-    async fn get_company_by_id(&self, id: &str) -> Result<CompanyToReturn>;
+    async fn get_company_by_id(&self, id: &str) -> Result<Company>;
 
     /// Get a company and it's keys by id
     async fn get_company_and_keys_by_id(&self, id: &str) -> Result<(Company, CompanyKeys)>;
@@ -55,7 +54,7 @@ pub trait CompanyServiceApi: Send + Sync {
         proof_of_registration_file_upload_id: Option<String>,
         logo_file_upload_id: Option<String>,
         timestamp: u64,
-    ) -> Result<CompanyToReturn>;
+    ) -> Result<Company>;
 
     /// Changes the given company fields for the given company, if they are set
     async fn edit_company(
@@ -180,19 +179,16 @@ impl CompanyServiceApi for CompanyService {
         Ok(signatory_contacts)
     }
 
-    async fn search(&self, search_term: &str) -> Result<Vec<CompanyToReturn>> {
+    async fn search(&self, search_term: &str) -> Result<Vec<Company>> {
         let results = self.store.search(search_term).await?;
-        Ok(results
-            .into_iter()
-            .map(|c| CompanyToReturn::from(c.id.clone(), c))
-            .collect())
+        Ok(results)
     }
 
-    async fn get_list_of_companies(&self) -> Result<Vec<CompanyToReturn>> {
+    async fn get_list_of_companies(&self) -> Result<Vec<Company>> {
         let results = self.store.get_all().await?;
-        let companies: Vec<CompanyToReturn> = results
+        let companies: Vec<Company> = results
             .into_iter()
-            .map(|(id, (company, _keys))| CompanyToReturn::from(id, company))
+            .map(|(_id, (company, _keys))| company)
             .collect();
         Ok(companies)
     }
@@ -206,9 +202,9 @@ impl CompanyServiceApi for CompanyService {
         Ok((company, keys))
     }
 
-    async fn get_company_by_id(&self, id: &str) -> Result<CompanyToReturn> {
+    async fn get_company_by_id(&self, id: &str) -> Result<Company> {
         let (company, _keys) = self.get_company_and_keys_by_id(id).await?;
-        Ok(CompanyToReturn::from(id.to_owned(), company))
+        Ok(company)
     }
 
     async fn create_company(
@@ -223,7 +219,7 @@ impl CompanyServiceApi for CompanyService {
         proof_of_registration_file_upload_id: Option<String>,
         logo_file_upload_id: Option<String>,
         timestamp: u64,
-    ) -> Result<CompanyToReturn> {
+    ) -> Result<Company> {
         let keys = BcrKeys::new();
         let private_key = keys.get_private_key_string();
         let public_key = keys.get_public_key();
@@ -270,9 +266,8 @@ impl CompanyServiceApi for CompanyService {
         };
         self.store.insert(&company).await?;
 
-        let company_to_return = CompanyToReturn::from(id.clone(), company.clone());
         let company_chain = CompanyBlockchain::new(
-            &CompanyCreateBlockData::from(company_to_return),
+            &CompanyCreateBlockData::from(company.clone()),
             &full_identity.key_pair,
             &company_keys,
             timestamp,
@@ -309,7 +304,7 @@ impl CompanyServiceApi for CompanyService {
             }
         }
 
-        Ok(CompanyToReturn::from(id, company))
+        Ok(company)
     }
 
     async fn edit_company(
@@ -643,66 +638,12 @@ impl CompanyServiceApi for CompanyService {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct CompanyToReturn {
-    pub id: String,
-    pub name: String,
-    pub country_of_registration: Option<String>,
-    pub city_of_registration: Option<String>,
-    #[serde(flatten)]
-    pub postal_address: PostalAddress,
-    pub email: String,
-    pub registration_number: Option<String>,
-    pub registration_date: Option<String>,
-    pub proof_of_registration_file: Option<File>,
-    pub logo_file: Option<File>,
-    pub signatories: Vec<String>,
-}
-
-impl CompanyToReturn {
-    pub fn from(id: String, company: Company) -> CompanyToReturn {
-        CompanyToReturn {
-            id,
-            name: company.name,
-            country_of_registration: company.country_of_registration,
-            city_of_registration: company.city_of_registration,
-            postal_address: company.postal_address,
-            email: company.email,
-            registration_number: company.registration_number,
-            registration_date: company.registration_date,
-            proof_of_registration_file: company.proof_of_registration_file,
-            logo_file: company.logo_file,
-            signatories: company.signatories,
-        }
-    }
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone)]
-pub struct Company {
-    pub id: String,
-    pub name: String,
-    pub country_of_registration: Option<String>,
-    pub city_of_registration: Option<String>,
-    pub postal_address: PostalAddress,
-    pub email: String,
-    pub registration_number: Option<String>,
-    pub registration_date: Option<String>,
-    pub proof_of_registration_file: Option<File>,
-    pub logo_file: Option<File>,
-    pub signatories: Vec<String>,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
-pub struct CompanyKeys {
-    pub private_key: String,
-    pub public_key: String,
-}
-
 #[cfg(test)]
 pub mod tests {
     use super::*;
     use crate::{
         blockchain::{identity::IdentityBlockchain, Blockchain},
+        data::identity::{Identity, IdentityWithAll},
         persistence::{
             self,
             company::{MockCompanyChainStoreApi, MockCompanyStoreApi},
@@ -711,7 +652,6 @@ pub mod tests {
             file_upload::MockFileUploadStoreApi,
             identity::{MockIdentityChainStoreApi, MockIdentityStoreApi},
         },
-        service::identity_service::{Identity, IdentityWithAll},
         tests::tests::{TEST_NODE_ID_SECP, TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP},
     };
     use mockall::predicate::{always, eq};
@@ -780,11 +720,10 @@ pub mod tests {
     }
 
     pub fn get_valid_company_block() -> CompanyBlock {
-        let (id, (company, company_keys)) = get_baseline_company_data();
-        let to_return = CompanyToReturn::from(id, company);
+        let (_id, (company, company_keys)) = get_baseline_company_data();
 
         CompanyBlockchain::new(
-            &CompanyCreateBlockData::from(to_return),
+            &CompanyCreateBlockData::from(company),
             &BcrKeys::new(),
             &company_keys,
             1731593928,

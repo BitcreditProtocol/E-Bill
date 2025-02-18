@@ -1,9 +1,11 @@
 use super::bill::BillOpCode;
 use super::Result;
 use super::{Block, Blockchain, FIRST_BLOCK_ID};
-use crate::service::company_service::{CompanyKeys, CompanyToReturn};
+use crate::data::{
+    company::{Company, CompanyKeys},
+    File, OptionalPostalAddress, PostalAddress,
+};
 use crate::util::{self, crypto, BcrKeys};
-use crate::web::data::{File, OptionalPostalAddress, PostalAddress};
 use borsh::to_vec;
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -74,8 +76,8 @@ pub struct CompanyCreateBlockData {
     pub signatories: Vec<String>,
 }
 
-impl From<CompanyToReturn> for CompanyCreateBlockData {
-    fn from(value: CompanyToReturn) -> Self {
+impl From<Company> for CompanyCreateBlockData {
+    fn from(value: Company) -> Self {
         Self {
             id: value.id,
             name: value.name,
@@ -469,17 +471,15 @@ impl CompanyBlockchain {
 mod tests {
     use super::*;
     use crate::{
-        service::company_service::{tests::get_baseline_company_data, CompanyToReturn},
-        tests::tests::TEST_PUB_KEY_SECP,
+        service::company_service::tests::get_baseline_company_data, tests::tests::TEST_PUB_KEY_SECP,
     };
 
     #[test]
     fn create_and_check_validity() {
-        let (id, (company, company_keys)) = get_baseline_company_data();
-        let to_return = CompanyToReturn::from(id, company);
+        let (_id, (company, company_keys)) = get_baseline_company_data();
 
         let chain = CompanyBlockchain::new(
-            &CompanyCreateBlockData::from(to_return),
+            &CompanyCreateBlockData::from(company),
             &BcrKeys::new(),
             &company_keys,
             1731593928,
@@ -491,11 +491,10 @@ mod tests {
     #[test]
     fn multi_block() {
         let (id, (company, company_keys)) = get_baseline_company_data();
-        let to_return = CompanyToReturn::from(id.clone(), company);
         let identity_keys = BcrKeys::new();
 
         let chain = CompanyBlockchain::new(
-            &CompanyCreateBlockData::from(to_return),
+            &CompanyCreateBlockData::from(company),
             &identity_keys,
             &company_keys,
             1731593928,

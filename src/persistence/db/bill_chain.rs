@@ -204,11 +204,10 @@ mod tests {
             bill::block::{BillAcceptBlockData, BillIdentityBlockData},
             Blockchain,
         },
+        data::{contact::ContactType, PostalAddress},
         persistence::db::{bill::tests::get_first_block, get_memory_db},
-        service::contact_service::ContactType,
         tests::tests::get_bill_keys,
         util::BcrKeys,
-        web::data::PostalAddress,
     };
 
     async fn get_store() -> SurrealBillChainStore {

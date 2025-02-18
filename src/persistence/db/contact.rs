@@ -7,8 +7,8 @@ use surrealdb::{engine::any::Any, Surreal};
 
 use crate::{
     constants::{DB_SEARCH_TERM, DB_TABLE},
+    data::contact::{Contact, ContactType},
     persistence::ContactStoreApi,
-    service::contact_service::{Contact, ContactType},
 };
 
 #[derive(Clone)]
@@ -134,7 +134,7 @@ impl From<Contact> for ContactDb {
 pub mod tests {
     use super::*;
     use crate::{
-        persistence::db::get_memory_db, tests::tests::TEST_NODE_ID_SECP, web::data::PostalAddress,
+        data::PostalAddress, persistence::db::get_memory_db, tests::tests::TEST_NODE_ID_SECP,
     };
 
     pub fn get_baseline_contact() -> Contact {

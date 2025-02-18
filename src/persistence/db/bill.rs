@@ -7,8 +7,8 @@ use crate::{
         DB_BILL_ID, DB_OP_CODE, DB_TABLE, DB_TIMESTAMP, PAYMENT_DEADLINE_SECONDS,
         RECOURSE_DEADLINE_SECONDS,
     },
+    data::bill::BillKeys,
     persistence::{bill::BillStoreApi, Error},
-    service::bill_service::BillKeys,
     util,
 };
 use async_trait::async_trait;
@@ -235,17 +235,17 @@ pub mod tests {
             tests::get_baseline_identity,
             BillBlock, BillOpCode,
         },
+        data::{
+            bill::{BillKeys, BitcreditBill},
+            contact::IdentityPublicData,
+            PostalAddress,
+        },
         persistence::{
             bill::{BillChainStoreApi, BillStoreApi},
             db::{bill_chain::SurrealBillChainStore, get_memory_db},
         },
-        service::{
-            bill_service::{BillKeys, BitcreditBill},
-            contact_service::IdentityPublicData,
-        },
         tests::tests::{get_bill_keys, TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP},
         util::{self, BcrKeys},
-        web::data::PostalAddress,
     };
     use chrono::Months;
     use surrealdb::{engine::any::Any, Surreal};

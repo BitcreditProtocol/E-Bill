@@ -1,7 +1,4 @@
-use super::company_service::CompanyKeys;
-use super::contact_service::{ContactType, IdentityPublicData, LightIdentityPublicData};
-use super::identity_service::{Identity, IdentityWithAll};
-use super::notification_service::{self, ActionType, Notification, NotificationServiceApi};
+use super::notification_service::{self, ActionType, NotificationServiceApi};
 use crate::blockchain::bill::block::{
     BillAcceptBlockData, BillEndorseBlockData, BillIdentityBlockData, BillIssueBlockData,
     BillMintBlockData, BillOfferToSellBlockData, BillRecourseBlockData, BillRejectBlockData,
@@ -9,8 +6,7 @@ use crate::blockchain::bill::block::{
     BillSellBlockData, BillSignatoryBlockData,
 };
 use crate::blockchain::bill::{
-    BillBlock, BillBlockchain, BillBlockchainToReturn, BillOpCode, OfferToSellWaitingForPayment,
-    RecourseWaitingForPayment,
+    BillBlock, BillBlockchain, BillOpCode, OfferToSellWaitingForPayment, RecourseWaitingForPayment,
 };
 use crate::blockchain::company::{CompanyBlock, CompanySignCompanyBillBlockData};
 use crate::blockchain::identity::{
@@ -20,17 +16,24 @@ use crate::blockchain::{self, Block, Blockchain};
 use crate::constants::{
     ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS,
 };
+use crate::data::{
+    bill::{
+        BillCombinedBitcoinKey, BillKeys, BillRole, BillsBalance, BillsBalanceOverview,
+        BillsFilterRole, BitcreditBill, BitcreditBillResult, Endorsement, LightBitcreditBillResult,
+        LightSignedBy, PastEndorsee, RecourseReason,
+    },
+    company::{Company, CompanyKeys},
+    contact::{ContactType, IdentityPublicData, LightIdentityPublicData},
+    identity::{Identity, IdentityWithAll},
+    File,
+};
 use crate::external::bitcoin::BitcoinClientApi;
 use crate::persistence::bill::BillChainStoreApi;
 use crate::persistence::company::{CompanyChainStoreApi, CompanyStoreApi};
 use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::{IdentityChainStoreApi, IdentityStoreApi};
 use crate::persistence::ContactStoreApi;
-use crate::service::company_service::Company;
 use crate::util::BcrKeys;
-use crate::web::data::{
-    BillCombinedBitcoinKey, BillsFilterRole, Endorsement, File, LightSignedBy, PastEndorsee,
-};
 use crate::{dht, external, persistence, util};
 use crate::{
     dht::{Client, GossipsubEvent, GossipsubEventId},
@@ -39,16 +42,13 @@ use crate::{
 use crate::{error, CONFIG};
 use async_trait::async_trait;
 use borsh::to_vec;
-use borsh_derive::{BorshDeserialize, BorshSerialize};
 use futures::future::try_join_all;
 use log::info;
 #[cfg(test)]
 use mockall::automock;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use thiserror::Error;
-use utoipa::ToSchema;
 
 /// Generic result type
 pub type Result<T> = std::result::Result<T, Error>;
@@ -206,14 +206,13 @@ pub trait BillServiceApi: Send + Sync {
         date_range_to: Option<u64>,
         role: &BillsFilterRole,
         current_identity_node_id: &str,
-    ) -> Result<Vec<LightBitcreditBillToReturn>>;
+    ) -> Result<Vec<LightBitcreditBillResult>>;
 
     /// Gets all bills
-    async fn get_bills(&self, current_identity_node_id: &str)
-        -> Result<Vec<BitcreditBillToReturn>>;
+    async fn get_bills(&self, current_identity_node_id: &str) -> Result<Vec<BitcreditBillResult>>;
 
     /// Gets all bills from all identities
-    async fn get_bills_from_all_identities(&self) -> Result<Vec<BitcreditBillToReturn>>;
+    async fn get_bills_from_all_identities(&self) -> Result<Vec<BitcreditBillResult>>;
 
     /// Gets the combined bitcoin private key for a given bill
     async fn get_combined_bitcoin_key_for_bill(
@@ -230,7 +229,7 @@ pub trait BillServiceApi: Send + Sync {
         local_identity: &Identity,
         current_identity_node_id: &str,
         current_timestamp: u64,
-    ) -> Result<BitcreditBillToReturn>;
+    ) -> Result<BitcreditBillResult>;
 
     /// Gets the bill for the given bill id
     async fn get_bill(&self, bill_id: &str) -> Result<BitcreditBill>;
@@ -848,7 +847,7 @@ impl BillService {
         local_identity: &Identity,
         current_identity_node_id: &str,
         current_timestamp: u64,
-    ) -> Result<BitcreditBillToReturn> {
+    ) -> Result<BitcreditBillResult> {
         let chain = self.blockchain_store.get_chain(bill_id).await?;
         let bill_keys = self.store.get_keys(bill_id).await?;
         let bill = self
@@ -861,20 +860,13 @@ impl BillService {
         // pool as not to block the task queue
         let chain_clone = chain.clone();
         let keys_clone = bill_keys.clone();
-        let bill_participants_handle =
-            tokio::task::spawn_blocking(move || chain_clone.get_all_nodes_from_bill(&keys_clone));
-        let chain_clone = chain.clone();
-        let keys_clone = bill_keys.clone();
-        let chain_to_return_handle = tokio::task::spawn_blocking(move || {
-            BillBlockchainToReturn::new(chain_clone, &keys_clone)
-        });
-        let (bill_participants_res, chain_to_return_res) =
-            tokio::try_join!(bill_participants_handle, chain_to_return_handle).map_err(|e| {
-                error!("couldn't get data from bill chain blocks {bill_id}: {e}");
-                Error::Blockchain(blockchain::Error::BlockchainParse)
-            })?;
-        let bill_participants = bill_participants_res?;
-        let chain_to_return = chain_to_return_res?;
+        let bill_participants =
+            tokio::task::spawn_blocking(move || chain_clone.get_all_nodes_from_bill(&keys_clone))
+                .await
+                .map_err(|e| {
+                    error!("couldn't get data from bill chain blocks {bill_id}: {e}");
+                    Error::Blockchain(blockchain::Error::BlockchainParse)
+                })??;
 
         let endorsements_count = chain.get_endorsements_count();
         let mut in_recourse = false;
@@ -994,7 +986,7 @@ impl BillService {
             .get_active_bill_notification(&bill.id)
             .await;
 
-        Ok(BitcreditBillToReturn {
+        Ok(BitcreditBillResult {
             id: bill.id,
             time_of_drawing,
             time_of_maturity: util::date::date_string_to_i64_timestamp(&bill.maturity_date, None)
@@ -1028,7 +1020,6 @@ impl BillService {
             link_to_pay_recourse,
             address_to_pay,
             mempool_link_for_address_to_pay,
-            chain_of_blocks: chain_to_return,
             files: bill.files,
             active_notification,
             bill_participants,
@@ -1724,7 +1715,7 @@ impl BillServiceApi for BillService {
         date_range_to: Option<u64>,
         role: &BillsFilterRole,
         current_identity_node_id: &str,
-    ) -> Result<Vec<LightBitcreditBillToReturn>> {
+    ) -> Result<Vec<LightBitcreditBillResult>> {
         let bills = self.get_bills(current_identity_node_id).await?;
         let mut result = vec![];
 
@@ -1787,7 +1778,7 @@ impl BillServiceApi for BillService {
         Ok(result)
     }
 
-    async fn get_bills_from_all_identities(&self) -> Result<Vec<BitcreditBillToReturn>> {
+    async fn get_bills_from_all_identities(&self) -> Result<Vec<BitcreditBillResult>> {
         let bill_ids = self.store.get_ids().await?;
         let identity = self.identity_store.get().await?;
         let current_timestamp = util::date::now().timestamp() as u64;
@@ -1809,10 +1800,7 @@ impl BillServiceApi for BillService {
         Ok(bills)
     }
 
-    async fn get_bills(
-        &self,
-        current_identity_node_id: &str,
-    ) -> Result<Vec<BitcreditBillToReturn>> {
+    async fn get_bills(&self, current_identity_node_id: &str) -> Result<Vec<BitcreditBillResult>> {
         let bill_ids = self.store.get_ids().await?;
         let identity = self.identity_store.get().await?;
         let current_timestamp = util::date::now().timestamp() as u64;
@@ -1873,7 +1861,7 @@ impl BillServiceApi for BillService {
         identity: &Identity,
         current_identity_node_id: &str,
         current_timestamp: u64,
-    ) -> Result<BitcreditBillToReturn> {
+    ) -> Result<BitcreditBillResult> {
         if !self.store.exists(bill_id).await {
             return Err(Error::NotFound);
         }
@@ -3087,262 +3075,25 @@ impl BillServiceApi for BillService {
 }
 
 #[derive(Debug, Clone)]
-pub enum RecourseReason {
-    Accept,
-    Pay(u64, String), // sum and currency
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct BillsBalanceOverview {
-    pub payee: BillsBalance,
-    pub payer: BillsBalance,
-    pub contingent: BillsBalance,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct BillsBalance {
-    pub sum: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BillRole {
-    Payee,
-    Payer,
-    Contingent,
-}
-
-#[derive(Debug, Clone)]
-pub struct BillSigningKeys {
+struct BillSigningKeys {
     pub signatory_keys: BcrKeys,
     pub company_keys: Option<BcrKeys>,
     pub signatory_identity: Option<BillSignatoryBlockData>,
-}
-
-impl From<Identity> for BillSignatoryBlockData {
-    fn from(value: Identity) -> Self {
-        Self {
-            name: value.name,
-            node_id: value.node_id,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct LightBitcreditBillToReturn {
-    pub id: String,
-    pub drawee: LightIdentityPublicData,
-    pub drawer: LightIdentityPublicData,
-    pub payee: LightIdentityPublicData,
-    pub endorsee: Option<LightIdentityPublicData>,
-    pub active_notification: Option<Notification>,
-    pub sum: String,
-    pub currency: String,
-    pub issue_date: String,
-    pub time_of_drawing: u64,
-    pub time_of_maturity: u64,
-}
-
-impl From<BitcreditBillToReturn> for LightBitcreditBillToReturn {
-    fn from(value: BitcreditBillToReturn) -> Self {
-        Self {
-            id: value.id,
-            drawee: value.drawee.into(),
-            drawer: value.drawer.into(),
-            payee: value.payee.into(),
-            endorsee: value.endorsee.map(|v| v.into()),
-            active_notification: value.active_notification,
-            sum: value.sum,
-            currency: value.currency,
-            issue_date: value.issue_date,
-            time_of_drawing: value.time_of_drawing,
-            time_of_maturity: util::date::date_string_to_i64_timestamp(&value.maturity_date, None)
-                .unwrap_or(0) as u64,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct BitcreditBillToReturn {
-    pub id: String,
-    pub time_of_drawing: u64,
-    pub time_of_maturity: u64,
-    pub country_of_issuing: String,
-    pub city_of_issuing: String,
-    /// The party obliged to pay a Bill
-    pub drawee: IdentityPublicData,
-    /// The party issuing a Bill
-    pub drawer: IdentityPublicData,
-    pub payee: IdentityPublicData,
-    /// The person to whom the Payee or an Endorsee endorses a bill
-    pub endorsee: Option<IdentityPublicData>,
-    pub currency: String,
-    pub sum: String,
-    pub maturity_date: String,
-    pub issue_date: String,
-    pub country_of_payment: String,
-    pub city_of_payment: String,
-    pub language: String,
-    pub accepted: bool,
-    pub endorsed: bool,
-    pub requested_to_pay: bool,
-    pub requested_to_accept: bool,
-    pub paid: bool,
-    pub waiting_for_payment: bool,
-    pub buyer: Option<IdentityPublicData>,
-    pub seller: Option<IdentityPublicData>,
-    pub in_recourse: bool,
-    pub recourser: Option<IdentityPublicData>,
-    pub recoursee: Option<IdentityPublicData>,
-    pub link_for_buy: String,
-    pub link_to_pay: String,
-    pub link_to_pay_recourse: String,
-    pub address_to_pay: String,
-    pub mempool_link_for_address_to_pay: String,
-    pub chain_of_blocks: BillBlockchainToReturn,
-    pub files: Vec<File>,
-    /// The currently active notification for this bill if any
-    pub active_notification: Option<Notification>,
-    pub bill_participants: Vec<String>,
-    pub endorsements_count: u64,
-}
-
-impl BitcreditBillToReturn {
-    /// Returns the role of the given node_id in the bill, or None if the node_id is not a
-    /// participant in the bill
-    pub fn get_bill_role_for_node_id(&self, node_id: &str) -> Option<BillRole> {
-        // Node id is not part of the bill
-        if !self.bill_participants.iter().any(|bp| bp == node_id) {
-            return None;
-        }
-
-        // Node id is the payer
-        if self.drawee.node_id == *node_id {
-            return Some(BillRole::Payer);
-        }
-
-        // Node id is payee / endorsee
-        if self.payee.node_id == *node_id
-            || self.endorsee.as_ref().map(|e| e.node_id.as_str()) == Some(node_id)
-        {
-            return Some(BillRole::Payee);
-        }
-
-        // Node id is part of the bill, but neither payer, nor payee - they are part of the risk
-        // chain
-        Some(BillRole::Contingent)
-    }
-
-    // Search in the participants for the search term
-    pub fn search_bill_for_search_term(&self, search_term: &str) -> bool {
-        let search_term_lc = search_term.to_lowercase();
-        if self.payee.name.to_lowercase().contains(&search_term_lc) {
-            return true;
-        }
-
-        if self.drawer.name.to_lowercase().contains(&search_term_lc) {
-            return true;
-        }
-
-        if self.drawee.name.to_lowercase().contains(&search_term_lc) {
-            return true;
-        }
-
-        if let Some(ref endorsee) = self.endorsee {
-            if endorsee.name.to_lowercase().contains(&search_term_lc) {
-                return true;
-            }
-        }
-
-        if let Some(ref buyer) = self.buyer {
-            if buyer.name.to_lowercase().contains(&search_term_lc) {
-                return true;
-            }
-        }
-
-        if let Some(ref seller) = self.seller {
-            if seller.name.to_lowercase().contains(&search_term_lc) {
-                return true;
-            }
-        }
-
-        false
-    }
-}
-
-#[derive(Debug, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
-pub struct BitcreditEbillQuote {
-    pub bill_id: String,
-    pub quote_id: String,
-    pub sum: u64,
-    pub mint_node_id: String,
-    pub mint_url: String,
-    pub accepted: bool,
-    pub token: String,
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone)]
-pub struct BitcreditBill {
-    pub id: String,
-    pub country_of_issuing: String,
-    pub city_of_issuing: String,
-    // The party obliged to pay a Bill
-    pub drawee: IdentityPublicData,
-    // The party issuing a Bill
-    pub drawer: IdentityPublicData,
-    pub payee: IdentityPublicData,
-    // The person to whom the Payee or an Endorsee endorses a bill
-    pub endorsee: Option<IdentityPublicData>,
-    pub currency: String,
-    pub sum: u64,
-    pub maturity_date: String,
-    pub issue_date: String,
-    pub country_of_payment: String,
-    pub city_of_payment: String,
-    pub language: String,
-    pub files: Vec<File>,
-}
-
-#[cfg(test)]
-impl BitcreditBill {
-    #[cfg(test)]
-    pub fn new_empty() -> Self {
-        Self {
-            id: "".to_string(),
-            country_of_issuing: "".to_string(),
-            city_of_issuing: "".to_string(),
-            drawee: IdentityPublicData::new_empty(),
-            drawer: IdentityPublicData::new_empty(),
-            payee: IdentityPublicData::new_empty(),
-            endorsee: None,
-            currency: "".to_string(),
-            sum: 0,
-            maturity_date: "".to_string(),
-            issue_date: "".to_string(),
-            city_of_payment: "".to_string(),
-            country_of_payment: "".to_string(),
-            language: "".to_string(),
-            files: vec![],
-        }
-    }
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
-pub struct BillKeys {
-    pub private_key: String,
-    pub public_key: String,
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
     use crate::{
+        data::{
+            identity::{Identity, IdentityWithAll},
+            PostalAddress,
+        },
         service::{
             company_service::tests::{get_baseline_company_data, get_valid_company_block},
-            identity_service::{Identity, IdentityWithAll},
             notification_service::MockNotificationServiceApi,
         },
         tests::tests::{TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP},
-        web::data::PostalAddress,
     };
     use blockchain::{bill::block::BillIssueBlockData, identity::IdentityBlockchain};
     use core::str;

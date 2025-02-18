@@ -7,7 +7,7 @@ use super::{BillOpCode, RecourseWaitingForPayment};
 use super::{OfferToSellWaitingForPayment, RecoursePaymentInfo};
 use crate::blockchain::{Block, Blockchain, Error};
 use crate::constants::{PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS};
-use crate::service::bill_service::BillKeys;
+use crate::data::bill::BillKeys;
 use crate::util::{self, BcrKeys};
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -251,7 +251,7 @@ mod tests {
     use super::*;
     use crate::{
         blockchain::bill::{block::BillOfferToSellBlockData, tests::get_baseline_identity},
-        service::{bill_service::BitcreditBill, contact_service::IdentityPublicData},
+        data::{bill::BitcreditBill, contact::IdentityPublicData},
         tests::tests::{get_bill_keys, TEST_PRIVATE_KEY_SECP},
     };
 

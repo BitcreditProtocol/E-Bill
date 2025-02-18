@@ -1,7 +1,7 @@
+use crate::data::notification::Notification;
 use crate::persistence::notification::NotificationFilter;
-use crate::service::notification_service::Notification;
 use crate::service::{Result, ServiceContext};
-use crate::web::data::SuccessResponse;
+use crate::web::data::{IntoWeb, NotificationWeb, SuccessResponse};
 use rocket::response::stream::{Event, EventStream};
 use rocket::serde::json::Json;
 use rocket::{get, post, State};
@@ -12,7 +12,7 @@ use serde_json::Value;
     tag = "Notifications",
     description = "Get all active notifications",
     responses(
-        (status = 200, description = "List of notifications", body = Vec<Notification>)
+        (status = 200, description = "List of notifications", body = Vec<NotificationWeb>)
     ),
     params(
         ("active" = Option<bool>, Query, description = "Returns only active notifications when true, inactive when false and all when left out"),
@@ -30,7 +30,7 @@ pub async fn list_notifications(
     notification_type: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Json<Vec<Notification>>> {
+) -> Result<Json<Vec<NotificationWeb>>> {
     let notifications: Vec<Notification> = state
         .notification_service
         .get_client_notifications(NotificationFilter {
@@ -41,7 +41,9 @@ pub async fn list_notifications(
             offset,
         })
         .await?;
-    Ok(Json(notifications))
+    Ok(Json(
+        notifications.into_iter().map(|n| n.into_web()).collect(),
+    ))
 }
 
 #[utoipa::path(

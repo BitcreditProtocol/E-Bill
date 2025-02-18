@@ -1,5 +1,6 @@
 use super::middleware::IdentityCheck;
-use crate::service::{bill_service::BitcreditEbillQuote, Error, Result, ServiceContext};
+use crate::service::{Error, Result, ServiceContext};
+use crate::web::data::BitcreditEbillQuote;
 use log::info;
 use rocket::serde::json::Json;
 use rocket::{get, put, State};

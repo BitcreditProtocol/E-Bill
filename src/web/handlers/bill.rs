@@ -1,20 +1,23 @@
 use super::middleware::IdentityCheck;
 use crate::blockchain::Blockchain;
-use crate::service::bill_service::{LightBitcreditBillToReturn, RecourseReason};
-use crate::service::{contact_service::IdentityPublicData, Result};
+use crate::data::{
+    bill::{BillsFilterRole, LightBitcreditBillResult, RecourseReason},
+    contact::IdentityPublicData,
+};
+use crate::service::Result;
+use crate::service::ServiceContext;
 use crate::util::file::{detect_content_type_for_bytes, UploadFileHandler};
 use crate::util::{self, base58_encode, BcrKeys};
 use crate::web::data::{
-    AcceptBitcreditBillPayload, BillCombinedBitcoinKey, BillId, BillNumbersToWordsForSum, BillType,
-    BillsResponse, BillsSearchFilterPayload, BitcreditBillPayload, EndorseBitcreditBillPayload,
-    EndorsementsResponse, MintBitcreditBillPayload, OfferToSellBitcreditBillPayload,
-    PastEndorseesResponse, RejectActionBillPayload, RequestRecourseForAcceptancePayload,
-    RequestRecourseForPaymentPayload, RequestToAcceptBitcreditBillPayload,
-    RequestToMintBitcreditBillPayload, RequestToPayBitcreditBillPayload, SuccessResponse,
-    UploadBillFilesForm, UploadFilesResponse,
+    AcceptBitcreditBillPayload, BillCombinedBitcoinKeyWeb, BillId, BillNumbersToWordsForSum,
+    BillType, BillsResponse, BillsSearchFilterPayload, BitcreditBillPayload, BitcreditBillWeb,
+    EndorseBitcreditBillPayload, EndorsementsResponse, FromWeb, IntoWeb, LightBitcreditBillWeb,
+    MintBitcreditBillPayload, OfferToSellBitcreditBillPayload, PastEndorseesResponse,
+    RejectActionBillPayload, RequestRecourseForAcceptancePayload, RequestRecourseForPaymentPayload,
+    RequestToAcceptBitcreditBillPayload, RequestToMintBitcreditBillPayload,
+    RequestToPayBitcreditBillPayload, SuccessResponse, UploadBillFilesForm, UploadFilesResponse,
 };
 use crate::{external, service};
-use crate::{service::bill_service::BitcreditBillToReturn, service::ServiceContext};
 use log::{error, info};
 use rocket::form::Form;
 use rocket::http::ContentType;
@@ -84,7 +87,7 @@ pub async fn get_endorsements_for_bill(
         .get_endorsements(id, &get_current_identity_node_id(state).await)
         .await?;
     Ok(Json(EndorsementsResponse {
-        endorsements: result,
+        endorsements: result.into_iter().map(|e| e.into_web()).collect(),
     }))
 }
 
@@ -107,7 +110,7 @@ pub async fn get_past_endorsees_for_bill(
         .get_past_endorsees(id, &get_current_identity_node_id(state).await)
         .await?;
     Ok(Json(PastEndorseesResponse {
-        past_endorsees: result,
+        past_endorsees: result.into_iter().map(|e| e.into_web()).collect(),
     }))
 }
 
@@ -131,13 +134,13 @@ pub async fn bitcoin_key(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     id: &str,
-) -> Result<Json<BillCombinedBitcoinKey>> {
+) -> Result<Json<BillCombinedBitcoinKeyWeb>> {
     let (caller_public_data, caller_keys) = get_signer_public_data_and_keys(state).await?;
     let combined_key = state
         .bill_service
         .get_combined_bitcoin_key_for_bill(id, &caller_public_data, &caller_keys)
         .await?;
-    Ok(Json(combined_key))
+    Ok(Json(combined_key.into_web()))
 }
 
 #[get("/attachment/<bill_id>/<file_name>")]
@@ -170,7 +173,7 @@ pub async fn attachment(
     path = "/bill/search",
     description = "Get all bill details for the given filter",
     responses(
-        (status = 200, description = "Search for bills", body = BillsResponse<LightBitcreditBillToReturn>)
+        (status = 200, description = "Search for bills", body = BillsResponse<LightBitcreditBillWeb>)
     )
 )]
 #[post("/search", format = "json", data = "<bills_filter>")]
@@ -178,7 +181,7 @@ pub async fn search(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     bills_filter: Json<BillsSearchFilterPayload>,
-) -> Result<Json<BillsResponse<LightBitcreditBillToReturn>>> {
+) -> Result<Json<BillsResponse<LightBitcreditBillWeb>>> {
     let filter = bills_filter.0.filter;
     let (from, to) = match filter.date_range {
         None => (None, None),
@@ -198,11 +201,13 @@ pub async fn search(
             &filter.search_term,
             from,
             to,
-            &filter.role,
+            &BillsFilterRole::from_web(filter.role),
             &get_current_identity_node_id(state).await,
         )
         .await?;
-    Ok(Json(BillsResponse { bills }))
+    Ok(Json(BillsResponse {
+        bills: bills.into_iter().map(|b| b.into_web()).collect(),
+    }))
 }
 
 #[utoipa::path(
@@ -210,20 +215,23 @@ pub async fn search(
     path = "/bill/list/light",
     description = "Get all bill details in a light version",
     responses(
-        (status = 200, description = "List of bills light", body = BillsResponse<LightBitcreditBillToReturn>)
+        (status = 200, description = "List of bills light", body = BillsResponse<LightBitcreditBillWeb>)
     )
 )]
 #[get("/list/light")]
 pub async fn list_light(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
-) -> Result<Json<BillsResponse<LightBitcreditBillToReturn>>> {
-    let bills = state
+) -> Result<Json<BillsResponse<LightBitcreditBillWeb>>> {
+    let bills: Vec<LightBitcreditBillResult> = state
         .bill_service
         .get_bills(&get_current_identity_node_id(state).await)
-        .await?;
+        .await?
+        .into_iter()
+        .map(|b| b.into())
+        .collect();
     Ok(Json(BillsResponse {
-        bills: bills.into_iter().map(|b| b.into()).collect(),
+        bills: bills.into_iter().map(|b| b.into_web()).collect(),
     }))
 }
 
@@ -232,19 +240,21 @@ pub async fn list_light(
     path = "/bill/list",
     description = "Get all bill details",
     responses(
-        (status = 200, description = "List of bills", body = BillsResponse<BitcreditBillToReturn>)
+        (status = 200, description = "List of bills", body = BillsResponse<BitcreditBillWeb>)
     )
 )]
 #[get("/list")]
 pub async fn list(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
-) -> Result<Json<BillsResponse<BitcreditBillToReturn>>> {
+) -> Result<Json<BillsResponse<BitcreditBillWeb>>> {
     let bills = state
         .bill_service
         .get_bills(&get_current_identity_node_id(state).await)
         .await?;
-    Ok(Json(BillsResponse { bills }))
+    Ok(Json(BillsResponse {
+        bills: bills.into_iter().map(|b| b.into_web()).collect(),
+    }))
 }
 
 #[utoipa::path(
@@ -252,16 +262,18 @@ pub async fn list(
     path = "/bill/list_all",
     description = "Get all local bills regardless of the selected identity",
     responses(
-        (status = 200, description = "List of all local bills", body = BillsResponse<BitcreditBillToReturn>)
+        (status = 200, description = "List of all local bills", body = BillsResponse<BitcreditBillWeb>)
     )
 )]
 #[get("/list_all")]
 pub async fn all_bills_from_all_identities(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
-) -> Result<Json<BillsResponse<BitcreditBillToReturn>>> {
+) -> Result<Json<BillsResponse<BitcreditBillWeb>>> {
     let bills = state.bill_service.get_bills_from_all_identities().await?;
-    Ok(Json(BillsResponse { bills }))
+    Ok(Json(BillsResponse {
+        bills: bills.into_iter().map(|b| b.into_web()).collect(),
+    }))
 }
 
 #[get("/numbers_to_words_for_sum/<id>")]
@@ -297,7 +309,7 @@ pub async fn find_and_sync_with_bill_in_dht(
         ("id" = String, Path, description = "Id of the bill to return")
     ),
     responses(
-        (status = 200, description = "The Bill with given id", body = BitcreditBillToReturn),
+        (status = 200, description = "The Bill with given id", body = BitcreditBillWeb),
         (status = 404, description = "Bill not found")
     )
 )]
@@ -306,7 +318,7 @@ pub async fn bill_detail(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     id: &str,
-) -> Result<Json<BitcreditBillToReturn>> {
+) -> Result<Json<BitcreditBillWeb>> {
     let current_timestamp = util::date::now().timestamp() as u64;
     let identity = state.identity_service.get_identity().await?;
     let bill_detail = state
@@ -318,7 +330,7 @@ pub async fn bill_detail(
             current_timestamp,
         )
         .await?;
-    Ok(Json(bill_detail))
+    Ok(Json(bill_detail.into_web()))
 }
 
 #[get("/check_payment")]
@@ -379,7 +391,7 @@ pub async fn upload_files(
         .upload_files(upload_file_handlers)
         .await?;
 
-    Ok(Json(file_upload_response))
+    Ok(Json(file_upload_response.into_web()))
 }
 
 #[post("/issue", format = "json", data = "<bill_payload>")]

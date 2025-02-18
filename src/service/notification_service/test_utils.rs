@@ -1,4 +1,5 @@
 use crate::{
+    data::{bill::BitcreditBill, contact::IdentityPublicData},
     persistence::{
         backup::MockBackupStoreApi,
         bill::{MockBillChainStoreApi, MockBillStoreApi},
@@ -10,7 +11,6 @@ use crate::{
         notification::MockNotificationStoreApi,
         DbContext,
     },
-    service::{bill_service::BitcreditBill, contact_service::IdentityPublicData},
     util::BcrKeys,
 };
 use nostr_relay_builder::prelude::*;

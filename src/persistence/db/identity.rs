@@ -1,7 +1,7 @@
 use super::{FileDb, OptionalPostalAddressDb, Result};
 use crate::{
+    data::identity::{Identity, IdentityWithAll},
     persistence::{identity::IdentityStoreApi, Error},
-    service::identity_service::{Identity, IdentityWithAll},
     util::BcrKeys,
 };
 use async_trait::async_trait;

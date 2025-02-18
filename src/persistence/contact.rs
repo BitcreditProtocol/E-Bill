@@ -1,4 +1,4 @@
-use crate::service::contact_service::Contact;
+use crate::data::contact::Contact;
 use std::collections::HashMap;
 
 use super::Result;

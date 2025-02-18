@@ -1,13 +1,15 @@
-use std::fmt::Display;
 use std::sync::Arc;
 
+use crate::config::Config;
+use crate::data::{
+    bill::BitcreditBill,
+    contact::IdentityPublicData,
+    notification::{Notification, NotificationType},
+};
 use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
 use crate::persistence::NostrEventOffsetStoreApi;
 use crate::persistence::{self, identity::IdentityStoreApi};
-use crate::service::contact_service::IdentityPublicData;
-use crate::util::date::{now, DateTimeUtc};
 use crate::util::{self};
-use crate::{config::Config, service::bill_service::BitcreditBill};
 use async_trait::async_trait;
 use bill_action_event_handler::BillActionEventHandler;
 use default_service::DefaultNotificationService;
@@ -15,8 +17,6 @@ use handler::{LoggingEventHandler, NotificationHandlerApi};
 #[cfg(test)]
 use mockall::automock;
 use push_notification::PushApi;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use thiserror::Error;
 
 #[cfg(test)]
@@ -37,8 +37,6 @@ pub use email::NotificationEmailTransportApi;
 pub use event::{ActionType, EventEnvelope, EventType};
 pub use nostr::{NostrClient, NostrConfig, NostrConsumer};
 pub use transport::NotificationJsonTransportApi;
-use utoipa::ToSchema;
-use uuid::Uuid;
 
 use super::contact_service::ContactServiceApi;
 
@@ -276,65 +274,4 @@ pub trait NotificationServiceApi: Send + Sync {
         block_height: i32,
         action: ActionType,
     ) -> Result<()>;
-}
-
-/// A notification as it will be delivered to the UI.
-///
-/// A generic notification. Payload is unstructured json. The timestamp refers to the
-/// time when the client received the notification. The type determines the payload
-/// type and the reference_id is used to identify and optional other entity like a
-/// Bill or Company.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct Notification {
-    /// The unique id of the notification
-    pub id: String,
-    /// Id of the identity that the notification is for
-    pub node_id: Option<String>,
-    /// The type/topic of the notification
-    pub notification_type: NotificationType,
-    /// An optional reference to some other entity
-    pub reference_id: Option<String>,
-    /// A description to quickly show to a user in the ui (probably a translation key)
-    pub description: String,
-    /// The datetime when the notification was created
-    #[schema(value_type = chrono::DateTime<chrono::Utc>)]
-    pub datetime: DateTimeUtc,
-    /// Whether the notification is active or not. If active the user shold still perform
-    /// some action to dismiss the notification.
-    pub active: bool,
-    /// Additional data to be used for notification specific logic
-    pub payload: Option<Value>,
-}
-
-impl Notification {
-    pub fn new_bill_notification(
-        bill_id: &str,
-        node_id: &str,
-        description: &str,
-        payload: Option<Value>,
-    ) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            node_id: Some(node_id.to_string()),
-            notification_type: NotificationType::Bill,
-            reference_id: Some(bill_id.to_string()),
-            description: description.to_string(),
-            datetime: now(),
-            active: true,
-            payload,
-        }
-    }
-}
-
-/// The type/topic of a notification we show to the user
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub enum NotificationType {
-    General,
-    Bill,
-}
-
-impl Display for NotificationType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(format!("{:?}", self).as_str())
-    }
 }

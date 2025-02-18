@@ -213,11 +213,13 @@ mod tests {
     use super::*;
     use crate::{
         blockchain::company::CompanyUpdateBlockData,
+        data::{
+            company::{Company, CompanyKeys},
+            OptionalPostalAddress, PostalAddress,
+        },
         persistence::db::get_memory_db,
-        service::company_service::{CompanyKeys, CompanyToReturn},
         tests::tests::{TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP},
         util::BcrKeys,
-        web::data::{OptionalPostalAddress, PostalAddress},
     };
 
     async fn get_store() -> SurrealCompanyChainStore {
@@ -240,7 +242,7 @@ mod tests {
         let block = CompanyBlock::create_block_for_create(
             "some_id".to_string(),
             "genesis hash".to_string(),
-            &CompanyToReturn {
+            &Company {
                 id: "some_id".to_string(),
                 name: "Hayek Ltd".to_string(),
                 country_of_registration: Some("AT".to_string()),
@@ -295,7 +297,7 @@ mod tests {
         let block = CompanyBlock::create_block_for_create(
             "some_id".to_string(),
             "genesis hash".to_string(),
-            &CompanyToReturn {
+            &Company {
                 id: "some_id".to_string(),
                 name: "Hayek Ltd".to_string(),
                 country_of_registration: Some("AT".to_string()),

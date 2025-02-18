@@ -1,16 +1,16 @@
 use std::env;
 
 use super::middleware::IdentityCheck;
-use crate::service::identity_service::IdentityType;
+use crate::data::{identity::IdentityType, OptionalPostalAddress};
+use crate::service::ServiceContext;
 use crate::service::{Error, Result};
 use crate::util::date::{format_date_string, now};
 use crate::util::file::{detect_content_type_for_bytes, UploadFileHandler};
 use crate::web::data::{
-    ChangeIdentityPayload, NewIdentityPayload, SeedPhrase, SuccessResponse, SwitchIdentity,
-    UploadFileForm, UploadFilesResponse,
+    ChangeIdentityPayload, FromWeb, IdentityWeb, IntoWeb, NewIdentityPayload, SeedPhrase,
+    SuccessResponse, SwitchIdentity, UploadFileForm, UploadFilesResponse,
 };
 use crate::{external, util};
-use crate::{service::identity_service::IdentityToReturn, service::ServiceContext};
 use log::info;
 use rocket::form::Form;
 use rocket::http::ContentType;
@@ -63,7 +63,7 @@ pub async fn upload_file(
         .upload_files(vec![upload_file_handler])
         .await?;
 
-    Ok(Json(file_upload_response))
+    Ok(Json(file_upload_response.into_web()))
 }
 
 #[utoipa::path(
@@ -71,16 +71,16 @@ pub async fn upload_file(
     path = "/api/identity/detail",
     description = "Returns the current identity",
     responses(
-        (status = 200, description = "The current identity data", body = IdentityToReturn)
+        (status = 200, description = "The current identity data", body = IdentityWeb)
     ),
 )]
 #[get("/detail")]
-pub async fn return_identity(state: &State<ServiceContext>) -> Result<Json<IdentityToReturn>> {
+pub async fn return_identity(state: &State<ServiceContext>) -> Result<Json<IdentityWeb>> {
     let my_identity = if !state.identity_service.identity_exists().await {
         return Err(Error::NotFound);
     } else {
         let full_identity = state.identity_service.get_full_identity().await?;
-        IdentityToReturn::from(full_identity.identity, full_identity.key_pair)?
+        IdentityWeb::from(full_identity.identity, full_identity.key_pair)?
     };
     Ok(Json(my_identity))
 }
@@ -110,7 +110,7 @@ pub async fn create_identity(
         .create_identity(
             identity.name,
             identity.email,
-            identity.postal_address,
+            OptionalPostalAddress::from_web(identity.postal_address),
             identity.date_of_birth,
             identity.country_of_birth,
             identity.city_of_birth,
@@ -157,7 +157,7 @@ pub async fn change_identity(
         .update_identity(
             identity_payload.name,
             identity_payload.email,
-            identity_payload.postal_address,
+            OptionalPostalAddress::from_web(identity_payload.postal_address),
             identity_payload.date_of_birth,
             identity_payload.country_of_birth,
             identity_payload.city_of_birth,
@@ -186,7 +186,7 @@ pub async fn active(state: &State<ServiceContext>) -> Result<Json<SwitchIdentity
         Some(company_node_id) => (company_node_id, IdentityType::Company),
     };
     Ok(Json(SwitchIdentity {
-        t: Some(t),
+        t: Some(t.into_web()),
         node_id,
     }))
 }

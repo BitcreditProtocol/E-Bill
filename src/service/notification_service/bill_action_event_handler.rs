@@ -2,13 +2,13 @@ use super::{NotificationType, Result};
 use std::sync::Arc;
 
 use crate::{
+    data::notification::Notification,
     persistence::notification::NotificationStoreApi,
     service::notification_service::event::{BillActionEventPayload, Event},
 };
 
 use super::{
     handler::NotificationHandlerApi, push_notification::PushApi, EventEnvelope, EventType,
-    Notification,
 };
 use async_trait::async_trait;
 

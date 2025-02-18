@@ -1,7 +1,7 @@
 use super::{Error, Result};
 use crate::constants::{MAX_FILE_NAME_CHARACTERS, MAX_FILE_SIZE_BYTES, VALID_FILE_MIME_TYPES};
+use crate::data::UploadFilesResult;
 use crate::persistence::file_upload::FileUploadStoreApi;
-use crate::web::data::UploadFilesResponse;
 use crate::{persistence, util};
 use async_trait::async_trait;
 use log::error;
@@ -16,7 +16,7 @@ pub trait FileUploadServiceApi: Send + Sync {
     async fn upload_files(
         &self,
         files: Vec<&dyn util::file::UploadFileHandler>,
-    ) -> Result<UploadFilesResponse>;
+    ) -> Result<UploadFilesResult>;
 
     /// returns a temp upload file
     async fn get_temp_file(&self, file_upload_id: &str) -> Result<Option<(String, Vec<u8>)>>;
@@ -80,7 +80,7 @@ impl FileUploadServiceApi for FileUploadService {
     async fn upload_files(
         &self,
         files: Vec<&dyn util::file::UploadFileHandler>,
-    ) -> Result<UploadFilesResponse> {
+    ) -> Result<UploadFilesResult> {
         // create a new random id
         let file_upload_id = util::get_uuid_v4().to_string();
         // create a folder to store the files
@@ -102,7 +102,7 @@ impl FileUploadServiceApi for FileUploadService {
                 .write_temp_upload_file(&file_upload_id, &file_name, &read_file)
                 .await?;
         }
-        Ok(UploadFilesResponse { file_upload_id })
+        Ok(UploadFilesResult { file_upload_id })
     }
 
     async fn get_temp_file(&self, file_upload_id: &str) -> Result<Option<(String, Vec<u8>)>> {

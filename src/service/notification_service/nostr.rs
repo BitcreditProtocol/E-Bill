@@ -11,9 +11,9 @@ use crate::persistence::NostrEventOffsetStoreApi;
 use crate::service::contact_service::ContactServiceApi;
 use crate::util::{crypto, BcrKeys};
 
-use super::super::contact_service::IdentityPublicData;
 use super::handler::NotificationHandlerApi;
 use super::{EventEnvelope, NotificationJsonTransportApi, Result};
+use crate::data::contact::IdentityPublicData;
 
 #[derive(Clone, Debug)]
 pub struct NostrConfig {

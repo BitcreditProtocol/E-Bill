@@ -5,8 +5,9 @@ use serde_json::Value;
 use surrealdb::{engine::any::Any, sql::Thing, Surreal};
 
 use crate::{
+    data::notification::{Notification, NotificationType},
     persistence::notification::{NotificationFilter, NotificationStoreApi},
-    service::notification_service::{ActionType, Notification, NotificationType},
+    service::notification_service::ActionType,
     util::date::{now, DateTimeUtc},
 };
 

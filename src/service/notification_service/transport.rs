@@ -1,5 +1,5 @@
-use super::super::contact_service::IdentityPublicData;
 use super::{EventEnvelope, Result};
+use crate::data::contact::IdentityPublicData;
 use async_trait::async_trait;
 use log::info;
 #[cfg(test)]

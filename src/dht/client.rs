@@ -11,6 +11,10 @@ use crate::blockchain::bill::BillBlockchain;
 use crate::blockchain::company::CompanyBlockchain;
 use crate::blockchain::Blockchain;
 use crate::constants::{BILLS_PREFIX, BILL_PREFIX, COMPANIES_PREFIX, COMPANY_PREFIX};
+use crate::data::{
+    bill::BillKeys,
+    company::{Company, CompanyKeys},
+};
 use crate::persistence::bill::{
     bill_chain_from_bytes, bill_chain_to_bytes, bill_keys_from_bytes, bill_keys_to_bytes,
     BillChainStoreApi, BillStoreApi,
@@ -21,8 +25,6 @@ use crate::persistence::company::{
 };
 use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::IdentityStoreApi;
-use crate::service::bill_service::BillKeys;
-use crate::service::company_service::{Company, CompanyKeys};
 use crate::{blockchain, util};
 use borsh::{from_slice, to_vec};
 use future::{try_join_all, BoxFuture};
@@ -1490,19 +1492,15 @@ mod tests {
             BILL_ATTACHMENT_PREFIX, COMPANY_CHAIN_PREFIX, COMPANY_KEY_PREFIX, COMPANY_LOGO_PREFIX,
             COMPANY_PROOF_PREFIX, KEY_PREFIX,
         },
+        data::{identity::Identity, File, PostalAddress},
         persistence::{
             bill::{MockBillChainStoreApi, MockBillStoreApi},
             company::{MockCompanyChainStoreApi, MockCompanyStoreApi},
             file_upload::MockFileUploadStoreApi,
             identity::MockIdentityStoreApi,
         },
-        service::{
-            bill_service::tests::{get_baseline_bill, get_genesis_chain},
-            company_service::CompanyToReturn,
-            identity_service::Identity,
-        },
+        service::bill_service::tests::{get_baseline_bill, get_genesis_chain},
         tests::tests::{TEST_NODE_ID_SECP, TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP},
-        web::data::{File, PostalAddress},
     };
     use blockchain::company::CompanyCreateBlockData;
     use futures::channel::mpsc::{self, Sender};
@@ -1599,11 +1597,10 @@ mod tests {
     }
 
     fn get_valid_company_chain(company_id: &str) -> CompanyBlockchain {
-        let (id, (company, company_keys)) = get_baseline_company_data(company_id);
-        let to_return = CompanyToReturn::from(id, company);
+        let (_id, (company, company_keys)) = get_baseline_company_data(company_id);
 
         CompanyBlockchain::new(
-            &CompanyCreateBlockData::from(to_return),
+            &CompanyCreateBlockData::from(company),
             &BcrKeys::new(),
             &company_keys,
             1731593928,

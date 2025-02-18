@@ -1,22 +1,19 @@
-use borsh_derive::{self, BorshDeserialize, BorshSerialize};
 use std::sync::Arc;
-use utoipa::ToSchema;
 
 use async_trait::async_trait;
 #[cfg(test)]
 use mockall::automock;
-use serde::{Deserialize, Serialize};
 
 use crate::{
-    blockchain::bill::block::BillIdentityBlockData,
+    data::{
+        contact::{Contact, ContactType, IdentityPublicData},
+        File, OptionalPostalAddress, PostalAddress,
+    },
     persistence::{file_upload::FileUploadStoreApi, identity::IdentityStoreApi, ContactStoreApi},
-    service::identity_service::Identity,
-    util,
-    web::data::{File, OptionalPostalAddress, PostalAddress},
-    CONFIG,
+    util, CONFIG,
 };
 
-use super::{company_service::Company, Result};
+use super::Result;
 use log::info;
 
 #[cfg_attr(test, automock)]
@@ -55,7 +52,7 @@ pub trait ContactServiceApi: Send + Sync {
     async fn add_contact(
         &self,
         node_id: &str,
-        t: u64,
+        t: ContactType,
         name: String,
         email: String,
         postal_address: PostalAddress,
@@ -285,7 +282,7 @@ impl ContactServiceApi for ContactService {
     async fn add_contact(
         &self,
         node_id: &str,
-        t: u64,
+        t: ContactType,
         name: String,
         email: String,
         postal_address: PostalAddress,
@@ -317,7 +314,7 @@ impl ContactServiceApi for ContactService {
 
         let contact = Contact {
             node_id: node_id.to_owned(),
-            t: ContactType::try_from(t)?,
+            t,
             name,
             email,
             postal_address,
@@ -353,202 +350,6 @@ impl ContactServiceApi for ContactService {
             .await?;
         let decrypted = util::crypto::decrypt_ecies(&read_file, private_key)?;
         Ok(decrypted)
-    }
-}
-
-#[repr(u8)]
-#[derive(
-    Debug,
-    Clone,
-    serde_repr::Serialize_repr,
-    serde_repr::Deserialize_repr,
-    PartialEq,
-    Eq,
-    ToSchema,
-    BorshSerialize,
-    BorshDeserialize,
-)]
-#[borsh(use_discriminant = true)]
-pub enum ContactType {
-    Person = 0,
-    Company = 1,
-}
-
-impl TryFrom<u64> for ContactType {
-    type Error = super::Error;
-
-    fn try_from(value: u64) -> std::result::Result<Self, Self::Error> {
-        match value {
-            0 => Ok(ContactType::Person),
-            1 => Ok(ContactType::Company),
-            _ => Err(super::Error::Validation(format!(
-                "Invalid contact type found: {value}"
-            ))),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct Contact {
-    #[serde(rename = "type")]
-    pub t: ContactType,
-    pub node_id: String,
-    pub name: String,
-    pub email: String,
-    #[serde(flatten)]
-    pub postal_address: PostalAddress,
-    pub date_of_birth_or_registration: Option<String>,
-    pub country_of_birth_or_registration: Option<String>,
-    pub city_of_birth_or_registration: Option<String>,
-    pub identification_number: Option<String>,
-    pub avatar_file: Option<File>,
-    pub proof_document_file: Option<File>,
-    pub nostr_relays: Vec<String>,
-}
-
-#[derive(
-    BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone, Eq, PartialEq, ToSchema,
-)]
-pub struct IdentityPublicData {
-    /// The type of identity (0 = person, 1 = company)
-    #[serde(rename = "type")]
-    pub t: ContactType,
-    /// The P2P node id of the identity
-    pub node_id: String,
-    /// The name of the identity
-    pub name: String,
-    /// Full postal address of the identity
-    #[serde(flatten)]
-    pub postal_address: PostalAddress,
-    /// email address of the identity
-    pub email: Option<String>,
-    /// The preferred Nostr relay to deliver Nostr messages to
-    pub nostr_relay: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct LightIdentityPublicData {
-    #[serde(rename = "type")]
-    pub t: ContactType,
-    pub name: String,
-    pub node_id: String,
-}
-
-impl From<IdentityPublicData> for LightIdentityPublicData {
-    fn from(value: IdentityPublicData) -> Self {
-        Self {
-            t: value.t,
-            name: value.name,
-            node_id: value.node_id,
-        }
-    }
-}
-
-impl From<BillIdentityBlockData> for LightIdentityPublicData {
-    fn from(value: BillIdentityBlockData) -> Self {
-        Self {
-            t: value.t,
-            name: value.name,
-            node_id: value.node_id,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct LightIdentityPublicDataWithAddress {
-    #[serde(rename = "type")]
-    pub t: ContactType,
-    pub name: String,
-    pub node_id: String,
-    #[serde(flatten)]
-    pub postal_address: PostalAddress,
-}
-
-impl From<IdentityPublicData> for LightIdentityPublicDataWithAddress {
-    fn from(value: IdentityPublicData) -> Self {
-        Self {
-            t: value.t,
-            name: value.name,
-            node_id: value.node_id,
-            postal_address: value.postal_address,
-        }
-    }
-}
-
-impl From<BillIdentityBlockData> for LightIdentityPublicDataWithAddress {
-    fn from(value: BillIdentityBlockData) -> Self {
-        Self {
-            t: value.t,
-            name: value.name,
-            node_id: value.node_id,
-            postal_address: value.postal_address,
-        }
-    }
-}
-
-impl From<Contact> for IdentityPublicData {
-    fn from(value: Contact) -> Self {
-        Self {
-            t: value.t,
-            node_id: value.node_id.clone(),
-            name: value.name,
-            postal_address: value.postal_address,
-            email: Some(value.email),
-            nostr_relay: value.nostr_relays.first().cloned(),
-        }
-    }
-}
-
-impl From<Company> for IdentityPublicData {
-    fn from(value: Company) -> Self {
-        Self {
-            t: ContactType::Company,
-            node_id: value.id.clone(),
-            name: value.name,
-            postal_address: value.postal_address,
-            email: Some(value.email),
-            nostr_relay: None,
-        }
-    }
-}
-
-impl IdentityPublicData {
-    pub fn new(identity: Identity) -> Option<Self> {
-        match identity.postal_address.to_full_postal_address() {
-            Some(postal_address) => Some(Self {
-                t: ContactType::Person,
-                node_id: identity.node_id,
-                name: identity.name,
-                postal_address,
-                email: Some(identity.email),
-                nostr_relay: identity.nostr_relay,
-            }),
-            None => None,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn new_empty() -> Self {
-        Self {
-            t: ContactType::Person,
-            node_id: "".to_string(),
-            name: "".to_string(),
-            postal_address: PostalAddress::new_empty(),
-            email: None,
-            nostr_relay: None,
-        }
-    }
-
-    #[cfg(test)]
-    pub fn new_only_node_id(node_id: String) -> Self {
-        Self {
-            t: ContactType::Person,
-            node_id,
-            name: "".to_string(),
-            postal_address: PostalAddress::new_empty(),
-            email: None,
-            nostr_relay: None,
-        }
     }
 }
 
@@ -673,7 +474,7 @@ pub mod tests {
         let result = get_service(store, file_upload_store, identity_store)
             .add_contact(
                 TEST_NODE_ID_SECP,
-                0,
+                ContactType::Person,
                 "some_name".to_string(),
                 "some_email@example.com".to_string(),
                 PostalAddress::new_empty(),

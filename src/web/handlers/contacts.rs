@@ -1,10 +1,16 @@
 use super::super::data::{EditContactPayload, NewContactPayload};
 use super::middleware::IdentityCheck;
-use crate::service::contact_service::Contact;
+use crate::data::{
+    contact::{Contact, ContactType},
+    OptionalPostalAddress, PostalAddress,
+};
 use crate::service::{self, Result, ServiceContext};
 use crate::util;
 use crate::util::file::{detect_content_type_for_bytes, UploadFileHandler};
-use crate::web::data::{ContactsResponse, SuccessResponse, UploadFileForm, UploadFilesResponse};
+use crate::web::data::{
+    ContactTypeWeb, ContactWeb, ContactsResponse, FromWeb, IntoWeb, SuccessResponse,
+    UploadFileForm, UploadFilesResponse,
+};
 use rocket::form::Form;
 use rocket::http::ContentType;
 use rocket::serde::json::Json;
@@ -62,16 +68,18 @@ pub async fn upload_file(
         .upload_files(vec![upload_file_handler])
         .await?;
 
-    Ok(Json(file_upload_response))
+    Ok(Json(file_upload_response.into_web()))
 }
 
 #[get("/list")]
 pub async fn return_contacts(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
-) -> Result<Json<ContactsResponse<Contact>>> {
+) -> Result<Json<ContactsResponse<ContactWeb>>> {
     let contacts: Vec<Contact> = state.contact_service.get_contacts().await?;
-    Ok(Json(ContactsResponse { contacts }))
+    Ok(Json(ContactsResponse {
+        contacts: contacts.into_iter().map(|c| c.into_web()).collect(),
+    }))
 }
 
 #[get("/detail/<node_id>")]
@@ -79,8 +87,8 @@ pub async fn return_contact(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     node_id: &str,
-) -> Result<Json<Contact>> {
-    let contact: Contact = state.contact_service.get_contact(node_id).await?;
+) -> Result<Json<ContactWeb>> {
+    let contact: ContactWeb = state.contact_service.get_contact(node_id).await?.into_web();
     Ok(Json(contact))
 }
 
@@ -99,7 +107,7 @@ pub async fn new_contact(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     new_contact_payload: Json<NewContactPayload>,
-) -> Result<Json<Contact>> {
+) -> Result<Json<ContactWeb>> {
     let payload = new_contact_payload.0;
 
     util::file::validate_file_upload_id(&payload.avatar_file_upload_id)?;
@@ -109,10 +117,10 @@ pub async fn new_contact(
         .contact_service
         .add_contact(
             &payload.node_id,
-            payload.t,
+            ContactType::from_web(ContactTypeWeb::try_from(payload.t)?),
             payload.name,
             payload.email,
-            payload.postal_address,
+            PostalAddress::from_web(payload.postal_address),
             payload.date_of_birth_or_registration,
             payload.country_of_birth_or_registration,
             payload.city_of_birth_or_registration,
@@ -121,7 +129,7 @@ pub async fn new_contact(
             payload.proof_document_file_upload_id,
         )
         .await?;
-    Ok(Json(contact))
+    Ok(Json(contact.into_web()))
 }
 
 #[put("/edit", format = "json", data = "<edit_contact_payload>")]
@@ -137,7 +145,7 @@ pub async fn edit_contact(
             &payload.node_id,
             payload.name,
             payload.email,
-            payload.postal_address,
+            OptionalPostalAddress::from_web(payload.postal_address),
             payload.date_of_birth_or_registration,
             payload.country_of_birth_or_registration,
             payload.city_of_birth_or_registration,

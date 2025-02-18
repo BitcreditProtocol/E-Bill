@@ -3,7 +3,8 @@ use super::{
     bill_service::BillServiceApi, company_service::CompanyServiceApi,
     contact_service::ContactServiceApi,
 };
-use crate::web::data::{BillsFilterRole, GeneralSearchFilterItemType, GeneralSearchResponse};
+use crate::data::GeneralSearchResult;
+use crate::data::{bill::BillsFilterRole, GeneralSearchFilterItemType};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ pub trait SearchServiceApi: Send + Sync {
         currency: &str,
         item_types: &[GeneralSearchFilterItemType],
         current_identity_node_id: &str,
-    ) -> Result<GeneralSearchResponse>;
+    ) -> Result<GeneralSearchResult>;
 }
 
 /// The serach service is responsible for implementing cross-domain search
@@ -49,7 +50,7 @@ impl SearchServiceApi for SearchService {
         currency: &str,
         item_types: &[GeneralSearchFilterItemType],
         current_identity_node_id: &str,
-    ) -> Result<GeneralSearchResponse> {
+    ) -> Result<GeneralSearchResult> {
         let search_term_lc = search_term.to_lowercase();
         let bills = if item_types.contains(&GeneralSearchFilterItemType::Bill) {
             self.bill_service
@@ -78,7 +79,7 @@ impl SearchServiceApi for SearchService {
             vec![]
         };
 
-        Ok(GeneralSearchResponse {
+        Ok(GeneralSearchResult {
             bills,
             contacts,
             companies,

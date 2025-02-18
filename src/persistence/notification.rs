@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 
 use super::Result;
-use crate::service::notification_service::{ActionType, Notification, NotificationType};
+use crate::data::notification::{Notification, NotificationType};
+use crate::service::notification_service::ActionType;
 #[cfg(test)]
 use mockall::automock;
 

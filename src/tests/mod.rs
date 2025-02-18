@@ -1,7 +1,7 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 pub mod tests {
-    use crate::service::bill_service::BillKeys;
+    use crate::data::bill::BillKeys;
 
     pub fn get_bill_keys() -> BillKeys {
         BillKeys {

@@ -1,8 +1,8 @@
 use super::{FileDb, PostalAddressDb, Result};
 use crate::{
     constants::{DB_SEARCH_TERM, DB_TABLE},
+    data::company::{Company, CompanyKeys},
     persistence::{company::CompanyStoreApi, Error},
-    service::company_service::{Company, CompanyKeys},
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -200,10 +200,10 @@ impl From<&CompanyKeys> for CompanyKeysDb {
 mod tests {
     use super::*;
     use crate::{
+        data::PostalAddress,
         persistence::db::get_memory_db,
         tests::tests::{TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP},
         util::BcrKeys,
-        web::data::PostalAddress,
     };
 
     async fn get_store() -> SurrealCompanyStore {

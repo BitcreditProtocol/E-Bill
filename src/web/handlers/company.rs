@@ -1,13 +1,14 @@
 use super::middleware::IdentityCheck;
+use crate::data::{OptionalPostalAddress, PostalAddress};
 use crate::util;
 use crate::web::data::{
-    AddSignatoryPayload, CreateCompanyPayload, EditCompanyPayload, ListSignatoriesResponse,
-    RemoveSignatoryPayload,
+    AddSignatoryPayload, CompanyWeb, CreateCompanyPayload, EditCompanyPayload, FromWeb, IntoWeb,
+    ListSignatoriesResponse, RemoveSignatoryPayload,
 };
 use crate::{
     dht::{GossipsubEvent, GossipsubEventId},
     external,
-    service::{self, company_service::CompanyToReturn, Result, ServiceContext},
+    service::{self, Result, ServiceContext},
     util::file::{detect_content_type_for_bytes, UploadFileHandler},
     web::data::{CompaniesResponse, SuccessResponse, UploadFileForm, UploadFilesResponse},
 };
@@ -24,10 +25,14 @@ pub async fn check_companies_in_dht(
 }
 
 #[get("/list")]
-pub async fn list(
-    state: &State<ServiceContext>,
-) -> Result<Json<CompaniesResponse<CompanyToReturn>>> {
-    let companies = state.company_service.get_list_of_companies().await?;
+pub async fn list(state: &State<ServiceContext>) -> Result<Json<CompaniesResponse<CompanyWeb>>> {
+    let companies = state
+        .company_service
+        .get_list_of_companies()
+        .await?
+        .into_iter()
+        .map(|c| c.into_web())
+        .collect();
     Ok(Json(CompaniesResponse { companies }))
 }
 
@@ -93,7 +98,7 @@ pub async fn upload_file(
         .upload_files(vec![upload_file_handler])
         .await?;
 
-    Ok(Json(file_upload_response))
+    Ok(Json(file_upload_response.into_web()))
 }
 
 #[get("/<id>")]
@@ -101,9 +106,9 @@ pub async fn detail(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     id: &str,
-) -> Result<Json<CompanyToReturn>> {
+) -> Result<Json<CompanyWeb>> {
     let company = state.company_service.get_company_by_id(id).await?;
-    Ok(Json(company))
+    Ok(Json(company.into_web()))
 }
 
 #[post("/create", format = "json", data = "<create_company_payload>")]
@@ -111,7 +116,7 @@ pub async fn create(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     create_company_payload: Json<CreateCompanyPayload>,
-) -> Result<Json<CompanyToReturn>> {
+) -> Result<Json<CompanyWeb>> {
     let payload = create_company_payload.0;
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
 
@@ -124,7 +129,7 @@ pub async fn create(
             payload.name,
             payload.country_of_registration,
             payload.city_of_registration,
-            payload.postal_address,
+            PostalAddress::from_web(payload.postal_address),
             payload.email,
             payload.registration_number,
             payload.registration_date,
@@ -157,7 +162,7 @@ pub async fn create(
         }
     });
 
-    Ok(Json(created_company))
+    Ok(Json(created_company.into_web()))
 }
 
 #[put("/edit", format = "json", data = "<edit_company_payload>")]
@@ -181,7 +186,7 @@ pub async fn edit(
             &payload.id,
             payload.name,
             payload.email,
-            payload.postal_address,
+            OptionalPostalAddress::from_web(payload.postal_address),
             payload.country_of_registration,
             payload.city_of_registration,
             payload.registration_number,

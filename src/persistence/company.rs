@@ -1,5 +1,5 @@
 use crate::blockchain::company::{CompanyBlock, CompanyBlockchain};
-use crate::service::company_service::{Company, CompanyKeys};
+use crate::data::company::{Company, CompanyKeys};
 use std::collections::HashMap;
 
 use super::Result;

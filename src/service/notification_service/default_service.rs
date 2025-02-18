@@ -5,10 +5,13 @@ use async_trait::async_trait;
 
 use super::event::{ActionType, BillActionEventPayload, Event, EventType};
 use super::transport::NotificationJsonTransportApi;
-use super::{Notification, NotificationServiceApi, NotificationType, Result};
+use super::{NotificationServiceApi, Result};
+use crate::data::{
+    bill::BitcreditBill,
+    contact::IdentityPublicData,
+    notification::{Notification, NotificationType},
+};
 use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
-use crate::service::bill_service::BitcreditBill;
-use crate::service::contact_service::IdentityPublicData;
 
 /// A default implementation of the NotificationServiceApi that can
 /// send events via json and email transports.

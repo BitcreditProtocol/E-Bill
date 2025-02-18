@@ -1,13 +1,14 @@
 use super::{
     data::{
-        BalanceResponse, CurrenciesResponse, CurrencyResponse, GeneralSearchFilterPayload,
-        GeneralSearchResponse, OverviewBalanceResponse, OverviewResponse, StatusResponse,
+        BalanceResponse, CurrenciesResponse, CurrencyResponse, FromWeb, GeneralSearchFilterPayload,
+        GeneralSearchResponse, IntoWeb, OverviewBalanceResponse, OverviewResponse, StatusResponse,
         SuccessResponse,
     },
     ErrorResponse,
 };
 use crate::{
     constants::VALID_CURRENCIES,
+    data::GeneralSearchFilterItemType,
     service::{bill_service, Error, Result, ServiceContext},
     util::file::detect_content_type_for_bytes,
     CONFIG,
@@ -152,17 +153,24 @@ pub async fn search(
     state: &State<ServiceContext>,
     search_filter: Json<GeneralSearchFilterPayload>,
 ) -> Result<Json<GeneralSearchResponse>> {
+    let filters: Vec<GeneralSearchFilterItemType> = search_filter
+        .filter
+        .clone()
+        .item_types
+        .into_iter()
+        .map(GeneralSearchFilterItemType::from_web)
+        .collect();
     let result = state
         .search_service
         .search(
             &search_filter.filter.search_term,
             &search_filter.filter.currency,
-            &search_filter.filter.item_types,
+            &filters,
             &get_current_identity_node_id(state).await,
         )
         .await?;
 
-    Ok(Json(result))
+    Ok(Json(result.into_web()))
 }
 
 /// Map from service errors directly to rocket status codes. This allows us to

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use super::Result;
 use crate::{
     blockchain::bill::{BillBlock, BillBlockchain, BillOpCode},
-    service::bill_service::BillKeys,
+    data::bill::BillKeys,
 };
 use async_trait::async_trait;
 

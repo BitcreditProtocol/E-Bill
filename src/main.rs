@@ -11,6 +11,7 @@ use tokio::spawn;
 mod blockchain;
 mod config;
 mod constants;
+mod data;
 mod dht;
 mod error;
 mod external;

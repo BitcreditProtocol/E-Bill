@@ -1,5 +1,5 @@
 use super::Result;
-use crate::web::data::{File, OptionalPostalAddress, PostalAddress};
+use crate::data::{File, OptionalPostalAddress, PostalAddress};
 use log::error;
 use serde::{Deserialize, Serialize};
 use surrealdb::{

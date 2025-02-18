@@ -177,8 +177,10 @@ impl From<&IdentityBlock> for IdentityBlockDb {
 mod tests {
     use super::*;
     use crate::{
-        blockchain::identity::IdentityUpdateBlockData, persistence::db::get_memory_db,
-        service::identity_service::Identity, util::BcrKeys, web::data::OptionalPostalAddress,
+        blockchain::identity::IdentityUpdateBlockData,
+        data::{identity::Identity, OptionalPostalAddress},
+        persistence::db::get_memory_db,
+        util::BcrKeys,
     };
 
     async fn get_store() -> SurrealIdentityChainStore {

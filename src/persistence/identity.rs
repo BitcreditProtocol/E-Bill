@@ -3,7 +3,7 @@ use async_trait::async_trait;
 
 use crate::{
     blockchain::identity::IdentityBlock,
-    service::identity_service::{Identity, IdentityWithAll},
+    data::identity::{Identity, IdentityWithAll},
     util::crypto::BcrKeys,
 };
 #[cfg(test)]
