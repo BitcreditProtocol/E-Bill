@@ -6,8 +6,9 @@ use crate::data::{
     ChangeIdentityPayload, FromWeb, IdentityWeb, IntoWeb, NewIdentityPayload, SeedPhrase,
     SuccessResponse, SwitchIdentity, TempFileWrapper, UploadFileForm, UploadFilesResponse,
 };
+use crate::service_context::ServiceContext;
 use bcr_ebill_api::data::{OptionalPostalAddress, identity::IdentityType};
-use bcr_ebill_api::service::{Error, ServiceContext};
+use bcr_ebill_api::service::Error;
 use bcr_ebill_api::util::date::{format_date_string, now};
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
 use bcr_ebill_api::{external, util};
@@ -140,6 +141,10 @@ pub async fn change_identity(
     identity_payload: Json<ChangeIdentityPayload>,
 ) -> Result<Json<SuccessResponse>> {
     let identity_payload = identity_payload.into_inner();
+
+    util::file::validate_file_upload_id(&identity_payload.profile_picture_file_upload_id)?;
+    util::file::validate_file_upload_id(&identity_payload.identity_document_file_upload_id)?;
+
     if identity_payload.name.is_none()
         && identity_payload.email.is_none()
         && identity_payload.postal_address.is_none()
@@ -312,6 +317,7 @@ pub async fn restore_identity(
     info!("Identity has been restored. Restarting system ...");
     shutdown.notify();
     state.shutdown();
+    state.reboot();
     Ok(Json(SuccessResponse::new()))
 }
 

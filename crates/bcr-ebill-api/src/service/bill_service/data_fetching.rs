@@ -1,10 +1,10 @@
+use super::Result;
 use super::service::BillService;
-use super::{Result, error::Error};
 use crate::util;
 use bcr_ebill_core::{
     bill::{BillKeys, BitcreditBill, BitcreditBillResult, LightSignedBy, PastEndorsee},
     blockchain::{
-        self, Blockchain,
+        Blockchain,
         bill::{
             BillBlockchain, BillOpCode, OfferToSellWaitingForPayment, RecourseWaitingForPayment,
             block::{
@@ -16,7 +16,6 @@ use bcr_ebill_core::{
     identity::{Identity, IdentityWithAll},
     util::BcrKeys,
 };
-use log::error;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -202,13 +201,7 @@ impl BillService {
         // pool as not to block the task queue
         let chain_clone = chain.clone();
         let keys_clone = bill_keys.clone();
-        let bill_participants =
-            tokio::task::spawn_blocking(move || chain_clone.get_all_nodes_from_bill(&keys_clone))
-                .await
-                .map_err(|e| {
-                    error!("couldn't get data from bill chain blocks {bill_id}: {e}");
-                    Error::Blockchain(blockchain::Error::BlockchainParse)
-                })??;
+        let bill_participants = chain_clone.get_all_nodes_from_bill(&keys_clone)?;
 
         let endorsements_count = chain.get_endorsements_count();
         let mut in_recourse = false;

@@ -1,6 +1,8 @@
+use crate::util;
+
 use super::{BillAction, Result, error::Error, service::BillService};
 use bcr_ebill_core::{
-    bill::{BillKeys, BitcreditBill, RecourseReason},
+    bill::{BillKeys, BillType, BitcreditBill, RecourseReason},
     blockchain::{
         Block, Blockchain,
         bill::{
@@ -12,6 +14,44 @@ use bcr_ebill_core::{
 };
 
 impl BillService {
+    pub(super) fn validate_bill_issue(
+        &self,
+        sum: &str,
+        file_upload_id: &Option<String>,
+        issue_date: &str,
+        maturity_date: &str,
+        drawee: &str,
+        payee: &str,
+        t: u64,
+    ) -> Result<(u64, BillType)> {
+        let sum = util::currency::parse_sum(sum).map_err(|e| Error::Validation(e.to_string()))?;
+
+        util::file::validate_file_upload_id(file_upload_id)
+            .map_err(|e| Error::Validation(e.to_string()))?;
+
+        if util::date::date_string_to_i64_timestamp(issue_date, None).is_none() {
+            return Err(Error::Validation(String::from("invalid issue date")));
+        }
+
+        if util::date::date_string_to_i64_timestamp(maturity_date, None).is_none() {
+            return Err(Error::Validation(String::from("invalid maturity date")));
+        }
+
+        let bill_type = match t {
+            0 => BillType::PromissoryNote,
+            1 => BillType::SelfDrafted,
+            2 => BillType::ThreeParties,
+            _ => return Err(Error::InvalidBillType),
+        };
+
+        if drawee == payee {
+            return Err(Error::Validation(String::from(
+                "Drawee can't be Payee at the same time",
+            )));
+        }
+        Ok((sum, bill_type))
+    }
+
     pub(super) async fn validate_bill_action(
         &self,
         blockchain: &BillBlockchain,

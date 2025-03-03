@@ -16,7 +16,9 @@ pub mod notification;
 mod tests;
 pub mod util;
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default,
+)]
 pub struct PostalAddress {
     pub country: String,
     pub city: String,

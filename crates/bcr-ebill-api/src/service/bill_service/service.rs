@@ -22,6 +22,7 @@ use crate::persistence::company::{CompanyChainStoreApi, CompanyStoreApi};
 use crate::persistence::contact::ContactStoreApi;
 use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::{IdentityChainStoreApi, IdentityStoreApi};
+use crate::service::ServiceTraitBounds;
 use crate::util::BcrKeys;
 use crate::{external, util};
 use async_trait::async_trait;
@@ -49,6 +50,7 @@ pub struct BillService {
     pub contact_store: Arc<dyn ContactStoreApi>,
     pub company_store: Arc<dyn CompanyStoreApi>,
 }
+impl ServiceTraitBounds for BillService {}
 
 impl BillService {
     pub fn new(
@@ -182,7 +184,8 @@ impl BillService {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl BillServiceApi for BillService {
     async fn get_bill_balances(
         &self,
@@ -451,13 +454,14 @@ impl BillServiceApi for BillService {
 
     async fn issue_new_bill(
         &self,
+        t: u64,
         country_of_issuing: String,
         city_of_issuing: String,
         issue_date: String,
         maturity_date: String,
-        drawee: IdentityPublicData,
-        payee: IdentityPublicData,
-        sum: u64,
+        drawee: String,
+        payee: String,
+        sum: String,
         currency: String,
         country_of_payment: String,
         city_of_payment: String,
@@ -468,6 +472,7 @@ impl BillServiceApi for BillService {
         timestamp: u64,
     ) -> Result<BitcreditBill> {
         self.issue_bill(
+            t,
             country_of_issuing,
             city_of_issuing,
             issue_date,
