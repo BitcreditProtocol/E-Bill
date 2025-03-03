@@ -12,9 +12,11 @@ use serde::{Deserialize, Serialize};
     Eq,
     BorshSerialize,
     BorshDeserialize,
+    Default,
 )]
 #[borsh(use_discriminant = true)]
 pub enum ContactType {
+    #[default]
     Person = 0,
     Company = 1,
 }
@@ -37,7 +39,9 @@ pub struct Contact {
     pub nostr_relays: Vec<String>,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default,
+)]
 pub struct IdentityPublicData {
     /// The type of identity (0 = person, 1 = company)
     #[serde(rename = "type")]
@@ -55,7 +59,7 @@ pub struct IdentityPublicData {
     pub nostr_relay: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone, Default)]
 pub struct LightIdentityPublicData {
     #[serde(rename = "type")]
     pub t: ContactType,
@@ -73,7 +77,7 @@ impl From<IdentityPublicData> for LightIdentityPublicData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone, Default)]
 pub struct LightIdentityPublicDataWithAddress {
     #[serde(rename = "type")]
     pub t: ContactType,

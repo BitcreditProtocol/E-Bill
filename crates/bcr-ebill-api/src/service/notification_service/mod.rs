@@ -38,6 +38,7 @@ pub use event::EventEnvelope;
 pub use nostr::{NostrClient, NostrConfig, NostrConsumer};
 pub use transport::NotificationJsonTransportApi;
 
+use super::ServiceTraitBounds;
 use super::contact_service::ContactServiceApi;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -85,6 +86,7 @@ pub async fn create_notification_service(
     client: NostrClient,
     notification_store: Arc<dyn NotificationStoreApi>,
 ) -> Result<Arc<dyn NotificationServiceApi>> {
+    #[allow(clippy::arc_with_non_send_sync)]
     Ok(Arc::new(DefaultNotificationService::new(
         Box::new(client),
         notification_store,
@@ -116,11 +118,15 @@ pub async fn create_nostr_consumer(
     Ok(consumer)
 }
 
+#[cfg(test)]
+impl ServiceTraitBounds for MockNotificationServiceApi {}
+
 /// Send events via all channels required for the event type.
 #[allow(dead_code)]
 #[cfg_attr(test, automock)]
-#[async_trait]
-pub trait NotificationServiceApi: Send + Sync {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait NotificationServiceApi: ServiceTraitBounds {
     /// Sent when: A bill is signed by: Drawer
     /// Receiver: Payer, Action: AcceptBill
     /// Receiver: Payee, Action: CheckBill

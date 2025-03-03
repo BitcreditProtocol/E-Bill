@@ -1,3 +1,5 @@
+use crate::service::ServiceTraitBounds;
+
 use super::{NotificationEmailTransportApi, Result, email::EmailMessage};
 use async_trait::async_trait;
 use serde::Serialize;
@@ -37,7 +39,10 @@ impl SendgridTransport {
     }
 }
 
-#[async_trait]
+impl ServiceTraitBounds for SendgridTransport {}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationEmailTransportApi for SendgridTransport {
     async fn send(&self, message: EmailMessage) -> Result<()> {
         self.send_http_request(message.try_into()?).await?;

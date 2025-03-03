@@ -1,8 +1,8 @@
 use super::Result;
 use crate::data::{IntoWeb, NotificationWeb, SuccessResponse};
+use crate::service_context::ServiceContext;
 use bcr_ebill_api::NotificationFilter;
 use bcr_ebill_api::data::notification::Notification;
-use bcr_ebill_api::service::ServiceContext;
 use rocket::response::stream::{Event, EventStream};
 use rocket::serde::json::Json;
 use rocket::{State, get, post};
