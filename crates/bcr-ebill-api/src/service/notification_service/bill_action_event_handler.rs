@@ -4,7 +4,10 @@ use std::sync::Arc;
 use crate::{
     data::notification::Notification,
     persistence::notification::NotificationStoreApi,
-    service::notification_service::event::{BillActionEventPayload, Event},
+    service::{
+        ServiceTraitBounds,
+        notification_service::event::{BillActionEventPayload, Event},
+    },
 };
 
 use super::{
@@ -56,7 +59,10 @@ impl BillActionEventHandler {
     }
 }
 
-#[async_trait]
+impl ServiceTraitBounds for BillActionEventHandler {}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationHandlerApi for BillActionEventHandler {
     fn handles_event(&self, _event_type: &EventType) -> bool {
         true

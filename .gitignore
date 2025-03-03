@@ -11,6 +11,7 @@
 /test/*
 /files/*
 /company/*
+/pkg/*
 
 .idea/
 Cargo.lock
