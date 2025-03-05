@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use bcr_ebill_core::contact::IdentityPublicData;
 use bcr_ebill_transport::event::EventEnvelope;
 use log::{error, trace, warn};
 use nostr_sdk::Timestamp;
@@ -13,7 +14,6 @@ use bcr_ebill_persistence::NostrEventOffset;
 
 use super::handler::NotificationHandlerApi;
 use super::{NotificationJsonTransportApi, Result};
-use crate::data::contact::IdentityPublicData;
 use bcr_ebill_persistence::NostrEventOffsetStoreApi;
 
 #[derive(Clone, Debug)]
@@ -105,7 +105,11 @@ impl NostrClient {
 
 #[async_trait]
 impl NotificationJsonTransportApi for NostrClient {
-    async fn send(&self, recipient: &IdentityPublicData, event: EventEnvelope) -> Result<()> {
+    async fn send(
+        &self,
+        recipient: &IdentityPublicData,
+        event: EventEnvelope,
+    ) -> bcr_ebill_transport::Result<()> {
         if let Ok(npub) = crypto::get_nostr_npub_as_hex_from_node_id(&recipient.node_id) {
             let public_key = PublicKey::from_str(&npub)?;
             let message = serde_json::to_string(&event)?;

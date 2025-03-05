@@ -2,10 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bcr_ebill_transport::event::Event;
-use bcr_ebill_transport::event::bill_events::BillActionEventPayload;
+use bcr_ebill_transport::{BillActionEventPayload, Event};
 
-use super::transport::NotificationJsonTransportApi;
+use super::NotificationJsonTransportApi;
 use super::{NotificationServiceApi, Result};
 use crate::data::{
     bill::BitcreditBill,
@@ -367,14 +366,20 @@ impl NotificationServiceApi for DefaultNotificationService {
 #[cfg(test)]
 mod tests {
 
+    use mockall::{mock, predicate::eq};
     use std::sync::Arc;
-
-    use mockall::predicate::eq;
 
     use crate::service::contact_service::MockContactServiceApi;
     use crate::service::notification_service::create_nostr_consumer;
     use crate::service::notification_service::push_notification::MockPushApi;
-    use crate::service::notification_service::transport::MockNotificationJsonTransportApi;
+
+    mock! {
+        pub NotificationJsonTransport {}
+        #[async_trait]
+        impl NotificationJsonTransportApi for NotificationJsonTransport {
+            async fn send(&self, recipient: &IdentityPublicData, event: bcr_ebill_transport::EventEnvelope) -> bcr_ebill_transport::Result<()>;
+        }
+    }
 
     use super::super::test_utils::{
         get_identity_public_data, get_mock_nostr_client, get_test_bitcredit_bill,
@@ -390,7 +395,7 @@ mod tests {
             get_identity_public_data("part3", "part3@example.com", None),
         ];
 
-        let mut mock = MockNotificationJsonTransportApi::new();
+        let mut mock = MockNotificationJsonTransport::new();
 
         // expect to send payment rejected event to all recipients
         mock.expect_send()
@@ -470,7 +475,7 @@ mod tests {
             get_identity_public_data("part3", "part3@example.com", None),
         ];
 
-        let mut mock = MockNotificationJsonTransportApi::new();
+        let mut mock = MockNotificationJsonTransport::new();
 
         // expect to not send rejected event for non rejectable actions
         mock.expect_send().never();
@@ -499,7 +504,7 @@ mod tests {
             get_identity_public_data("part3", "part3@example.com", None),
         ];
 
-        let mut mock = MockNotificationJsonTransportApi::new();
+        let mut mock = MockNotificationJsonTransport::new();
 
         // expect to send payment timeout event to all recipients
         mock.expect_send()
@@ -547,7 +552,7 @@ mod tests {
             get_identity_public_data("part3", "part3@example.com", None),
         ];
 
-        let mut mock = MockNotificationJsonTransportApi::new();
+        let mut mock = MockNotificationJsonTransport::new();
 
         // expect to never send timeout event on non expiring events
         mock.expect_send().never();
@@ -572,7 +577,7 @@ mod tests {
     async fn test_send_recourse_action_event() {
         let recipient = get_identity_public_data("part1", "part1@example.com", None);
 
-        let mut mock = MockNotificationJsonTransportApi::new();
+        let mut mock = MockNotificationJsonTransport::new();
 
         // expect to send payment recourse event to all recipients
         mock.expect_send()
@@ -606,7 +611,7 @@ mod tests {
     async fn test_send_recourse_action_event_does_not_send_non_recurse_action() {
         let recipient = get_identity_public_data("part1", "part1@example.com", None);
 
-        let mut mock = MockNotificationJsonTransportApi::new();
+        let mut mock = MockNotificationJsonTransport::new();
 
         // expect not to send non recourse event
         mock.expect_send().never();
@@ -629,7 +634,7 @@ mod tests {
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
 
-        let mut mock = MockNotificationJsonTransportApi::new();
+        let mut mock = MockNotificationJsonTransport::new();
         mock.expect_send()
             .withf(|r, e| {
                 let valid_node_id = r.node_id == "drawee" && e.node_id == "drawee";
@@ -826,7 +831,7 @@ mod tests {
             .returning(move |_| Ok(vec![returning.clone()]));
 
         let service = DefaultNotificationService::new(
-            Box::new(MockNotificationJsonTransportApi::new()),
+            Box::new(MockNotificationJsonTransport::new()),
             Arc::new(mock_store),
         );
 
@@ -847,7 +852,7 @@ mod tests {
             .returning(|_| Ok(()));
 
         let service = DefaultNotificationService::new(
-            Box::new(MockNotificationJsonTransportApi::new()),
+            Box::new(MockNotificationJsonTransport::new()),
             Arc::new(mock_store),
         );
 
@@ -863,7 +868,7 @@ mod tests {
         action_type: ActionType,
     ) -> DefaultNotificationService {
         let node_id = node_id.to_owned();
-        let mut mock = MockNotificationJsonTransportApi::new();
+        let mut mock = MockNotificationJsonTransport::new();
         mock.expect_send()
             .withf(move |r, e| {
                 let valid_node_id = r.node_id == node_id && e.node_id == node_id;

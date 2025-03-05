@@ -29,12 +29,11 @@ mod email_sendgrid;
 mod handler;
 mod nostr;
 pub mod push_notification;
-mod transport;
 
 use bcr_ebill_core::notification::{ActionType, EventType};
+pub use bcr_ebill_transport::NotificationJsonTransportApi;
 pub use email::NotificationEmailTransportApi;
 pub use nostr::{NostrClient, NostrConfig, NostrConsumer};
-pub use transport::NotificationJsonTransportApi;
 
 use super::contact_service::ContactServiceApi;
 
