@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 bcr-ebill-core = { path = "../bcr-ebill-core" }
+bcr-ebill-persistence = { path = "../bcr-ebill-persistence" }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
