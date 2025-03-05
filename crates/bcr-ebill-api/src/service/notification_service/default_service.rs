@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bcr_ebill_transport::event::Event;
+use bcr_ebill_transport::event::bill_events::BillActionEventPayload;
 
-use super::event::{BillActionEventPayload, Event};
 use super::transport::NotificationJsonTransportApi;
 use super::{NotificationServiceApi, Result};
 use crate::data::{

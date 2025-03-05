@@ -1,16 +1,11 @@
 use super::{NotificationType, Result};
 use std::sync::Arc;
 
-use crate::{
-    data::notification::Notification,
-    persistence::notification::NotificationStoreApi,
-    service::notification_service::event::{BillActionEventPayload, Event},
-};
+use crate::{data::notification::Notification, persistence::notification::NotificationStoreApi};
 
-use super::{
-    EventEnvelope, EventType, handler::NotificationHandlerApi, push_notification::PushApi,
-};
+use super::{EventType, handler::NotificationHandlerApi, push_notification::PushApi};
 use async_trait::async_trait;
+use bcr_ebill_transport::event::{Event, EventEnvelope, bill_events::BillActionEventPayload};
 
 #[derive(Clone)]
 pub struct BillActionEventHandler {

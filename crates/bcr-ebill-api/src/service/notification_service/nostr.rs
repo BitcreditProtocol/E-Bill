@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use bcr_ebill_transport::event::EventEnvelope;
 use log::{error, trace, warn};
 use nostr_sdk::Timestamp;
 use nostr_sdk::prelude::*;
@@ -11,7 +12,7 @@ use crate::util::{BcrKeys, crypto};
 use bcr_ebill_persistence::NostrEventOffset;
 
 use super::handler::NotificationHandlerApi;
-use super::{EventEnvelope, NotificationJsonTransportApi, Result};
+use super::{NotificationJsonTransportApi, Result};
 use crate::data::contact::IdentityPublicData;
 use bcr_ebill_persistence::NostrEventOffsetStoreApi;
 
@@ -281,13 +282,13 @@ async fn handle_event(
 mod tests {
     use std::{sync::Arc, time::Duration};
 
+    use bcr_ebill_transport::event::Event;
     use mockall::predicate;
     use tokio::time;
 
     use super::super::test_utils::get_mock_relay;
     use super::{NostrClient, NostrConfig, NostrConsumer};
     use crate::persistence::nostr::NostrEventOffset;
-    use crate::service::notification_service::event::Event;
     use crate::service::{
         contact_service::MockContactServiceApi,
         notification_service::{

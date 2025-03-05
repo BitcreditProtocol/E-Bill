@@ -26,7 +26,6 @@ pub mod bill_action_event_handler;
 pub mod default_service;
 mod email;
 mod email_sendgrid;
-mod event;
 mod handler;
 mod nostr;
 pub mod push_notification;
@@ -34,7 +33,6 @@ mod transport;
 
 use bcr_ebill_core::notification::{ActionType, EventType};
 pub use email::NotificationEmailTransportApi;
-pub use event::EventEnvelope;
 pub use nostr::{NostrClient, NostrConfig, NostrConsumer};
 pub use transport::NotificationJsonTransportApi;
 
@@ -63,6 +61,9 @@ pub enum Error {
 
     #[error("Persistence error: {0}")]
     Persistence(#[from] persistence::Error),
+
+    #[error("Notification transport error: {0}")]
+    Notification(#[from] bcr_ebill_transport::Error),
 }
 
 /// Creates a new nostr client configured with the current identity user.

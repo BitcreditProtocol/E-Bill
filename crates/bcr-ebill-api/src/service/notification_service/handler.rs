@@ -1,5 +1,6 @@
-use super::{EventEnvelope, EventType, Result};
+use super::{EventType, Result};
 use async_trait::async_trait;
+use bcr_ebill_transport::event::EventEnvelope;
 use log::info;
 #[cfg(test)]
 use mockall::automock;

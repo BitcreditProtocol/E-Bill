@@ -13,9 +13,10 @@ use crate::{
 use nostr_relay_builder::prelude::*;
 
 use super::{
-    EventEnvelope, EventType, NostrConfig, Result, email::EmailMessage, event::Event,
-    handler::NotificationHandlerApi, nostr::NostrClient,
+    EventType, NostrConfig, Result, email::EmailMessage, handler::NotificationHandlerApi,
+    nostr::NostrClient,
 };
+use bcr_ebill_transport::event::{Event, EventEnvelope};
 use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
 

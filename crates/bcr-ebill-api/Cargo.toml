@@ -22,11 +22,15 @@ uuid.workspace = true
 bitcoin.workspace = true
 nostr-sdk.workspace = true
 futures.workspace = true
-reqwest = { version = "0.12.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+] }
 rust_decimal = { version = "1.36.0", default-features = false }
 infer = { version = "0.19.0", default-features = false }
-bcr-ebill-core = { path = "../bcr-ebill-core"}
-bcr-ebill-persistence = { path = "../bcr-ebill-persistence"}
+bcr-ebill-core = { path = "../bcr-ebill-core" }
+bcr-ebill-persistence = { path = "../bcr-ebill-persistence" }
+bcr-ebill-transport = { path = "../bcr-ebill-transport" }
 
 [dev-dependencies]
 mockall = "0.13.1"
