@@ -14,6 +14,8 @@ pub use error::Error;
 #[cfg(test)]
 use mockall::automock;
 
+use super::ServiceTraitBounds;
+
 /// Generic result type
 pub type Result<T> = std::result::Result<T, error::Error>;
 
@@ -45,9 +47,13 @@ pub enum BillAction {
     RejectPaymentForRecourse,
 }
 
+#[cfg(test)]
+impl ServiceTraitBounds for MockBillServiceApi {}
+
 #[cfg_attr(test, automock)]
-#[async_trait]
-pub trait BillServiceApi: Send + Sync {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait BillServiceApi: ServiceTraitBounds {
     /// Get bill balances
     async fn get_bill_balances(
         &self,
@@ -117,13 +123,14 @@ pub trait BillServiceApi: Send + Sync {
     #[allow(clippy::too_many_arguments)]
     async fn issue_new_bill(
         &self,
+        t: u64,
         country_of_issuing: String,
         city_of_issuing: String,
         issue_date: String,
         maturity_date: String,
-        drawee: IdentityPublicData,
-        payee: IdentityPublicData,
-        sum: u64,
+        drawee: String,
+        payee: String,
+        sum: String,
         currency: String,
         country_of_payment: String,
         city_of_payment: String,
@@ -425,18 +432,21 @@ pub mod tests {
         let service = get_service(ctx);
 
         let drawer = get_baseline_identity();
-        let drawee = empty_identity_public_data();
-        let payee = empty_identity_public_data();
+        let mut drawee = empty_identity_public_data();
+        drawee.node_id = BcrKeys::new().get_public_key();
+        let mut payee = empty_identity_public_data();
+        payee.node_id = BcrKeys::new().get_public_key();
 
         let bill = service
             .issue_new_bill(
+                2,
                 String::from("UK"),
                 String::from("London"),
                 String::from("2030-01-01"),
                 String::from("2030-04-01"),
-                drawee,
-                payee,
-                100,
+                drawee.node_id,
+                payee.node_id,
+                String::from("100"),
                 String::from("sat"),
                 String::from("AT"),
                 String::from("Vienna"),
@@ -476,18 +486,21 @@ pub mod tests {
         let service = get_service(ctx);
 
         let drawer = get_baseline_company_data();
-        let drawee = empty_identity_public_data();
-        let payee = empty_identity_public_data();
+        let mut drawee = empty_identity_public_data();
+        drawee.node_id = BcrKeys::new().get_public_key();
+        let mut payee = empty_identity_public_data();
+        payee.node_id = BcrKeys::new().get_public_key();
 
         let bill = service
             .issue_new_bill(
+                2,
                 String::from("UK"),
                 String::from("London"),
                 String::from("2030-01-01"),
                 String::from("2030-04-01"),
-                drawee,
-                payee,
-                100,
+                drawee.node_id,
+                payee.node_id,
+                String::from("100"),
                 String::from("sat"),
                 String::from("AT"),
                 String::from("Vienna"),

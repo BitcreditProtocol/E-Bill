@@ -1,7 +1,8 @@
 use super::Result;
 use super::middleware::IdentityCheck;
 use crate::data::BitcreditEbillQuote;
-use bcr_ebill_api::service::{Error, ServiceContext};
+use crate::service_context::ServiceContext;
+use bcr_ebill_api::service::Error;
 use log::info;
 use rocket::serde::json::Json;
 use rocket::{State, get, put};

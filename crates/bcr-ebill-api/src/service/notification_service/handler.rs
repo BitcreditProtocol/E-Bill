@@ -1,14 +1,20 @@
+use crate::service::ServiceTraitBounds;
+
 use super::{EventEnvelope, EventType, Result};
 use async_trait::async_trait;
 use log::info;
 #[cfg(test)]
 use mockall::automock;
 
+#[cfg(test)]
+impl ServiceTraitBounds for MockNotificationHandlerApi {}
+
 /// Handle an event when we receive it from a channel.
 #[allow(dead_code)]
 #[cfg_attr(test, automock)]
-#[async_trait]
-pub trait NotificationHandlerApi: Send + Sync {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait NotificationHandlerApi: ServiceTraitBounds {
     /// Whether this handler handles the given event type.
     fn handles_event(&self, event_type: &EventType) -> bool;
 
@@ -25,8 +31,11 @@ pub struct LoggingEventHandler {
     pub event_types: Vec<EventType>,
 }
 
+impl ServiceTraitBounds for LoggingEventHandler {}
+
 /// Just a dummy handler that logs the event and returns Ok(())
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationHandlerApi for LoggingEventHandler {
     fn handles_event(&self, event_type: &EventType) -> bool {
         self.event_types.contains(event_type)

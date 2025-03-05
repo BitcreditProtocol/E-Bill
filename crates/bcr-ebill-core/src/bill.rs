@@ -7,6 +7,14 @@ use crate::util::date::date_string_to_i64_timestamp;
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
+#[repr(u8)]
+#[derive(Debug, Clone, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, PartialEq, Eq)]
+pub enum BillType {
+    PromissoryNote = 0, // Drawer pays to payee
+    SelfDrafted = 1,    // Drawee pays to drawer
+    ThreeParties = 2,   // Drawee pays to payee
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone)]
 pub struct BitcreditBill {
     pub id: String,

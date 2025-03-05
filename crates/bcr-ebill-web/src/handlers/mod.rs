@@ -4,10 +4,11 @@ use crate::data::{
     SuccessResponse,
 };
 use crate::router::ErrorResponse;
+use crate::service_context::ServiceContext;
 use crate::{CONFIG, constants::VALID_CURRENCIES};
 use bcr_ebill_api::{
     data::GeneralSearchFilterItemType,
-    service::{Error, ServiceContext, bill_service},
+    service::{Error, bill_service},
     util::file::detect_content_type_for_bytes,
 };
 use bill::get_current_identity_node_id;
@@ -266,7 +267,8 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for BillServiceError {
             | bill_service::Error::RequestAlreadyRejected
             | bill_service::Error::CallerIsNotHolder
             | bill_service::Error::NoFileForFileUploadId
-            | bill_service::Error::InvalidOperation => {
+            | bill_service::Error::InvalidOperation
+            | bill_service::Error::InvalidBillType => {
                 let body =
                     ErrorResponse::new("bad_request", self.0.to_string(), 400).to_json_string();
                 Response::build()
@@ -275,6 +277,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for BillServiceError {
                     .sized_body(body.len(), Cursor::new(body))
                     .ok()
             }
+            bill_service::Error::Validation(msg) => build_validation_response(msg),
             bill_service::Error::NotFound => {
                 let body =
                     ErrorResponse::new("not_found", "not found".to_string(), 404).to_json_string();

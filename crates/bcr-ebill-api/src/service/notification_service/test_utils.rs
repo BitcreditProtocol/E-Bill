@@ -1,6 +1,7 @@
 use crate::{
     data::{bill::BitcreditBill, contact::IdentityPublicData},
     persistence::DbContext,
+    service::ServiceTraitBounds,
     tests::tests::{
         MockBackupStoreApiMock, MockBillChainStoreApiMock, MockBillStoreApiMock,
         MockCompanyChainStoreApiMock, MockCompanyStoreApiMock, MockContactStoreApiMock,
@@ -55,7 +56,10 @@ impl<T: Serialize + DeserializeOwned> TestEventHandler<T> {
     }
 }
 
-#[async_trait]
+impl<T: Serialize + DeserializeOwned + Send + Sync> ServiceTraitBounds for TestEventHandler<T> {}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationHandlerApi for TestEventHandler<TestEventPayload> {
     fn handles_event(&self, event_type: &EventType) -> bool {
         match &self.accepted_event {

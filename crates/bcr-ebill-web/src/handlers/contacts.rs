@@ -5,11 +5,12 @@ use crate::data::{
     ContactTypeWeb, ContactWeb, ContactsResponse, FromWeb, IntoWeb, SuccessResponse,
     TempFileWrapper, UploadFileForm, UploadFilesResponse,
 };
+use crate::service_context::ServiceContext;
 use bcr_ebill_api::data::{
     OptionalPostalAddress, PostalAddress,
     contact::{Contact, ContactType},
 };
-use bcr_ebill_api::service::{self, ServiceContext};
+use bcr_ebill_api::service::{self};
 use bcr_ebill_api::util;
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
 use rocket::form::Form;
@@ -141,6 +142,8 @@ pub async fn edit_contact(
     edit_contact_payload: Json<EditContactPayload>,
 ) -> Result<Json<SuccessResponse>> {
     let payload = edit_contact_payload.0;
+    util::file::validate_file_upload_id(&payload.avatar_file_upload_id)?;
+    util::file::validate_file_upload_id(&payload.proof_document_file_upload_id)?;
     state
         .contact_service
         .update_contact(
