@@ -11,7 +11,7 @@ use crate::constants::{PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS};
 use crate::util::{self, BcrKeys};
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
 pub struct BillBlockchain {
@@ -234,15 +234,29 @@ impl BillBlockchain {
     /// - A vector containing the unique identifiers of nodes associated with the bill.
     ///
     pub fn get_all_nodes_from_bill(&self, bill_keys: &BillKeys) -> Result<Vec<String>> {
-        let mut nodes: HashSet<String> = HashSet::new();
+        let node_map = self.get_all_nodes_with_added_block_height(bill_keys)?;
+        Ok(node_map.keys().cloned().collect())
+    }
 
-        for block in &self.blocks {
+    /// Returns all nodes that are part of this chain with the block height they were added.
+    ///
+    /// # Returns
+    /// `HashMap<String, usize>`:
+    /// - A map containing the unique identifiers of nodes and the block height they were added.
+    pub fn get_all_nodes_with_added_block_height(
+        &self,
+        bill_keys: &BillKeys,
+    ) -> Result<HashMap<String, usize>> {
+        let mut nodes: HashMap<String, usize> = HashMap::new();
+        for (height, block) in self.blocks.iter().enumerate() {
             let nodes_in_block = block.get_nodes_from_block(bill_keys)?;
             for node in nodes_in_block {
-                nodes.insert(node);
+                if !nodes.contains_key(&node) {
+                    nodes.insert(node, height);
+                }
             }
         }
-        Ok(nodes.into_iter().collect())
+        Ok(nodes)
     }
 }
 
@@ -403,12 +417,22 @@ mod tests {
         let node_id_last_endorsee = BcrKeys::new().get_public_key();
         assert!(chain.try_add_block(get_offer_to_sell_block(
             node_id_last_endorsee.clone(),
-            identity.identity.node_id,
+            identity.identity.node_id.to_owned(),
             chain.get_first_block()
         ),));
 
         let keys = get_bill_keys();
         let result = chain.get_all_nodes_from_bill(&keys);
+
+        let with_blocks = chain.get_all_nodes_with_added_block_height(&keys).unwrap();
+        assert_eq!(
+            with_blocks[&identity.identity.node_id], 0,
+            "Block 0 should have added drawer node_id"
+        );
+        assert_eq!(
+            with_blocks[&node_id_last_endorsee], 1,
+            "Block 1 should have added the new node_id"
+        );
 
         assert!(result.is_ok());
         assert_eq!(result.as_ref().unwrap().len(), 3); // drawer, buyer, seller
