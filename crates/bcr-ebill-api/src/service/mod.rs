@@ -14,13 +14,13 @@ use crate::util;
 use crate::{blockchain, external};
 use backup_service::{BackupService, BackupServiceApi};
 use bcr_ebill_persistence::db::SurrealDbConfig;
+use bcr_ebill_transport::{PushApi, PushService};
 use bill_service::{BillServiceApi, service::BillService};
 use company_service::{CompanyService, CompanyServiceApi};
 use contact_service::{ContactService, ContactServiceApi};
 use file_upload_service::{FileUploadService, FileUploadServiceApi};
 use identity_service::{IdentityService, IdentityServiceApi};
 use log::error;
-use notification_service::push_notification::{PushApi, PushService};
 use notification_service::{
     NostrConsumer, NotificationServiceApi, create_nostr_client, create_nostr_consumer,
     create_notification_service,

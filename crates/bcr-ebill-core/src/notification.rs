@@ -103,6 +103,7 @@ pub enum EventType {
     BillMintingRequested,
     BillNewQuote,
     BillQuoteApproved,
+    BillBlock,
 }
 
 impl EventType {
@@ -129,7 +130,15 @@ impl EventType {
             Self::BillMintingRequested,
             Self::BillNewQuote,
             Self::BillQuoteApproved,
+            Self::BillBlock,
         ]
+    }
+
+    pub fn is_action_event(&self) -> bool {
+        match self {
+            Self::BillBlock => false,
+            _ => true,
+        }
     }
 }
 

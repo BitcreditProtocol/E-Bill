@@ -1,34 +1,28 @@
 use std::sync::Arc;
 
 use crate::Config;
-use crate::data::{
-    bill::BitcreditBill,
-    contact::IdentityPublicData,
-    notification::{Notification, NotificationType},
-};
+use crate::data::{bill::BitcreditBill, contact::IdentityPublicData, notification::Notification};
 use crate::persistence::nostr::NostrEventOffsetStoreApi;
 use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
 use crate::persistence::{self, identity::IdentityStoreApi};
 use crate::util::{self};
 use async_trait::async_trait;
-use bill_action_event_handler::BillActionEventHandler;
+use bcr_ebill_transport::PushApi;
+use bcr_ebill_transport::handler::{
+    BillActionEventHandler, LoggingEventHandler, NotificationHandlerApi,
+};
 use default_service::DefaultNotificationService;
-use handler::{LoggingEventHandler, NotificationHandlerApi};
 #[cfg(test)]
 use mockall::automock;
-use push_notification::PushApi;
 use thiserror::Error;
 
 #[cfg(test)]
 pub mod test_utils;
 
-pub mod bill_action_event_handler;
 pub mod default_service;
 mod email;
 mod email_sendgrid;
-mod handler;
 mod nostr;
-pub mod push_notification;
 
 use bcr_ebill_core::notification::{ActionType, EventType};
 pub use bcr_ebill_transport::NotificationJsonTransportApi;

@@ -1,11 +1,12 @@
-use super::{NotificationType, Result};
+use super::{NotificationHandlerApi, Result};
 use std::sync::Arc;
 
-use crate::{data::notification::Notification, persistence::notification::NotificationStoreApi};
+use crate::{BillActionEventPayload, Event, EventEnvelope, PushApi};
 
-use super::{EventType, handler::NotificationHandlerApi, push_notification::PushApi};
+use super::EventType;
 use async_trait::async_trait;
-use bcr_ebill_transport::event::{Event, EventEnvelope, bill_events::BillActionEventPayload};
+use bcr_ebill_core::notification::{Notification, NotificationType};
+use bcr_ebill_persistence::NotificationStoreApi;
 
 #[derive(Clone)]
 pub struct BillActionEventHandler {
@@ -47,14 +48,15 @@ impl BillActionEventHandler {
             EventType::BillMintingRequested => "Bill should be minted".to_string(),
             EventType::BillNewQuote => "New quote has been added".to_string(),
             EventType::BillQuoteApproved => "Quote has been approved".to_string(),
+            EventType::BillBlock => "".to_string(),
         }
     }
 }
 
 #[async_trait]
 impl NotificationHandlerApi for BillActionEventHandler {
-    fn handles_event(&self, _event_type: &EventType) -> bool {
-        true
+    fn handles_event(&self, event_type: &EventType) -> bool {
+        event_type.is_action_event()
     }
 
     async fn handle_event(&self, event: EventEnvelope, node_id: &str) -> Result<()> {

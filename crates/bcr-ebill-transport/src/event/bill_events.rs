@@ -1,7 +1,4 @@
-use bcr_ebill_core::{
-    blockchain::bill::{BillBlock, BillBlockchain},
-    notification::ActionType,
-};
+use bcr_ebill_core::{bill::BillKeys, blockchain::bill::BillBlock, notification::ActionType};
 use serde::{Deserialize, Serialize};
 
 /// Can be used for all events that are just signalling an action
@@ -25,6 +22,6 @@ pub struct BillChainEventPayload {
     pub bill_id: String,
     pub action_type: Option<ActionType>,
     pub sum: Option<u64>,
-    pub block: Option<BillBlock>,
-    pub chain: Option<BillBlockchain>,
+    pub keys: Option<BillKeys>,
+    pub blocks: Vec<BillBlock>,
 }

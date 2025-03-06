@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use bcr_ebill_core::contact::IdentityPublicData;
 use bcr_ebill_transport::event::EventEnvelope;
+use bcr_ebill_transport::handler::NotificationHandlerApi;
 use log::{error, trace, warn};
 use nostr_sdk::Timestamp;
 use nostr_sdk::prelude::*;
@@ -12,7 +13,6 @@ use crate::service::contact_service::ContactServiceApi;
 use crate::util::{BcrKeys, crypto};
 use bcr_ebill_persistence::NostrEventOffset;
 
-use super::handler::NotificationHandlerApi;
 use super::{NotificationJsonTransportApi, Result};
 use bcr_ebill_persistence::NostrEventOffsetStoreApi;
 
@@ -287,6 +287,7 @@ mod tests {
     use std::{sync::Arc, time::Duration};
 
     use bcr_ebill_transport::event::Event;
+    use bcr_ebill_transport::handler::NotificationHandlerApi;
     use mockall::predicate;
     use tokio::time;
 
@@ -295,13 +296,20 @@ mod tests {
     use crate::persistence::nostr::NostrEventOffset;
     use crate::service::{
         contact_service::MockContactServiceApi,
-        notification_service::{
-            EventType, NotificationJsonTransportApi, handler::MockNotificationHandlerApi,
-            test_utils::*,
-        },
+        notification_service::{EventType, NotificationJsonTransportApi, test_utils::*},
     };
     use crate::tests::tests::MockNostrEventOffsetStoreApiMock;
     use crate::util::BcrKeys;
+    use mockall::mock;
+
+    mock! {
+        pub NotificationHandler {}
+        #[async_trait::async_trait]
+        impl NotificationHandlerApi for NotificationHandler {
+            async fn handle_event(&self, event: bcr_ebill_transport::EventEnvelope, identity: &str) -> bcr_ebill_transport::Result<()>;
+            fn handles_event(&self, event_type: &EventType) -> bool;
+        }
+    }
 
     /// When testing with the mock relay we need to be careful. It is always
     /// listening on the same port and will not start multiple times. If we
@@ -347,7 +355,7 @@ mod tests {
             .returning(|_| Ok(true));
 
         // expect a handler that is subscribed to the event type w sent
-        let mut handler = MockNotificationHandlerApi::new();
+        let mut handler = MockNotificationHandler::new();
         handler
             .expect_handles_event()
             .with(predicate::eq(&EventType::BillSigned))

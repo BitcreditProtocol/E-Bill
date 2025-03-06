@@ -12,11 +12,11 @@ use crate::{
 };
 use nostr_relay_builder::prelude::*;
 
-use super::{
-    EventType, NostrConfig, Result, email::EmailMessage, handler::NotificationHandlerApi,
-    nostr::NostrClient,
+use super::{EventType, NostrConfig, email::EmailMessage, nostr::NostrClient};
+use bcr_ebill_transport::{
+    event::{Event, EventEnvelope},
+    handler::NotificationHandlerApi,
 };
-use bcr_ebill_transport::event::{Event, EventEnvelope};
 use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
 
@@ -65,7 +65,7 @@ impl NotificationHandlerApi for TestEventHandler<TestEventPayload> {
         }
     }
 
-    async fn handle_event(&self, event: EventEnvelope, _: &str) -> Result<()> {
+    async fn handle_event(&self, event: EventEnvelope, _: &str) -> bcr_ebill_transport::Result<()> {
         *self.called.lock().await = true;
         let event: Event<TestEventPayload> = event.try_into()?;
         *self.received_event.lock().await = Some(event);

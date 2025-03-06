@@ -1,46 +1,98 @@
+use std::collections::HashMap;
+
 use bcr_ebill_core::{
-    bill::BillKeys,
-    blockchain::bill::{BillBlock, BillBlockchain},
-    blockchain::{Block, Blockchain},
+    bill::{BillKeys, BitcreditBill},
+    blockchain::{
+        Blockchain,
+        bill::{BillBlock, BillBlockchain},
+    },
+    notification::{ActionType, EventType},
 };
 
-use crate::Result;
+use crate::{BillChainEventPayload, Result};
 
-pub struct BillChainEvent {
-    bill_id: String,
+use super::Event;
+
+pub struct BillChainEventBuilder {
+    bill: BitcreditBill,
     bill_keys: BillKeys,
     chain: BillBlockchain,
-    new_nodes: Vec<String>,
+    participants: HashMap<String, usize>,
 }
 
-impl BillChainEvent {
-    pub fn new(bill_id: String, chain: BillBlockchain, bill_keys: BillKeys) -> Self {
-        Self {
-            bill_id,
-            chain,
-            bill_keys,
-            new_nodes: Vec::new(),
-        }
+impl BillChainEventBuilder {
+    /// Create a new BillChainEvent instance.
+    pub fn new(bill: &BitcreditBill, chain: &BillBlockchain, bill_keys: &BillKeys) -> Result<Self> {
+        let participants = chain.get_all_nodes_with_added_block_height(&bill_keys)?;
+        Ok(Self {
+            bill: bill.clone(),
+            chain: chain.clone(),
+            bill_keys: bill_keys.clone(),
+            participants,
+        })
     }
 
-    pub fn new_node(mut self, node: &str) -> Self {
-        self.new_nodes.push(node.to_string());
-        self
-    }
-
-    pub fn bill_id(&self) -> String {
-        self.bill_id.to_owned()
-    }
-
-    pub fn recipients(&self) -> Result<Vec<String>> {
-        Ok(self.chain.get_all_nodes_from_bill(&self.bill_keys)?)
-    }
-
-    pub fn lastest_block(&self) -> BillBlock {
+    // Returns the latest block in the chain.
+    fn lastest_block(&self) -> BillBlock {
         self.chain.get_latest_block().clone()
     }
 
-    pub fn timestamp(&self) -> u64 {
-        self.chain.get_latest_block().timestamp()
+    // Returns all blocks for newly added participants, otherwise just the latest block or no
+    // blocks if the node is not a participant.
+    fn get_blocks_for_node(&self, node_id: &str) -> Vec<BillBlock> {
+        match self.participants.get(node_id) {
+            Some(height) if *height == self.chain.block_height() => self.chain.blocks().clone(),
+            Some(_) => vec![self.lastest_block()],
+            None => Vec::new(),
+        }
+    }
+
+    // Returns some bill keys in case the node is a new participant, otherwise none.
+    fn get_keys_for_node(&self, node_id: &str) -> Option<BillKeys> {
+        match self.participants.get(node_id) {
+            Some(height) if *height == self.chain.block_height() => Some(self.bill_keys.clone()),
+            _ => None,
+        }
+    }
+
+    /// Generates a bill action event for a single node id. Will leave out chain information
+    /// in case the node is not a participant.
+    pub fn generate_action_message(
+        &self,
+        node_id: &str,
+        event_type: EventType,
+        action: ActionType,
+    ) -> Event<BillChainEventPayload> {
+        Event::new(
+            event_type,
+            node_id,
+            BillChainEventPayload {
+                bill_id: self.bill.id.to_owned(),
+                action_type: Some(action),
+                sum: Some(self.bill.sum),
+                keys: self.get_keys_for_node(node_id),
+                blocks: self.get_blocks_for_node(node_id),
+            },
+        )
+    }
+
+    /// Generates bill block events for all participants in the chain.
+    pub fn generate_action_messages(&self) -> Vec<Event<BillChainEventPayload>> {
+        self.participants
+            .keys()
+            .map(|node_id| {
+                Event::new(
+                    EventType::BillBlock,
+                    node_id,
+                    BillChainEventPayload {
+                        bill_id: self.bill.id.to_owned(),
+                        action_type: None,
+                        sum: Some(self.bill.sum),
+                        keys: self.get_keys_for_node(node_id),
+                        blocks: self.get_blocks_for_node(node_id),
+                    },
+                )
+            })
+            .collect()
     }
 }

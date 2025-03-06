@@ -366,18 +366,29 @@ impl NotificationServiceApi for DefaultNotificationService {
 #[cfg(test)]
 mod tests {
 
+    use bcr_ebill_transport::PushApi;
     use mockall::{mock, predicate::eq};
     use std::sync::Arc;
 
     use crate::service::contact_service::MockContactServiceApi;
     use crate::service::notification_service::create_nostr_consumer;
-    use crate::service::notification_service::push_notification::MockPushApi;
 
     mock! {
         pub NotificationJsonTransport {}
         #[async_trait]
         impl NotificationJsonTransportApi for NotificationJsonTransport {
             async fn send(&self, recipient: &IdentityPublicData, event: bcr_ebill_transport::EventEnvelope) -> bcr_ebill_transport::Result<()>;
+        }
+
+    }
+
+    mock! {
+
+        pub PushService {}
+        #[async_trait]
+        impl PushApi for PushService {
+            async fn send(&self, value: serde_json::Value);
+            async fn subscribe(&self) -> tokio::sync::broadcast::Receiver<serde_json::Value> ;
         }
     }
 
@@ -907,7 +918,7 @@ mod tests {
         let contact_service = Arc::new(MockContactServiceApi::new());
         let store = Arc::new(MockNostrEventOffsetStoreApiMock::new());
         let notification_store = Arc::new(MockNotificationStoreApiMock::new());
-        let push_service = Arc::new(MockPushApi::new());
+        let push_service = Arc::new(MockPushService::new());
         let _ = create_nostr_consumer(
             client,
             contact_service,
