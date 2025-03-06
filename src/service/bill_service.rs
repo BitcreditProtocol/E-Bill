@@ -3296,11 +3296,15 @@ impl BitcreditBillToReturn {
             return Some(BillRole::Payer);
         }
 
-        // Node id is payee / endorsee
-        if self.payee.node_id == *node_id
-            || self.endorsee.as_ref().map(|e| e.node_id.as_str()) == Some(node_id)
-        {
-            return Some(BillRole::Payee);
+        // Node id is payee, or, if an endorsee is set and node id is endorsee, node id is payee
+        if let Some(ref endorsee) = self.endorsee {
+            if endorsee.node_id == *node_id {
+                return Some(BillRole::Payee);
+            }
+        } else {
+            if self.payee.node_id == *node_id {
+                return Some(BillRole::Payee);
+            }
         }
 
         // Node id is part of the bill, but neither payer, nor payee - they are part of the risk
