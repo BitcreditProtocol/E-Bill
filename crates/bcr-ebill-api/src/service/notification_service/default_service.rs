@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bcr_ebill_transport::{BillActionEventPayload, Event};
+use bcr_ebill_transport::{BillActionEventPayload, BillChainEvent, Event};
 
 use super::NotificationJsonTransportApi;
 use super::{NotificationServiceApi, Result};
@@ -12,6 +12,7 @@ use crate::data::{
     notification::{Notification, NotificationType},
 };
 use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
+use crate::service::contact_service::ContactServiceApi;
 use bcr_ebill_core::notification::{ActionType, EventType};
 
 /// A default implementation of the NotificationServiceApi that can
@@ -20,50 +21,50 @@ use bcr_ebill_core::notification::{ActionType, EventType};
 pub struct DefaultNotificationService {
     notification_transport: Box<dyn NotificationJsonTransportApi>,
     notification_store: Arc<dyn NotificationStoreApi>,
+    contact_service: Arc<dyn ContactServiceApi>,
 }
 
 impl DefaultNotificationService {
     pub fn new(
         notification_transport: Box<dyn NotificationJsonTransportApi>,
         notification_store: Arc<dyn NotificationStoreApi>,
+        contact_service: Arc<dyn ContactServiceApi>,
     ) -> Self {
         Self {
             notification_transport,
             notification_store,
+            contact_service,
         }
     }
 }
 
 #[async_trait]
 impl NotificationServiceApi for DefaultNotificationService {
-    async fn send_bill_is_signed_event(&self, bill: &BitcreditBill) -> Result<()> {
+    async fn send_bill_is_signed_event(&self, event: &BillChainEvent) -> Result<()> {
         let event_type = EventType::BillSigned;
-        let payer_event = Event::new(
-            event_type.to_owned(),
-            &bill.drawee.node_id,
-            BillActionEventPayload {
-                bill_id: bill.id.clone(),
-                action_type: ActionType::AcceptBill,
-                sum: Some(bill.sum),
-            },
-        );
-        let payee_event = Event::new(
-            event_type,
-            &bill.payee.node_id,
-            BillActionEventPayload {
-                bill_id: bill.id.clone(),
-                action_type: ActionType::CheckBill,
-                sum: Some(bill.sum),
-            },
-        );
 
-        self.notification_transport
-            .send(&bill.drawee, payer_event.try_into()?)
-            .await?;
+        let all_events = event.generate_action_messages(HashMap::from_iter(vec![
+            (
+                event.bill.drawee.node_id.clone(),
+                (event_type.clone(), ActionType::AcceptBill),
+            ),
+            (
+                event.bill.payee.node_id.clone(),
+                (event_type, ActionType::CheckBill),
+            ),
+        ]));
 
-        self.notification_transport
-            .send(&bill.payee, payee_event.try_into()?)
-            .await?;
+        for event in all_events.into_iter() {
+            if let Ok(Some(identity)) = self
+                .contact_service
+                .get_identity_by_node_id(&event.node_id)
+                .await
+            {
+                self.notification_transport
+                    .send(&identity, event.try_into()?)
+                    .await?;
+            }
+        }
 
         Ok(())
     }
@@ -366,10 +367,12 @@ impl NotificationServiceApi for DefaultNotificationService {
 #[cfg(test)]
 mod tests {
 
+    use bcr_ebill_core::bill::BillKeys;
     use bcr_ebill_transport::PushApi;
     use mockall::{mock, predicate::eq};
     use std::sync::Arc;
 
+    use crate::service::bill_service::test_utils::get_genesis_chain;
     use crate::service::contact_service::MockContactServiceApi;
     use crate::service::notification_service::create_nostr_consumer;
 
@@ -396,7 +399,10 @@ mod tests {
         get_identity_public_data, get_mock_nostr_client, get_test_bitcredit_bill,
     };
     use super::*;
-    use crate::tests::tests::{MockNostrEventOffsetStoreApiMock, MockNotificationStoreApiMock};
+    use crate::tests::tests::{
+        MockNostrEventOffsetStoreApiMock, MockNotificationStoreApiMock, TEST_PRIVATE_KEY_SECP,
+        TEST_PUB_KEY_SECP,
+    };
 
     #[tokio::test]
     async fn test_send_request_to_action_rejected_event() {
@@ -435,6 +441,7 @@ mod tests {
         let service = DefaultNotificationService {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(MockContactServiceApi::new()),
         };
 
         service
@@ -494,6 +501,7 @@ mod tests {
         let service = DefaultNotificationService {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(MockContactServiceApi::new()),
         };
 
         service
@@ -532,6 +540,7 @@ mod tests {
         let service = DefaultNotificationService {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(MockContactServiceApi::new()),
         };
 
         service
@@ -571,6 +580,7 @@ mod tests {
         let service = DefaultNotificationService {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(MockContactServiceApi::new()),
         };
 
         service
@@ -605,6 +615,7 @@ mod tests {
         let service = DefaultNotificationService {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(MockContactServiceApi::new()),
         };
 
         service
@@ -630,6 +641,7 @@ mod tests {
         let service = DefaultNotificationService {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(MockContactServiceApi::new()),
         };
 
         service
@@ -638,12 +650,42 @@ mod tests {
             .expect("failed to send event");
     }
 
+    fn bill_keys() -> BillKeys {
+        BillKeys {
+            private_key: TEST_PRIVATE_KEY_SECP.to_owned(),
+            public_key: TEST_PUB_KEY_SECP.to_owned(),
+        }
+    }
+
     #[tokio::test]
     async fn test_send_bill_is_signed_event() {
         // given a payer and payee with a new bill
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let chain = get_genesis_chain(Some(bill.clone()));
+
+        let mut mock_contact_service = MockContactServiceApi::new();
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq("payee"))
+            .returning(|_| {
+                Ok(Some(get_identity_public_data(
+                    "payee",
+                    "payee@example.com",
+                    None,
+                )))
+            });
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq("drawee"))
+            .returning(|_| {
+                Ok(Some(get_identity_public_data(
+                    "drawee",
+                    "drawee@example.com",
+                    None,
+                )))
+            });
 
         let mut mock = MockNotificationJsonTransport::new();
         mock.expect_send()
@@ -669,10 +711,13 @@ mod tests {
         let service = DefaultNotificationService {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(mock_contact_service),
         };
 
+        let event = BillChainEvent::new(&bill, &chain, &bill_keys()).unwrap();
+
         service
-            .send_bill_is_signed_event(&bill)
+            .send_bill_is_signed_event(&event)
             .await
             .expect("failed to send event");
     }
@@ -844,6 +889,7 @@ mod tests {
         let service = DefaultNotificationService::new(
             Box::new(MockNotificationJsonTransport::new()),
             Arc::new(mock_store),
+            Arc::new(MockContactServiceApi::new()),
         );
 
         let res = service
@@ -865,6 +911,7 @@ mod tests {
         let service = DefaultNotificationService::new(
             Box::new(MockNotificationJsonTransport::new()),
             Arc::new(mock_store),
+            Arc::new(MockContactServiceApi::new()),
         );
 
         service
@@ -891,6 +938,7 @@ mod tests {
         DefaultNotificationService {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(MockContactServiceApi::new()),
         }
     }
 

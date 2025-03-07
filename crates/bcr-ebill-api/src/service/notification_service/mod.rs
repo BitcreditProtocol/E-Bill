@@ -42,10 +42,12 @@ pub async fn create_nostr_client(
 pub async fn create_notification_service(
     client: NostrClient,
     notification_store: Arc<dyn NotificationStoreApi>,
+    contact_service: Arc<dyn ContactServiceApi>,
 ) -> Result<Arc<dyn NotificationServiceApi>> {
     Ok(Arc::new(DefaultNotificationService::new(
         Box::new(client),
         notification_store,
+        contact_service,
     )))
 }
 

@@ -251,8 +251,8 @@ impl BillBlockchain {
         for (height, block) in self.blocks.iter().enumerate() {
             let nodes_in_block = block.get_nodes_from_block(bill_keys)?;
             for node in nodes_in_block {
-                if !nodes.contains_key(&node) {
-                    nodes.insert(node, height);
+                if !nodes.contains_key(&node) && node != "" {
+                    nodes.insert(node, height + 1);
                 }
             }
         }
@@ -426,12 +426,12 @@ mod tests {
 
         let with_blocks = chain.get_all_nodes_with_added_block_height(&keys).unwrap();
         assert_eq!(
-            with_blocks[&identity.identity.node_id], 0,
-            "Block 0 should have added drawer node_id"
+            with_blocks[&identity.identity.node_id], 1,
+            "Block 1 should have added drawer node_id"
         );
         assert_eq!(
-            with_blocks[&node_id_last_endorsee], 1,
-            "Block 1 should have added the new node_id"
+            with_blocks[&node_id_last_endorsee], 2,
+            "Block 2 should have added the new node_id"
         );
 
         assert!(result.is_ok());

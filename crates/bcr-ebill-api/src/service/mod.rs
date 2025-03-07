@@ -146,8 +146,12 @@ pub async fn create_service_context(
     let bitcoin_client = Arc::new(BitcoinClient::new());
 
     let nostr_client = create_nostr_client(&config, db.identity_store.clone()).await?;
-    let notification_service =
-        create_notification_service(nostr_client.clone(), db.notification_store.clone()).await?;
+    let notification_service = create_notification_service(
+        nostr_client.clone(),
+        db.notification_store.clone(),
+        contact_service.clone(),
+    )
+    .await?;
 
     let bill_service = Arc::new(BillService::new(
         db.bill_store,

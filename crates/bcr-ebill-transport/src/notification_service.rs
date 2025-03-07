@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{Result, event::chain_event::BillChainEvent};
 use async_trait::async_trait;
 use bcr_ebill_core::{
     bill::BitcreditBill,
@@ -17,7 +17,7 @@ pub trait NotificationServiceApi: Send + Sync {
     /// Sent when: A bill is signed by: Drawer
     /// Receiver: Payer, Action: AcceptBill
     /// Receiver: Payee, Action: CheckBill
-    async fn send_bill_is_signed_event(&self, bill: &BitcreditBill) -> Result<()>;
+    async fn send_bill_is_signed_event(&self, event: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is accepted by: Payer
     /// Receiver: Holder, Action: CheckBill

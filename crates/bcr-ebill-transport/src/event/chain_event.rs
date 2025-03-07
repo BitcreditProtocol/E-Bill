@@ -13,14 +13,14 @@ use crate::{BillChainEventPayload, Result};
 
 use super::Event;
 
-pub struct BillChainEventBuilder {
-    bill: BitcreditBill,
+pub struct BillChainEvent {
+    pub bill: BitcreditBill,
     bill_keys: BillKeys,
     chain: BillBlockchain,
     participants: HashMap<String, usize>,
 }
 
-impl BillChainEventBuilder {
+impl BillChainEvent {
     /// Create a new BillChainEvent instance.
     pub fn new(bill: &BitcreditBill, chain: &BillBlockchain, bill_keys: &BillKeys) -> Result<Self> {
         let participants = chain.get_all_nodes_with_added_block_height(&bill_keys)?;
@@ -76,17 +76,26 @@ impl BillChainEventBuilder {
         )
     }
 
-    /// Generates bill block events for all participants in the chain.
-    pub fn generate_action_messages(&self) -> Vec<Event<BillChainEventPayload>> {
+    /// Generates bill block events for all participants in the chain. Individual node_ids can be
+    /// assigned a specific event and action type by providing an override.
+    pub fn generate_action_messages(
+        &self,
+        event_overrides: HashMap<String, (EventType, ActionType)>,
+    ) -> Vec<Event<BillChainEventPayload>> {
         self.participants
             .keys()
             .map(|node_id| {
+                let (event_type, action) = event_overrides
+                    .get(node_id)
+                    .map(|(event_type, action)| (event_type.clone(), Some(action.clone())))
+                    .unwrap_or((EventType::BillBlock, None));
+
                 Event::new(
-                    EventType::BillBlock,
+                    event_type,
                     node_id,
                     BillChainEventPayload {
                         bill_id: self.bill.id.to_owned(),
-                        action_type: None,
+                        action_type: action,
                         sum: Some(self.bill.sum),
                         keys: self.get_keys_for_node(node_id),
                         blocks: self.get_blocks_for_node(node_id),

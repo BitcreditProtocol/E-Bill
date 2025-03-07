@@ -36,9 +36,13 @@ pub enum Error {
 
     #[error("crypto util error: {0}")]
     CryptoUtil(#[from] util::crypto::Error),
+
+    #[error("notification service contact error: {0}")]
+    ContactError(String),
 }
 
 pub use event::bill_events::{BillActionEventPayload, BillChainEventPayload};
+pub use event::chain_event::BillChainEvent;
 pub use event::{Event, EventEnvelope};
 pub use notification_service::NotificationServiceApi;
 pub use push_notification::{PushApi, PushService};
