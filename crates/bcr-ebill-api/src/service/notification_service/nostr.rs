@@ -4,8 +4,8 @@ use nostr_sdk::Timestamp;
 use nostr_sdk::prelude::*;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 
+use crate::service::ServiceTraitBounds;
 use crate::service::contact_service::ContactServiceApi;
 use crate::util::{BcrKeys, crypto};
 use bcr_ebill_persistence::NostrEventOffset;
@@ -102,7 +102,10 @@ impl NostrClient {
     }
 }
 
-#[async_trait]
+impl ServiceTraitBounds for NostrClient {}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationJsonTransportApi for NostrClient {
     async fn send(&self, recipient: &IdentityPublicData, event: EventEnvelope) -> Result<()> {
         if let Ok(npub) = crypto::get_nostr_npub_as_hex_from_node_id(&recipient.node_id) {
@@ -151,6 +154,7 @@ impl NostrConsumer {
     ) -> Self {
         Self {
             client,
+            #[allow(clippy::arc_with_non_send_sync)]
             event_handlers: Arc::new(event_handlers),
             contact_service,
             offset_store,
@@ -158,7 +162,7 @@ impl NostrConsumer {
     }
 
     #[allow(dead_code)]
-    pub async fn start(&self) -> Result<JoinHandle<()>> {
+    pub async fn start(&self) -> Result<()> {
         // move dependencies into thread scope
         let client = self.client.clone();
         let event_handlers = self.event_handlers.clone();
@@ -181,9 +185,7 @@ impl NostrConsumer {
             .await
             .expect("Failed to subscribe to Nostr events");
 
-        // run subscription in a tokio task
-        let handle = tokio::spawn(async move {
-            client
+        client
                 .client
                 .handle_notifications(|note| async {
                     if let Some((envelope, sender, event_id, time)) =
@@ -208,8 +210,7 @@ impl NostrConsumer {
                 })
                 .await
                 .expect("Nostr notification handler failed");
-        });
-        Ok(handle)
+        Ok(())
     }
 }
 
@@ -393,19 +394,27 @@ mod tests {
             vec![Box::new(handler)],
             Arc::new(offset_store),
         );
-        let handle = consumer
-            .start()
-            .await
-            .expect("failed to start nostr consumer");
 
-        // and send an event
-        client1
-            .send(&contact, event.try_into().expect("could not convert event"))
-            .await
-            .expect("failed to send event");
+        // run in a local set
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async move {
+                let handle = tokio::task::spawn_local(async move {
+                    consumer
+                        .start()
+                        .await
+                        .expect("failed to start nostr consumer");
+                });
+                // and send an event
+                client1
+                    .send(&contact, event.try_into().expect("could not convert event"))
+                    .await
+                    .expect("failed to send event");
 
-        // give it a little bit of time to process the event
-        time::sleep(Duration::from_millis(100)).await;
-        handle.abort();
+                // give it a little bit of time to process the event
+                time::sleep(Duration::from_millis(100)).await;
+                handle.abort();
+            })
+            .await;
     }
 }
