@@ -40,7 +40,7 @@ jobs:
       run:
         shell: bash
     env:
-      version: 0.2.2
+      version: 0.2.3
     steps:
       - name: Checkout FE repo
         uses: actions/checkout@v4
