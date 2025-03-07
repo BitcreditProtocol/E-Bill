@@ -1,18 +1,22 @@
 name: Release E-Bill installers
 
 # Trigger the workflow manually
-on:
-  push:
-    branches:
-      - feature/wizard-build
-#   workflow_dispatch:
-#     inputs:
-#       version:
-#         description: 'Version number for the release'
-#         required: true
-#       release_notes:
-#         description: 'Release notes for the version'
-#         required: true
+on: 
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number for the release (e.g. 0.2.0)'
+        required: true
+      be_tag:
+        description: 'Tag of the commit in the E-Bill repo (e.g. v0.2.0)'
+        required: true
+      fe_tag:
+        description: 'Tag of the commit in the E-Bill Frontend repo (e.g. v0.2.0)'
+        required: true
+      builder_ver:
+        description: 'Version of the InstallBuilder Professional (e.g. 24.11.1)'
+        default: '24.11.1'
+        required: false
 
 jobs:
   build:
@@ -27,25 +31,28 @@ jobs:
             installer: 
                 ver: windows-x64-installer.exe
                 target: windows-x64
-                exec: c:/Program Files/InstallBuilder Professional 24.11.1/bin/builder-cli.exe
+                exec: c:/Program Files/InstallBuilder Professional ${{ github.event.inputs.builder_ver }}/bin/builder-cli.exe
           - os: macos-latest
             pck: brew install protobuf
             installer: 
                 ver: osx-installer.dmg
                 target: osx
-                exec: /Applications/InstallBuilder Professional 24.11.1/bin/builder
+                exec: /Applications/InstallBuilder Professional ${{ github.event.inputs.builder_ver }}/bin/builder
     
+    name: Build installer for ${{ matrix.config.os }}
     runs-on: ${{ matrix.config.os }}
     defaults:
       run:
         shell: bash
     env:
-      version: 0.2.3
+      version: ${{ github.event.inputs.version }}
     steps:
       - name: Checkout FE repo
         uses: actions/checkout@v4
         with:
             repository: BitcreditProtocol/E-Bill-frontend
+            ref: ${{ github.event.inputs.fe_tag }}
+            token: ${{ secrets.FE_REPO_ACCESS_PAT }}
             path: fe
       
       - name: Prepare FE for PROD
@@ -66,6 +73,7 @@ jobs:
         uses: actions/checkout@v4
         with:
             path: be
+            ref: ${{ github.event.inputs.be_tag }}
     
       - name: Install BE dependencies
         run: |
@@ -78,18 +86,18 @@ jobs:
       - name: Install InstallBuilder
         if: matrix.config.os == 'windows-latest'
         run: |
-            curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
+            curl -L -o installbuilder-${{ matrix.config.installer.ver }} https://releases.installbuilder.com/installbuilder/installbuilder-professional-${{ github.event.inputs.builder_ver }}-${{ matrix.config.installer.ver }}
             ./installbuilder-${{ matrix.config.installer.ver }} --mode unattended
         
       - name: Install InstallBuilder
         if: matrix.config.os == 'macos-latest'
         run: |
             dmgFilePath='installbuilder-${{ matrix.config.installer.ver }}'
-            curl -L -o $dmgFilePath https://releases.installbuilder.com/installbuilder/installbuilder-professional-24.11.1-${{ matrix.config.installer.ver }}
+            curl -L -o $dmgFilePath https://releases.installbuilder.com/installbuilder/installbuilder-professional-${{ github.event.inputs.builder_ver }}-${{ matrix.config.installer.ver }}
             
             MOUNTDEV=$(hdiutil mount $dmgFilePath | awk '/dev.disk/{print$1}')
             MOUNTDIR="$(mount | grep $MOUNTDEV | awk '{$1=$2="";sub(" [(].*","");sub("^  ","");print}')"            
-            cd "$MOUNTDIR/installbuilder-professional-24.11.1-osx-installer.app/Contents/MacOS"
+            cd "$MOUNTDIR/installbuilder-professional-${{ github.event.inputs.builder_ver }}-osx-installer.app/Contents/MacOS"
 
             ./installbuilder.sh --mode unattended
 
@@ -103,6 +111,3 @@ jobs:
         with:
             name: bitcreditcore-${{ env.version }}-${{ matrix.config.installer.ver }}
             path: ./be/.github/workflows/wizard/bitcreditcore-${{ env.version }}-${{ matrix.config.installer.ver }}
-
-#       - name: Discover filesystem
-#         run: find ~ -type d
