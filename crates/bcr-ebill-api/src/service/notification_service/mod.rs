@@ -20,13 +20,10 @@ use thiserror::Error;
 pub mod test_utils;
 
 pub mod default_service;
-mod email;
-mod email_sendgrid;
 mod nostr;
 
 use bcr_ebill_core::notification::{ActionType, EventType};
 pub use bcr_ebill_transport::NotificationJsonTransportApi;
-pub use email::NotificationEmailTransportApi;
 pub use nostr::{NostrClient, NostrConfig, NostrConsumer};
 
 use super::contact_service::ContactServiceApi;

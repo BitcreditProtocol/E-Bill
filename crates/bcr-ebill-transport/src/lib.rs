@@ -1,5 +1,7 @@
+use bcr_ebill_core::util;
 use thiserror::Error;
 
+pub mod email;
 pub mod event;
 pub mod handler;
 pub mod push_notification;
@@ -23,6 +25,16 @@ pub enum Error {
 
     #[error("Invalid node id error: {0}")]
     InvalidNodeId(String),
+
+    /// some transports require a http client where we use reqwest
+    #[error("http client error: {0}")]
+    HttpClient(#[from] reqwest::Error),
+
+    #[error("nostr client error: {0}")]
+    NostrClient(#[from] nostr_sdk::client::Error),
+
+    #[error("crypto util error: {0}")]
+    CryptoUtil(#[from] util::crypto::Error),
 }
 
 pub use event::bill_events::{BillActionEventPayload, BillChainEventPayload};

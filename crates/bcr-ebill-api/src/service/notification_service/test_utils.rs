@@ -12,7 +12,7 @@ use crate::{
 };
 use nostr_relay_builder::prelude::*;
 
-use super::{EventType, NostrConfig, email::EmailMessage, nostr::NostrClient};
+use super::{EventType, NostrConfig, nostr::NostrClient};
 use bcr_ebill_transport::{
     event::{Event, EventEnvelope},
     handler::NotificationHandlerApi,
@@ -86,15 +86,6 @@ pub fn create_test_event(event_type: &EventType) -> Event<TestEventPayload> {
         "node_id",
         create_test_event_payload(),
     )
-}
-
-pub fn get_test_email_message() -> EmailMessage {
-    EmailMessage {
-        from: "sender@example.com".to_string(),
-        to: "recipient@example.com".to_string(),
-        subject: "Hello World".to_string(),
-        body: "This is a test email.".to_string(),
-    }
 }
 
 pub fn get_identity_public_data(
