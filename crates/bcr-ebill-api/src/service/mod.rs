@@ -14,7 +14,7 @@ use crate::util;
 use crate::{blockchain, external};
 use backup_service::{BackupService, BackupServiceApi};
 use bcr_ebill_persistence::db::SurrealDbConfig;
-use bcr_ebill_transport::{PushApi, PushService};
+use bcr_ebill_transport::{NotificationServiceApi, PushApi, PushService};
 use bill_service::{BillServiceApi, service::BillService};
 use company_service::{CompanyService, CompanyServiceApi};
 use contact_service::{ContactService, ContactServiceApi};
@@ -22,8 +22,7 @@ use file_upload_service::{FileUploadService, FileUploadServiceApi};
 use identity_service::{IdentityService, IdentityServiceApi};
 use log::error;
 use notification_service::{
-    NostrConsumer, NotificationServiceApi, create_nostr_client, create_nostr_consumer,
-    create_notification_service,
+    NostrConsumer, create_nostr_client, create_nostr_consumer, create_notification_service,
 };
 use search_service::{SearchService, SearchServiceApi};
 use std::sync::Arc;
@@ -50,7 +49,7 @@ pub enum Error {
 
     /// errors stemming from sending or receiving notifications
     #[error("Notification service error: {0}")]
-    NotificationService(#[from] notification_service::Error),
+    NotificationService(#[from] bcr_ebill_transport::Error),
 
     /// errors stemming from handling bills
     #[error("Bill service error: {0}")]

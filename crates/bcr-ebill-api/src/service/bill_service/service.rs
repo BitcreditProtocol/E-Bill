@@ -1,4 +1,3 @@
-use super::super::notification_service::NotificationServiceApi;
 use super::error::Error;
 use super::{BillAction, BillServiceApi, Result};
 use crate::blockchain::Blockchain;
@@ -29,6 +28,7 @@ use bcr_ebill_core::constants::{
     ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS,
 };
 use bcr_ebill_core::notification::ActionType;
+use bcr_ebill_transport::NotificationServiceApi;
 use futures::future::try_join_all;
 use log::{error, info};
 use std::collections::HashSet;

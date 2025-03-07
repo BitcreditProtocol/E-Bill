@@ -4,6 +4,7 @@ use thiserror::Error;
 pub mod email;
 pub mod event;
 pub mod handler;
+pub mod notification_service;
 pub mod push_notification;
 pub mod transport;
 
@@ -39,5 +40,6 @@ pub enum Error {
 
 pub use event::bill_events::{BillActionEventPayload, BillChainEventPayload};
 pub use event::{Event, EventEnvelope};
+pub use notification_service::NotificationServiceApi;
 pub use push_notification::{PushApi, PushService};
 pub use transport::NotificationJsonTransportApi;

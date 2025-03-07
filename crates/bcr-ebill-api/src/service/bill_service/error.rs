@@ -1,4 +1,4 @@
-use crate::{blockchain, external, persistence, service::notification_service, util};
+use crate::{blockchain, external, persistence, util};
 use thiserror::Error;
 
 /// Generic error type
@@ -141,7 +141,7 @@ pub enum Error {
     Cryptography(#[from] util::crypto::Error),
 
     #[error("Notification error: {0}")]
-    Notification(#[from] notification_service::Error),
+    Notification(#[from] bcr_ebill_transport::Error),
 
     #[error("io error {0}")]
     Io(#[from] std::io::Error),
