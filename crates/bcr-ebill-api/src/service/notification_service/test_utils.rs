@@ -12,9 +12,10 @@ use crate::{
 };
 use nostr_relay_builder::prelude::*;
 
-use super::{
-    EventEnvelope, EventType, NostrConfig, Result, email::EmailMessage, event::Event,
-    handler::NotificationHandlerApi, nostr::NostrClient,
+use super::{EventType, NostrConfig, nostr::NostrClient};
+use bcr_ebill_transport::{
+    event::{Event, EventEnvelope},
+    handler::NotificationHandlerApi,
 };
 use serde::{Serialize, de::DeserializeOwned};
 use std::sync::Arc;
@@ -64,7 +65,7 @@ impl NotificationHandlerApi for TestEventHandler<TestEventPayload> {
         }
     }
 
-    async fn handle_event(&self, event: EventEnvelope, _: &str) -> Result<()> {
+    async fn handle_event(&self, event: EventEnvelope, _: &str) -> bcr_ebill_transport::Result<()> {
         *self.called.lock().await = true;
         let event: Event<TestEventPayload> = event.try_into()?;
         *self.received_event.lock().await = Some(event);
@@ -85,15 +86,6 @@ pub fn create_test_event(event_type: &EventType) -> Event<TestEventPayload> {
         "node_id",
         create_test_event_payload(),
     )
-}
-
-pub fn get_test_email_message() -> EmailMessage {
-    EmailMessage {
-        from: "sender@example.com".to_string(),
-        to: "recipient@example.com".to_string(),
-        subject: "Hello World".to_string(),
-        body: "This is a test email.".to_string(),
-    }
 }
 
 pub fn get_identity_public_data(

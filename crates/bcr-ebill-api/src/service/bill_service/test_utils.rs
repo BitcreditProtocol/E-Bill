@@ -5,14 +5,13 @@ use crate::{
     service::{
         company_service::tests::get_valid_company_block,
         contact_service::tests::get_baseline_contact,
-        notification_service::MockNotificationServiceApi,
     },
     tests::tests::{
         MockBillChainStoreApiMock, MockBillStoreApiMock, MockCompanyChainStoreApiMock,
         MockCompanyStoreApiMock, MockContactStoreApiMock, MockFileUploadStoreApiMock,
-        MockIdentityChainStoreApiMock, MockIdentityStoreApiMock, TEST_PRIVATE_KEY_SECP,
-        TEST_PUB_KEY_SECP, empty_address, empty_bitcredit_bill, empty_identity,
-        empty_identity_public_data, identity_public_data_only_node_id,
+        MockIdentityChainStoreApiMock, MockIdentityStoreApiMock, MockNotificationService,
+        TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP, empty_address, empty_bitcredit_bill,
+        empty_identity, empty_identity_public_data, identity_public_data_only_node_id,
     },
     util,
 };
@@ -42,7 +41,7 @@ pub struct MockBillContext {
     pub company_chain_store: MockCompanyChainStoreApiMock,
     pub company_store: MockCompanyStoreApiMock,
     pub file_upload_store: MockFileUploadStoreApiMock,
-    pub notification_service: MockNotificationServiceApi,
+    pub notification_service: MockNotificationService,
 }
 
 pub fn get_baseline_identity() -> IdentityWithAll {
@@ -165,7 +164,7 @@ pub fn get_ctx() -> MockBillContext {
         company_chain_store: MockCompanyChainStoreApiMock::new(),
         contact_store: MockContactStoreApiMock::new(),
         company_store: MockCompanyStoreApiMock::new(),
-        notification_service: MockNotificationServiceApi::new(),
+        notification_service: MockNotificationService::new(),
     }
 }
 

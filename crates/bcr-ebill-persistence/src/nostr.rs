@@ -1,5 +1,6 @@
 use super::Result;
 use async_trait::async_trait;
+use serde_json::Value;
 
 /// Allows storing and retrieving time based offsets for subscriptions
 /// to Nostr relays. It will also store the event ids that have been
@@ -34,4 +35,25 @@ pub struct NostrEventOffset {
     pub time: u64,
     /// Whether the event has been processed successfully on our side
     pub success: bool,
+}
+
+/// A dumb retry queue for Nostr messages that failed to be sent.
+#[async_trait]
+pub trait NostrQueuedMessageStoreApi: Send + Sync {
+    /// Adds a new retry message
+    async fn add_message(&self, message: NostrQueuedMessage, max_retries: i32) -> Result<()>;
+    /// Selects all messages that are ready to be retried
+    async fn get_retry_messages(&self, limit: u64) -> Result<Vec<NostrQueuedMessage>>;
+    /// Fail a retry attempt, shedules a new retry or fails the message if
+    /// all retries have been exhausted.
+    async fn fail_retry(&self, id: &str) -> Result<()>;
+    /// Flags a retry as successful
+    async fn succeed_retry(&self, id: &str) -> Result<()>;
+}
+
+#[derive(Clone, Debug)]
+pub struct NostrQueuedMessage {
+    pub id: String,
+    pub node_id: String,
+    pub payload: Value,
 }
