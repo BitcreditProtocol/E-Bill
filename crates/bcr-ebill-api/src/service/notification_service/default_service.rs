@@ -12,6 +12,7 @@ use crate::data::{
     notification::{Notification, NotificationType},
 };
 use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
+use crate::service::ServiceTraitBounds;
 use bcr_ebill_core::notification::{ActionType, EventType};
 
 /// A default implementation of the NotificationServiceApi that can
@@ -21,6 +22,8 @@ pub struct DefaultNotificationService {
     notification_transport: Box<dyn NotificationJsonTransportApi>,
     notification_store: Arc<dyn NotificationStoreApi>,
 }
+
+impl ServiceTraitBounds for DefaultNotificationService {}
 
 impl DefaultNotificationService {
     pub fn new(
@@ -34,7 +37,8 @@ impl DefaultNotificationService {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationServiceApi for DefaultNotificationService {
     async fn send_bill_is_signed_event(&self, bill: &BitcreditBill) -> Result<()> {
         let event_type = EventType::BillSigned;

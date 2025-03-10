@@ -54,19 +54,10 @@ impl IdentityStoreApi for SurrealIdentityStore {
     }
 
     async fn get_full(&self) -> Result<IdentityWithAll> {
-        let results = tokio::join!(self.get(), self.get_key_pair());
-        match results {
-            (Ok(identity), Ok(key_pair)) => Ok(IdentityWithAll { identity, key_pair }),
-            _ => {
-                if let Err(e) = results.0 {
-                    Err(e)
-                } else if let Err(e) = results.1 {
-                    Err(e)
-                } else {
-                    unreachable!("one of the tasks has to have failed");
-                }
-            }
-        }
+        Ok(IdentityWithAll {
+            identity: self.get().await?,
+            key_pair: self.get_key_pair().await?,
+        })
     }
 
     async fn save_key_pair(&self, key_pair: &BcrKeys, seed: &str) -> Result<()> {

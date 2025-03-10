@@ -1,4 +1,4 @@
-use super::Result;
+use super::{Result, ServiceTraitBounds};
 use super::{
     bill_service::BillServiceApi, company_service::CompanyServiceApi,
     contact_service::ContactServiceApi,
@@ -8,8 +8,9 @@ use crate::data::{GeneralSearchFilterItemType, bill::BillsFilterRole};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-#[async_trait]
-pub trait SearchServiceApi: Send + Sync {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait SearchServiceApi: ServiceTraitBounds {
     /// General Search
     async fn search(
         &self,
@@ -42,7 +43,10 @@ impl SearchService {
     }
 }
 
-#[async_trait]
+impl ServiceTraitBounds for SearchService {}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl SearchServiceApi for SearchService {
     async fn search(
         &self,

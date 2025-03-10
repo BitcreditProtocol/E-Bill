@@ -168,31 +168,6 @@ pub struct CurrencyResponse {
     pub code: String,
 }
 
-#[repr(u8)]
-#[derive(
-    Debug, Clone, serde_repr::Serialize_repr, serde_repr::Deserialize_repr, PartialEq, Eq, ToSchema,
-)]
-pub enum BillType {
-    PromissoryNote = 0, // Drawer pays to payee
-    SelfDrafted = 1,    // Drawee pays to drawer
-    ThreeParties = 2,   // Drawee pays to payee
-}
-
-impl TryFrom<u64> for BillType {
-    type Error = Error;
-
-    fn try_from(value: u64) -> std::result::Result<Self, Error> {
-        match value {
-            0 => Ok(BillType::PromissoryNote),
-            1 => Ok(BillType::SelfDrafted),
-            2 => Ok(BillType::ThreeParties),
-            _ => Err(Error::Validation(format!(
-                "Invalid bill type found: {value}"
-            ))),
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BitcreditBillPayload {
     #[serde(rename = "type")]
