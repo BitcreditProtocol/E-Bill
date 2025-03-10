@@ -251,7 +251,7 @@ impl BillBlockchain {
         for (height, block) in self.blocks.iter().enumerate() {
             let nodes_in_block = block.get_nodes_from_block(bill_keys)?;
             for node in nodes_in_block {
-                if !nodes.contains_key(&node) && node != "" {
+                if !nodes.contains_key(&node) && !node.is_empty() {
                     nodes.insert(node, height + 1);
                 }
             }

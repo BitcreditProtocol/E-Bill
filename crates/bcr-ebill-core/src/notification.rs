@@ -135,10 +135,7 @@ impl EventType {
     }
 
     pub fn is_action_event(&self) -> bool {
-        match self {
-            Self::BillBlock => false,
-            _ => true,
-        }
+        !matches!(self, Self::BillBlock)
     }
 }
 

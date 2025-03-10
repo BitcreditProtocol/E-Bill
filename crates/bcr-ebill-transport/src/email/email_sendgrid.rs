@@ -1,4 +1,4 @@
-use super::{NotificationEmailTransportApi, email::EmailMessage};
+use super::{EmailMessage, NotificationEmailTransportApi};
 use crate::Result;
 use async_trait::async_trait;
 use serde::Serialize;

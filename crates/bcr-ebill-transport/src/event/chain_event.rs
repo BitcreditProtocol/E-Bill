@@ -23,7 +23,7 @@ pub struct BillChainEvent {
 impl BillChainEvent {
     /// Create a new BillChainEvent instance.
     pub fn new(bill: &BitcreditBill, chain: &BillBlockchain, bill_keys: &BillKeys) -> Result<Self> {
-        let participants = chain.get_all_nodes_with_added_block_height(&bill_keys)?;
+        let participants = chain.get_all_nodes_with_added_block_height(bill_keys)?;
         Ok(Self {
             bill: bill.clone(),
             chain: chain.clone(),
