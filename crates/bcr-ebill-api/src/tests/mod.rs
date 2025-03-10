@@ -26,6 +26,7 @@ pub mod tests {
         identity::{IdentityChainStoreApi, IdentityStoreApi},
         notification::NotificationFilter,
     };
+    use bcr_ebill_transport::{BillChainEvent, NotificationServiceApi};
     use std::collections::{HashMap, HashSet};
     use std::path::Path;
 
@@ -208,6 +209,80 @@ pub mod tests {
             ) -> Result<()>;
             async fn open_attached_file(&self, id: &str, file_name: &str) -> Result<Vec<u8>>;
             async fn delete_attached_files(&self, id: &str) -> Result<()>;
+        }
+    }
+
+    mockall::mock! {
+        pub NotificationService {}
+
+        #[async_trait]
+        impl NotificationServiceApi for NotificationService {
+            async fn send_bill_is_signed_event(&self, bill: &BillChainEvent) -> bcr_ebill_transport::Result<()>;
+            async fn send_bill_is_accepted_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn send_request_to_accept_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn send_request_to_pay_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn send_bill_is_paid_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn send_bill_is_endorsed_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn send_offer_to_sell_event(
+                &self,
+                bill_id: &str,
+                sum: Option<u64>,
+                buyer: &IdentityPublicData,
+            ) -> bcr_ebill_transport::Result<()>;
+            async fn send_bill_is_sold_event(
+                &self,
+                bill_id: &str,
+                sum: Option<u64>,
+                buyer: &IdentityPublicData,
+            ) -> bcr_ebill_transport::Result<()>;
+            async fn send_bill_recourse_paid_event(
+                &self,
+                bill_id: &str,
+                sum: Option<u64>,
+                recoursee: &IdentityPublicData,
+            ) -> bcr_ebill_transport::Result<()>;
+            async fn send_request_to_action_rejected_event(
+                &self,
+                bill_id: &str,
+                sum: Option<u64>,
+                rejected_action: ActionType,
+                recipients: Vec<IdentityPublicData>,
+            ) -> bcr_ebill_transport::Result<()>;
+            async fn send_request_to_action_timed_out_event(
+                &self,
+                bill_id: &str,
+                sum: Option<u64>,
+                timed_out_action: ActionType,
+                recipients: Vec<IdentityPublicData>,
+            ) -> bcr_ebill_transport::Result<()>;
+            async fn send_recourse_action_event(
+                &self,
+                bill_id: &str,
+                sum: Option<u64>,
+                action: ActionType,
+                recipient: &IdentityPublicData,
+            ) -> bcr_ebill_transport::Result<()>;
+            async fn send_request_to_mint_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn send_new_quote_event(&self, quote: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn send_quote_is_approved_event(&self, quote: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn get_client_notifications(
+                &self,
+                filter: NotificationFilter,
+            ) -> bcr_ebill_transport::Result<Vec<Notification>>;
+            async fn mark_notification_as_done(&self, notification_id: &str) -> bcr_ebill_transport::Result<()>;
+            async fn get_active_bill_notification(&self, bill_id: &str) -> Option<Notification>;
+            async fn check_bill_notification_sent(
+                &self,
+                bill_id: &str,
+                block_height: i32,
+                action: ActionType,
+            ) -> bcr_ebill_transport::Result<bool>;
+            async fn mark_bill_notification_sent(
+                &self,
+                bill_id: &str,
+                block_height: i32,
+                action: ActionType,
+            ) -> bcr_ebill_transport::Result<()>;
         }
     }
 

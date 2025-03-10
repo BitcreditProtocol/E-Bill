@@ -1,7 +1,9 @@
-use super::Result;
+use crate::Result;
 use async_trait::async_trait;
 #[cfg(test)]
 use mockall::automock;
+
+pub mod email_sendgrid;
 
 #[cfg_attr(test, automock)]
 #[async_trait]
