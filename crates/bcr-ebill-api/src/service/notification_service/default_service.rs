@@ -54,14 +54,14 @@ impl NotificationServiceApi for DefaultNotificationService {
             ),
         ]));
 
-        for event in all_events.into_iter() {
+        for event_to_process in all_events.into_iter() {
             if let Ok(Some(identity)) = self
                 .contact_service
-                .get_identity_by_node_id(&event.node_id)
+                .get_identity_by_node_id(&event_to_process.node_id)
                 .await
             {
                 self.notification_transport
-                    .send(&identity, event.try_into()?)
+                    .send(&identity, event_to_process.try_into()?)
                     .await?;
             }
         }

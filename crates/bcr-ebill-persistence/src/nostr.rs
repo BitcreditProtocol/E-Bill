@@ -44,7 +44,7 @@ pub trait NostrQueuedMessageStoreApi: Send + Sync {
     async fn add_message(&self, message: NostrQueuedMessage, max_retries: i32) -> Result<()>;
     /// Selects all messages that are ready to be retried
     async fn get_retry_messages(&self, limit: u64) -> Result<Vec<NostrQueuedMessage>>;
-    /// Fail a retry attempt, shedules a new retry or fails the message if
+    /// Fail a retry attempt, schedules a new retry or fails the message if
     /// all retries have been exhausted.
     async fn fail_retry(&self, id: &str) -> Result<()>;
     /// Flags a retry as successful

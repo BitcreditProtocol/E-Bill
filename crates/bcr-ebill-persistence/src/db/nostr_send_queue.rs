@@ -61,7 +61,7 @@ impl NostrQueuedMessageStoreApi for SurrealNostrEventQueueStore {
         Ok(results)
     }
 
-    /// Fail a retry attempt, shedules a new retry or fails the message if
+    /// Fail a retry attempt, schedules a new retry or fails the message if
     /// all retries have been exhausted.
     async fn fail_retry(&self, id: &str) -> Result<()> {
         let current: Option<QueuedMessageDb> = self.db.select((Self::TABLE, id.to_owned())).await?;
