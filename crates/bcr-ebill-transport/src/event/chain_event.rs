@@ -33,7 +33,7 @@ impl BillChainEvent {
     }
 
     // Returns the latest block in the chain.
-    fn lastest_block(&self) -> BillBlock {
+    fn latest_block(&self) -> BillBlock {
         self.chain.get_latest_block().clone()
     }
 
@@ -42,7 +42,7 @@ impl BillChainEvent {
     fn get_blocks_for_node(&self, node_id: &str) -> Vec<BillBlock> {
         match self.participants.get(node_id) {
             Some(height) if *height == self.chain.block_height() => self.chain.blocks().clone(),
-            Some(_) => vec![self.lastest_block()],
+            Some(_) => vec![self.latest_block()],
             None => Vec::new(),
         }
     }
