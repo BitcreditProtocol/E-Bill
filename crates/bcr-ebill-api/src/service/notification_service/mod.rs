@@ -4,10 +4,10 @@ use crate::Config;
 use crate::persistence::identity::IdentityStoreApi;
 use crate::persistence::nostr::NostrEventOffsetStoreApi;
 use crate::persistence::notification::NotificationStoreApi;
-use bcr_ebill_transport::Result;
 use bcr_ebill_transport::handler::{
     BillActionEventHandler, LoggingEventHandler, NotificationHandlerApi,
 };
+use bcr_ebill_transport::{Error, Result};
 use bcr_ebill_transport::{NotificationServiceApi, PushApi};
 use default_service::DefaultNotificationService;
 #[cfg(test)]
@@ -19,6 +19,7 @@ mod nostr;
 
 use bcr_ebill_core::notification::EventType;
 pub use bcr_ebill_transport::NotificationJsonTransportApi;
+use log::error;
 pub use nostr::{NostrClient, NostrConfig, NostrConsumer};
 
 use super::contact_service::ContactServiceApi;
@@ -28,7 +29,13 @@ pub async fn create_nostr_client(
     config: &Config,
     identity_store: Arc<dyn IdentityStoreApi>,
 ) -> Result<NostrClient> {
-    let keys = identity_store.get_or_create_key_pair().await?;
+    let keys = identity_store.get_or_create_key_pair().await.map_err(|e| {
+        error!(
+            "Failed to get or create nostr key pair for nostr client: {}",
+            e
+        );
+        Error::Crypto("Failed to get or create nostr key pair".to_string())
+    })?;
 
     let nostr_name = match identity_store.get().await {
         Ok(identity) => identity.get_nostr_name(),

@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bcr_ebill_transport::{BillActionEventPayload, BillChainEvent, Event};
+use bcr_ebill_transport::{BillActionEventPayload, BillChainEvent, Error, Event};
+use log::error;
 
 use super::NotificationJsonTransportApi;
 use super::{NotificationServiceApi, Result};
@@ -319,7 +320,10 @@ impl NotificationServiceApi for DefaultNotificationService {
         &self,
         filter: NotificationFilter,
     ) -> Result<Vec<Notification>> {
-        let result = self.notification_store.list(filter).await?;
+        let result = self.notification_store.list(filter).await.map_err(|e| {
+            error!("Failed to get client notifications: {}", e);
+            Error::Persistence("Failed to get client notifications".to_string())
+        })?;
         Ok(result)
     }
 
@@ -327,7 +331,11 @@ impl NotificationServiceApi for DefaultNotificationService {
         let _ = self
             .notification_store
             .mark_as_done(notification_id)
-            .await?;
+            .await
+            .map_err(|e| {
+                error!("Failed to mark notification as done: {}", e);
+                Error::Persistence("Failed to mark notification as done".to_string())
+            })?;
         Ok(())
     }
 
@@ -347,7 +355,16 @@ impl NotificationServiceApi for DefaultNotificationService {
         Ok(self
             .notification_store
             .bill_notification_sent(bill_id, block_height, action)
-            .await?)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to check if bill notification was already sent: {}",
+                    e
+                );
+                Error::Persistence(
+                    "Failed to check if bill notification was already sent".to_string(),
+                )
+            })?)
     }
 
     /// Stores that a notification was sent for the given bill id and action
@@ -359,7 +376,11 @@ impl NotificationServiceApi for DefaultNotificationService {
     ) -> Result<()> {
         self.notification_store
             .set_bill_notification_sent(bill_id, block_height, action)
-            .await?;
+            .await
+            .map_err(|e| {
+                error!("Failed to mark bill notification as sent: {}", e);
+                Error::Persistence("Failed to mark bill notification as sent".to_string())
+            })?;
         Ok(())
     }
 }

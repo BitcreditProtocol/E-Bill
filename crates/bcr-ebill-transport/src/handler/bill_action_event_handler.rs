@@ -1,12 +1,13 @@
 use super::{NotificationHandlerApi, Result};
 use std::sync::Arc;
 
-use crate::{BillActionEventPayload, Event, EventEnvelope, PushApi};
+use crate::{BillActionEventPayload, Error, Event, EventEnvelope, PushApi};
 
 use super::EventType;
 use async_trait::async_trait;
 use bcr_ebill_core::notification::{Notification, NotificationType};
 use bcr_ebill_persistence::NotificationStoreApi;
+use log::error;
 
 #[derive(Clone)]
 pub struct BillActionEventHandler {
@@ -71,18 +72,35 @@ impl NotificationHandlerApi for BillActionEventHandler {
             );
 
             // mark Bill event as done if any active one exists
-            if let Some(currently_active) = self
+            match self
                 .notification_store
                 .get_latest_by_reference(&event.data.bill_id, NotificationType::Bill)
-                .await?
+                .await
             {
-                self.notification_store
-                    .mark_as_done(&currently_active.id)
-                    .await?;
+                Ok(Some(currently_active)) => {
+                    if let Err(e) = self
+                        .notification_store
+                        .mark_as_done(&currently_active.id)
+                        .await
+                    {
+                        error!(
+                            "Failed to mark currently active notification as done: {}",
+                            e
+                        );
+                    }
+                }
+                Err(e) => error!("Failed to get latest notification by reference: {}", e),
+                Ok(None) => {}
             }
 
             // save new notification to database
-            self.notification_store.add(notification.clone()).await?;
+            self.notification_store
+                .add(notification.clone())
+                .await
+                .map_err(|e| {
+                    error!("Failed to save new notification to database: {}", e);
+                    Error::Persistence("Failed to save new notification to database".to_string())
+                })?;
 
             // send push notification to connected clients
             self.push_service

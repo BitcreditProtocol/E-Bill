@@ -3,18 +3,19 @@ use bcr_ebill_core::contact::IdentityPublicData;
 use bcr_ebill_transport::event::EventEnvelope;
 use bcr_ebill_transport::handler::NotificationHandlerApi;
 use log::{error, trace, warn};
-use nostr_sdk::Timestamp;
-use nostr_sdk::prelude::*;
+use nostr_sdk::nips::nip59::UnwrappedGift;
+use nostr_sdk::{
+    Client, EventId, Filter, Kind, Metadata, Options, PublicKey, RelayPoolNotification, Timestamp,
+    ToBech32, UnsignedEvent,
+};
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
 use crate::service::contact_service::ContactServiceApi;
 use crate::util::{BcrKeys, crypto};
-use bcr_ebill_persistence::NostrEventOffset;
-
-use super::{NotificationJsonTransportApi, Result};
-use bcr_ebill_persistence::NostrEventOffsetStoreApi;
+use bcr_ebill_persistence::{NostrEventOffset, NostrEventOffsetStoreApi};
+use bcr_ebill_transport::{Error, NotificationJsonTransportApi, Result};
 
 #[derive(Clone, Debug)]
 pub struct NostrConfig {
@@ -29,8 +30,11 @@ impl NostrConfig {
     }
 
     #[allow(dead_code)]
-    pub fn get_npub(&self) -> Result<String> {
-        Ok(self.keys.get_nostr_npub()?)
+    pub fn get_npub(&self) -> bcr_ebill_transport::Result<String> {
+        Ok(self.keys.get_nostr_npub().map_err(|e| {
+            error!("Failed to get Nostr npub: {e}");
+            Error::Crypto("Failed to get Nostr npub".to_string())
+        })?)
     }
 }
 
@@ -65,19 +69,31 @@ impl NostrClient {
             .opts(options)
             .build();
         for relay in &config.relays {
-            client.add_relay(relay).await?;
+            client.add_relay(relay).await.map_err(|e| {
+                error!("Failed to add relay to Nostr client: {e}");
+                Error::Network("Failed to add relay to Nostr client".to_string())
+            })?;
         }
         client.connect().await;
         let metadata = Metadata::new()
             .name(&config.name)
             .display_name(&config.name);
-        client.set_metadata(&metadata).await?;
+        client.set_metadata(&metadata).await.map_err(|e| {
+            error!("Failed to set and send user metadata with Nostr client: {e}");
+            Error::Network("Failed to send user metadata with Nostr client".to_string())
+        })?;
         Ok(Self { keys, client })
     }
 
     /// Subscribe to some nostr events with a filter
     pub async fn subscribe(&self, subscription: Filter) -> Result<()> {
-        self.client.subscribe(subscription, None).await?;
+        self.client
+            .subscribe(subscription, None)
+            .await
+            .map_err(|e| {
+                error!("Failed to subscribe to Nostr events: {e}");
+                Error::Network("Failed to subscribe to Nostr events".to_string())
+            })?;
         Ok(())
     }
 
@@ -111,7 +127,10 @@ impl NotificationJsonTransportApi for NostrClient {
         event: EventEnvelope,
     ) -> bcr_ebill_transport::Result<()> {
         if let Ok(npub) = crypto::get_nostr_npub_as_hex_from_node_id(&recipient.node_id) {
-            let public_key = PublicKey::from_str(&npub)?;
+            let public_key = PublicKey::from_str(&npub).map_err(|e| {
+                error!("Failed to parse Nostr npub when sending a notification: {e}");
+                Error::Crypto("Failed to parse Nostr npub".to_string())
+            })?;
             let message = serde_json::to_string(&event)?;
             if let Some(relay) = &recipient.nostr_relay {
                 if let Err(e) = self

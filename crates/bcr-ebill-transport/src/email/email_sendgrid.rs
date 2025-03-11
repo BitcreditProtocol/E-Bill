@@ -1,6 +1,7 @@
 use super::{EmailMessage, NotificationEmailTransportApi};
-use crate::Result;
+use crate::{Error, Result};
 use async_trait::async_trait;
+use log::error;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -33,7 +34,10 @@ impl SendgridTransport {
             .post(url)
             .json(&message)
             .bearer_auth(&self.config.api_key);
-        let _ = request.send().await?;
+        let _ = request.send().await.map_err(|e| {
+            error!("Failed to send email: {}", e);
+            Error::Network("Failed to send email".to_string())
+        })?;
         Ok(())
     }
 }

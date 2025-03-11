@@ -1,4 +1,3 @@
-use bcr_ebill_core::util;
 use thiserror::Error;
 
 pub mod email;
@@ -12,33 +11,34 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("json serialization error: {0}")]
-    Json(#[from] serde_json::Error),
+    /// Errors stemming from the transport layer that are Network related
+    #[error("Network error: {0}")]
+    Network(String),
 
-    #[error("BlockChain error: {0}")]
-    BlockChain(#[from] bcr_ebill_core::blockchain::Error),
+    /// Errors layer that are serialization related, serde will be auto transformed
+    #[error("Message serialization error: {0}")]
+    Message(String),
 
+    /// Errors that are storage related
     #[error("Persistence error: {0}")]
-    Persistence(#[from] bcr_ebill_persistence::Error),
+    Persistence(String),
 
-    #[error("Nostr key error: {0}")]
-    NostrKey(#[from] nostr_sdk::key::Error),
+    /// Errors that are related to a blockchain
+    #[error("BlockChain error: {0}")]
+    BlockChain(String),
 
-    #[error("Invalid node id error: {0}")]
-    InvalidNodeId(String),
+    /// Errors that are related to crypto (keys, encryption, etc.)
+    #[error("Crypto error: {0}")]
+    Crypto(String),
+}
 
-    /// some transports require a http client where we use reqwest
-    #[error("http client error: {0}")]
-    HttpClient(#[from] reqwest::Error),
-
-    #[error("nostr client error: {0}")]
-    NostrClient(#[from] nostr_sdk::client::Error),
-
-    #[error("crypto util error: {0}")]
-    CryptoUtil(#[from] util::crypto::Error),
-
-    #[error("notification service contact error: {0}")]
-    ContactError(String),
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Error::Message(format!(
+            "Failed to serialize/unserialize json message: {}",
+            e
+        ))
+    }
 }
 
 pub use event::bill_events::{BillActionEventPayload, BillChainEventPayload};
