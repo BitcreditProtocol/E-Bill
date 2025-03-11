@@ -1,6 +1,6 @@
+use crate::service_context::create_service_context;
 use anyhow::Result;
 use bcr_ebill_api::get_db_context;
-use bcr_ebill_api::service::create_service_context;
 use clap::Parser;
 use config::Config;
 use constants::SHUTDOWN_GRACE_PERIOD_MS;
@@ -15,6 +15,7 @@ mod error;
 mod handlers;
 mod job;
 mod router;
+mod service_context;
 
 // MAIN
 #[macro_use]
@@ -77,8 +78,8 @@ async fn start(
         }
     });
 
+    let keys = db.identity_store.get_or_create_key_pair().await?;
     let local_node_id = db.identity_store.get_key_pair().await?.get_public_key();
-    let keys = db.identity_store.get_key_pair().await?;
     info!("Local node id: {local_node_id:?}");
     info!("Local npub: {:?}", keys.get_nostr_npub()?);
     info!("Local npriv: {:?}", keys.get_nostr_npriv()?);
@@ -114,7 +115,16 @@ async fn start(
     let service_context_clone = service_context.clone();
     spawn(async move { job::run(service_context_clone, job_shutdown_receiver).await });
 
-    let nostr_handle = service_context.nostr_consumer.start().await?;
+    let service_context_nostr_clone = service_context.clone();
+    // run subscription in a tokio task
+    let nostr_handle = tokio::spawn(async move {
+        // TODO: if it fails - restart? or shutdown?
+        service_context_nostr_clone
+            .nostr_consumer
+            .start()
+            .await
+            .expect("nostr consumer failed");
+    });
 
     if let Err(e) = router::rocket_main(CONFIG.clone(), service_context)
         .launch()

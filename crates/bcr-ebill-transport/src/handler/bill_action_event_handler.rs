@@ -1,13 +1,12 @@
-use super::{NotificationHandlerApi, Result};
-use std::sync::Arc;
-
-use crate::{BillActionEventPayload, Error, Event, EventEnvelope, PushApi};
-
 use super::EventType;
+use super::NotificationHandlerApi;
+use crate::{BillActionEventPayload, Error, Event, EventEnvelope, PushApi, Result};
 use async_trait::async_trait;
+use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_core::notification::{Notification, NotificationType};
 use bcr_ebill_persistence::NotificationStoreApi;
 use log::error;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct BillActionEventHandler {
@@ -54,7 +53,10 @@ impl BillActionEventHandler {
     }
 }
 
-#[async_trait]
+impl ServiceTraitBounds for BillActionEventHandler {}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationHandlerApi for BillActionEventHandler {
     fn handles_event(&self, event_type: &EventType) -> bool {
         event_type.is_action_event()

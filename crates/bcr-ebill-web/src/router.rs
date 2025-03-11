@@ -1,6 +1,6 @@
 use crate::api_docs::ApiDocs;
 use crate::handlers;
-use bcr_ebill_api::service::ServiceContext;
+use crate::service_context::ServiceContext;
 use log::info;
 use rocket::http::Method;
 use rocket::{Build, Config, Request, Rocket, catch, catchers, routes};

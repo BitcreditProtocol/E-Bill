@@ -497,8 +497,7 @@ mod tests {
             Ok(identity)
         });
         storage.expect_save().returning(|_| {
-            Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                 "test error",
             )))
         });
@@ -561,8 +560,7 @@ mod tests {
     async fn get_identity_propagates_errors() {
         let mut storage = MockIdentityStoreApiMock::new();
         storage.expect_get().returning(|| {
-            Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                 "test error",
             )))
         });
@@ -596,8 +594,7 @@ mod tests {
     async fn get_full_identity_propagates_errors() {
         let mut storage = MockIdentityStoreApiMock::new();
         storage.expect_get_full().returning(|| {
-            Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                 "test error",
             )))
         });

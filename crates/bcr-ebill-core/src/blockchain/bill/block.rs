@@ -296,7 +296,7 @@ impl Block for BillBlock {
     }
 
     fn get_block_data_to_hash(&self) -> Self::BlockDataToHash {
-        let data = BillBlockDataToHash {
+        BillBlockDataToHash {
             bill_id: self.bill_id.clone(),
             id: self.id(),
             previous_hash: self.previous_hash().to_owned(),
@@ -304,8 +304,7 @@ impl Block for BillBlock {
             timestamp: self.timestamp(),
             public_key: self.public_key().to_owned(),
             op_code: self.op_code().to_owned(),
-        };
-        data
+        }
     }
 }
 

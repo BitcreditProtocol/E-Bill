@@ -2,7 +2,7 @@ use super::{BillAction, BillServiceApi, Result, error::Error, service::BillServi
 use crate::util;
 use bcr_ebill_core::{
     File,
-    bill::{BillKeys, BitcreditBill},
+    bill::{BillKeys, BillType, BitcreditBill},
     blockchain::{
         Blockchain,
         bill::{BillBlockchain, block::BillIssueBlockData},
@@ -17,13 +17,14 @@ impl BillService {
     #[allow(clippy::too_many_arguments)]
     pub(super) async fn issue_bill(
         &self,
+        t: u64,
         country_of_issuing: String,
         city_of_issuing: String,
         issue_date: String,
         maturity_date: String,
-        drawee: IdentityPublicData,
-        payee: IdentityPublicData,
-        sum: u64,
+        drawee: String,
+        payee: String,
+        sum: String,
         currency: String,
         country_of_payment: String,
         city_of_payment: String,
@@ -33,6 +34,71 @@ impl BillService {
         drawer_keys: BcrKeys,
         timestamp: u64,
     ) -> Result<BitcreditBill> {
+        let (sum, bill_type) = self.validate_bill_issue(
+            &sum,
+            &file_upload_id,
+            &issue_date,
+            &maturity_date,
+            &drawee,
+            &payee,
+            t,
+        )?;
+
+        let (public_data_drawee, public_data_payee) = match bill_type {
+            // Drawer is payee
+            BillType::SelfDrafted => {
+                let public_data_drawee = match self.contact_store.get(&drawee).await {
+                    Ok(Some(drawee)) => drawee.into(),
+                    Ok(None) | Err(_) => {
+                        return Err(Error::Validation(String::from(
+                            "Can not get drawee identity from contacts.",
+                        )));
+                    }
+                };
+
+                let public_data_payee = drawer_public_data.clone();
+
+                (public_data_drawee, public_data_payee)
+            }
+            // Drawer is drawee
+            BillType::PromissoryNote => {
+                let public_data_drawee = drawer_public_data.clone();
+
+                let public_data_payee = match self.contact_store.get(&payee).await {
+                    Ok(Some(drawee)) => drawee.into(),
+                    Ok(None) | Err(_) => {
+                        return Err(Error::Validation(String::from(
+                            "Can not get payee identity from contacts.",
+                        )));
+                    }
+                };
+
+                (public_data_drawee, public_data_payee)
+            }
+            // Drawer is neither drawee nor payee
+            BillType::ThreeParties => {
+                let public_data_drawee = match self.contact_store.get(&drawee).await {
+                    Ok(Some(drawee)) => drawee.into(),
+                    Ok(None) | Err(_) => {
+                        return Err(Error::Validation(String::from(
+                            "Can not get drawee identity from contacts.",
+                        )));
+                    }
+                };
+
+                let public_data_payee = match self.contact_store.get(&payee).await {
+                    Ok(Some(drawee)) => drawee.into(),
+                    Ok(None) | Err(_) => {
+                        return Err(Error::Validation(String::from(
+                            "Can not get payee identity from contacts.",
+                        )));
+                    }
+                };
+
+                (public_data_drawee, public_data_payee)
+            }
+        };
+
         let identity = self.identity_store.get_full().await?;
         let keys = BcrKeys::new();
         let public_key = keys.get_public_key();
@@ -76,9 +142,9 @@ impl BillService {
             country_of_payment,
             city_of_payment,
             language,
-            drawee,
+            drawee: public_data_drawee,
             drawer: drawer_public_data.clone(),
-            payee,
+            payee: public_data_payee,
             endorsee: None,
             files: bill_files,
         };

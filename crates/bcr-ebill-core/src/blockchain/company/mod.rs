@@ -163,7 +163,7 @@ impl Block for CompanyBlock {
     }
 
     fn get_block_data_to_hash(&self) -> Self::BlockDataToHash {
-        let data = CompanyBlockDataToHash {
+        CompanyBlockDataToHash {
             company_id: self.company_id.clone(),
             id: self.id(),
             previous_hash: self.previous_hash().to_owned(),
@@ -172,8 +172,7 @@ impl Block for CompanyBlock {
             public_key: self.public_key().to_owned(),
             signatory_node_id: self.signatory_node_id.clone(),
             op_code: self.op_code().to_owned(),
-        };
-        data
+        }
     }
 }
 

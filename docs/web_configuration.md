@@ -1,4 +1,4 @@
-# Configuration
+# Web Configuration
 
 The application can be configured using command-line parameters, or environment variables
 
@@ -8,7 +8,6 @@ The following options are available:
 * `HTTP_ADDRESS` / `--http-address` - the HTTP address (default: 127.0.0.1)
 * `DATA_DIR` - the data directory root (default: ".")
 * `SURREAL_DB_CONNECTION` - the surreal DB connection (default: "ws://localhost:8800") - set to `rocksdb://data/surreal` for embedded mode
-* `TERMINAL_CLIENT` - whether to start a debug terminal client (default: false)
 * `BITCOIN_NETWORK` - bitcoin network to use (default: testnet), possible values: `mainnet`, `regtest` and `testnet`
 * `RUST_LOG` - the log level, e.g.: info, trace, debug, error (default: error)
 * `NOSTR_RELAY` - nostr relay endpoint (default: ws://localhost:8080)

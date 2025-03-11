@@ -8,11 +8,6 @@ use crate::{
 use super::{Error, Result};
 #[cfg(test)]
 use mockall::automock;
-use tokio::{
-    fs::File,
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::watch,
-};
 
 /// Allows to backup and restore the database as an encrypted file.
 #[cfg_attr(test, automock)]
@@ -30,7 +25,6 @@ pub struct BackupService {
     store: Arc<dyn BackupStoreApi>,
     identity_store: Arc<dyn IdentityStoreApi>,
     surreal_db_config: SurrealDbConfig,
-    reboot_sender: watch::Sender<bool>,
 }
 
 impl BackupService {
@@ -38,13 +32,11 @@ impl BackupService {
         store: Arc<dyn BackupStoreApi>,
         identity_store: Arc<dyn IdentityStoreApi>,
         surreal_db_config: SurrealDbConfig,
-        reboot_sender: watch::Sender<bool>,
     ) -> Self {
         Self {
             store,
             identity_store,
             surreal_db_config,
-            reboot_sender,
         }
     }
 
@@ -74,23 +66,21 @@ impl BackupServiceApi for BackupService {
     }
 
     async fn restore(&self, file_path: &Path) -> Result<()> {
-        let private_key = self
+        // TODO WASM: implement without file system access
+        let _private_key = self
             .identity_store
             .get_key_pair()
             .await?
             .get_private_key_string();
-        let mut buffer = vec![];
-        let mut file = File::open(file_path).await?;
-        file.read_to_end(&mut buffer).await?;
-        let decrypted_bytes = util::crypto::decrypt_ecies(&buffer, &private_key)?;
+        let _buffer: Vec<u8> = vec![];
+        // let mut file = File::open(file_path).await?;
+        // file.read_to_end(&mut buffer).await?;
+        // let decrypted_bytes = util::crypto::decrypt_ecies(&buffer, &private_key)?;
         let out_path = file_path.with_file_name("restore.surql");
-        let mut out = File::create(out_path.as_path()).await?;
-        out.write_all(&decrypted_bytes).await?;
+        // let mut out = File::create(out_path.as_path()).await?;
+        // out.write_all(&decrypted_bytes).await?;
         self.store.drop_db(&self.surreal_db_config.database).await?;
         self.store.restore(out_path.as_path()).await?;
-        self.reboot_sender
-            .send(true)
-            .expect("Can initiate a reboot");
         Ok(())
     }
 }
@@ -100,6 +90,7 @@ mod tests {
     use std::env;
 
     use mockall::predicate::eq;
+    use tokio::io::AsyncWriteExt;
     use util::BcrKeys;
 
     use crate::tests::tests::{MockBackupStoreApiMock, MockIdentityStoreApiMock};
@@ -126,13 +117,8 @@ mod tests {
             .returning(|| Ok(vec![0, 1, 0, 1, 0, 0, 1, 0]))
             .once();
 
-        let (tx, _) = watch::channel(false);
-        let service = BackupService::new(
-            Arc::new(store),
-            Arc::new(identity_store),
-            surreal_db_config,
-            tx,
-        );
+        let service =
+            BackupService::new(Arc::new(store), Arc::new(identity_store), surreal_db_config);
 
         let result = service.backup().await;
         assert!(result.is_ok());
@@ -151,13 +137,8 @@ mod tests {
         identity_store.expect_get_key_pair().never();
         store.expect_backup().never();
 
-        let (tx, _) = watch::channel(false);
-        let service = BackupService::new(
-            Arc::new(store),
-            Arc::new(identity_store),
-            surreal_db_config,
-            tx,
-        );
+        let service =
+            BackupService::new(Arc::new(store), Arc::new(identity_store), surreal_db_config);
 
         let result = service.backup().await;
         assert!(result.is_err());
@@ -192,7 +173,7 @@ DEFINE TABLE bill_chain TYPE ANY SCHEMALESS PERMISSIONS NONE;";
 
         let temp_dir = env::temp_dir();
         let file_path = temp_dir.join("test.surql");
-        let mut test_file = File::create(file_path.as_path()).await.unwrap();
+        let mut test_file = tokio::fs::File::create(file_path.as_path()).await.unwrap();
         test_file.write_all(&encrypted_bytes).await.unwrap();
 
         identity_store
@@ -208,17 +189,10 @@ DEFINE TABLE bill_chain TYPE ANY SCHEMALESS PERMISSIONS NONE;";
 
         store.expect_restore().returning(|_| Ok(())).once();
 
-        let (tx, mut rx) = watch::channel(false);
-        let service = BackupService::new(
-            Arc::new(store),
-            Arc::new(identity_store),
-            surreal_db_config,
-            tx,
-        );
+        let service =
+            BackupService::new(Arc::new(store), Arc::new(identity_store), surreal_db_config);
 
         let result = service.restore(&temp_dir.join("test.surql")).await;
         assert!(result.is_ok());
-        let should_reboot = *rx.borrow_and_update();
-        assert!(should_reboot);
     }
 }

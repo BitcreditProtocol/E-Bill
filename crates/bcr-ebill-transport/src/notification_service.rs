@@ -1,5 +1,6 @@
 use crate::{Result, event::chain_event::BillChainEvent};
 use async_trait::async_trait;
+use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_core::{
     bill::BitcreditBill,
     contact::IdentityPublicData,
@@ -9,11 +10,15 @@ use bcr_ebill_persistence::notification::NotificationFilter;
 #[cfg(test)]
 use mockall::automock;
 
+#[cfg(test)]
+impl ServiceTraitBounds for MockNotificationServiceApi {}
+
 /// Send events via all channels required for the event type.
 #[allow(dead_code)]
 #[cfg_attr(test, automock)]
-#[async_trait]
-pub trait NotificationServiceApi: Send + Sync {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait NotificationServiceApi: ServiceTraitBounds {
     /// Sent when: A bill is signed by: Drawer
     /// Receiver: Payer, Action: AcceptBill
     /// Receiver: Payee, Action: CheckBill

@@ -162,15 +162,14 @@ impl Block for IdentityBlock {
     }
 
     fn get_block_data_to_hash(&self) -> Self::BlockDataToHash {
-        let data = IdentityBlockDataToHash {
+        IdentityBlockDataToHash {
             id: self.id(),
             previous_hash: self.previous_hash().to_owned(),
             data: self.data().to_owned(),
             timestamp: self.timestamp(),
             public_key: self.public_key().to_owned(),
             op_code: self.op_code().to_owned(),
-        };
-        data
+        }
     }
 }
 

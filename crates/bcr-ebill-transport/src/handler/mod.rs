@@ -1,5 +1,6 @@
-use super::Result;
+use crate::Result;
 use async_trait::async_trait;
+use bcr_ebill_core::ServiceTraitBounds;
 use log::info;
 #[cfg(test)]
 use mockall::automock;
@@ -11,11 +12,15 @@ mod bill_action_event_handler;
 
 pub use bill_action_event_handler::BillActionEventHandler;
 
+#[cfg(test)]
+impl ServiceTraitBounds for MockNotificationHandlerApi {}
+
 /// Handle an event when we receive it from a channel.
 #[allow(dead_code)]
 #[cfg_attr(test, automock)]
-#[async_trait]
-pub trait NotificationHandlerApi: Send + Sync {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait NotificationHandlerApi: ServiceTraitBounds {
     /// Whether this handler handles the given event type.
     fn handles_event(&self, event_type: &EventType) -> bool;
 
@@ -32,8 +37,11 @@ pub struct LoggingEventHandler {
     pub event_types: Vec<EventType>,
 }
 
+impl ServiceTraitBounds for LoggingEventHandler {}
+
 /// Just a dummy handler that logs the event and returns Ok(())
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationHandlerApi for LoggingEventHandler {
     fn handles_event(&self, event_type: &EventType) -> bool {
         self.event_types.contains(event_type)
@@ -98,6 +106,8 @@ mod tests {
         pub received_event: Mutex<Option<Event<T>>>,
         pub accepted_event: Option<EventType>,
     }
+
+    impl<T: Serialize + DeserializeOwned + Send + Sync> ServiceTraitBounds for TestEventHandler<T> {}
 
     impl<T: Serialize + DeserializeOwned> TestEventHandler<T> {
         pub fn new(accepted_event: Option<EventType>) -> Self {
