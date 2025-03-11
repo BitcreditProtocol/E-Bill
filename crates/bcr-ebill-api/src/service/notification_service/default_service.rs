@@ -14,6 +14,7 @@ use crate::data::{
 };
 use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
 use crate::service::contact_service::ContactServiceApi;
+use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_core::notification::{ActionType, EventType};
 
 /// A default implementation of the NotificationServiceApi that can
@@ -24,6 +25,8 @@ pub struct DefaultNotificationService {
     notification_store: Arc<dyn NotificationStoreApi>,
     contact_service: Arc<dyn ContactServiceApi>,
 }
+
+impl ServiceTraitBounds for DefaultNotificationService {}
 
 impl DefaultNotificationService {
     pub fn new(
@@ -39,7 +42,8 @@ impl DefaultNotificationService {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationServiceApi for DefaultNotificationService {
     async fn send_bill_is_signed_event(&self, event: &BillChainEvent) -> Result<()> {
         let event_type = EventType::BillSigned;
@@ -396,7 +400,10 @@ mod tests {
     use crate::service::bill_service::test_utils::get_genesis_chain;
     use crate::service::contact_service::MockContactServiceApi;
     use crate::service::notification_service::create_nostr_consumer;
+    use async_broadcast::Receiver;
+    use serde_json::Value;
 
+    impl ServiceTraitBounds for MockNotificationJsonTransport {}
     mock! {
         pub NotificationJsonTransport {}
         #[async_trait]
@@ -407,12 +414,11 @@ mod tests {
     }
 
     mock! {
-
         pub PushService {}
         #[async_trait]
         impl PushApi for PushService {
-            async fn send(&self, value: serde_json::Value);
-            async fn subscribe(&self) -> tokio::sync::broadcast::Receiver<serde_json::Value> ;
+            async fn send(&self, value: Value);
+            async fn subscribe(&self) -> Receiver<Value>;
         }
     }
 

@@ -783,8 +783,7 @@ pub mod tests {
             company_chain_store,
         ) = get_storages();
         storage.expect_get_all().returning(|| {
-            Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                 "test error",
             )))
         });
@@ -866,8 +865,7 @@ pub mod tests {
         ) = get_storages();
         storage.expect_exists().returning(|_| true);
         storage.expect_get().returning(|_| {
-            Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                 "test error",
             )))
         });
@@ -987,8 +985,7 @@ pub mod tests {
         ) = get_storages();
         storage.expect_save_key_pair().returning(|_, _| Ok(()));
         storage.expect_insert().returning(|_| {
-            Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                 "test error",
             )))
         });
@@ -1210,8 +1207,7 @@ pub mod tests {
             .returning(|_| Ok(get_baseline_company_data().1.1));
         storage.expect_exists().returning(|_| true);
         storage.expect_update().returning(|_, _| {
-            Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                 "test error",
             )))
         });
@@ -1499,8 +1495,7 @@ pub mod tests {
             Ok(map)
         });
         storage.expect_update().returning(|_, _| {
-            Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                 "test error",
             )))
         });
@@ -1802,8 +1797,7 @@ pub mod tests {
             })
         });
         storage.expect_update().returning(|_, _| {
-            Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                 "test error",
             )))
         });
@@ -1887,8 +1881,7 @@ pub mod tests {
         file_upload_store
             .expect_save_attached_file()
             .returning(|_, _, _| {
-                Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                     "test error",
                 )))
             });
@@ -1922,8 +1915,7 @@ pub mod tests {
         file_upload_store
             .expect_open_attached_file()
             .returning(|_, _| {
-                Err(bcr_ebill_persistence::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Err(bcr_ebill_persistence::Error::Io(std::io::Error::other(
                     "test error",
                 )))
             });

@@ -11,7 +11,6 @@ use bcr_ebill_transport::{Error, Result};
 use bcr_ebill_transport::{NotificationServiceApi, PushApi};
 use default_service::DefaultNotificationService;
 #[cfg(test)]
-#[cfg(test)]
 pub mod test_utils;
 
 pub mod default_service;
@@ -51,6 +50,7 @@ pub async fn create_notification_service(
     notification_store: Arc<dyn NotificationStoreApi>,
     contact_service: Arc<dyn ContactServiceApi>,
 ) -> Result<Arc<dyn NotificationServiceApi>> {
+    #[allow(clippy::arc_with_non_send_sync)]
     Ok(Arc::new(DefaultNotificationService::new(
         Box::new(client),
         notification_store,

@@ -4,7 +4,7 @@ pub mod tests {
     use crate::{CONFIG, data::bill::BillKeys};
     use async_trait::async_trait;
     use bcr_ebill_core::{
-        OptionalPostalAddress, PostalAddress,
+        OptionalPostalAddress, PostalAddress, ServiceTraitBounds,
         bill::BitcreditBill,
         blockchain::{
             bill::{BillBlock, BillBlockchain, BillOpCode},
@@ -212,6 +212,7 @@ pub mod tests {
         }
     }
 
+    impl ServiceTraitBounds for MockNotificationService {}
     mockall::mock! {
         pub NotificationService {}
 

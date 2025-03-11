@@ -2,7 +2,7 @@ use super::Result;
 use super::middleware::IdentityCheck;
 use crate::data::{
     AcceptBitcreditBillPayload, BillCombinedBitcoinKeyWeb, BillId, BillNumbersToWordsForSum,
-    BillType, BillsResponse, BillsSearchFilterPayload, BitcreditBillPayload, BitcreditBillWeb,
+    BillsResponse, BillsSearchFilterPayload, BitcreditBillPayload, BitcreditBillWeb,
     EndorseBitcreditBillPayload, EndorsementsResponse, FromWeb, IntoWeb, LightBitcreditBillWeb,
     MintBitcreditBillPayload, OfferToSellBitcreditBillPayload, PastEndorseesResponse,
     RejectActionBillPayload, RequestRecourseForAcceptancePayload, RequestRecourseForPaymentPayload,
@@ -10,7 +10,7 @@ use crate::data::{
     RequestToPayBitcreditBillPayload, SuccessResponse, TempFileWrapper, UploadBillFilesForm,
     UploadFilesResponse,
 };
-use bcr_ebill_api::service::ServiceContext;
+use crate::service_context::ServiceContext;
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
 use bcr_ebill_api::util::{self, BcrKeys};
 use bcr_ebill_api::{
@@ -371,115 +371,20 @@ pub async fn issue_bill(
     state: &State<ServiceContext>,
     bill_payload: Json<BitcreditBillPayload>,
 ) -> Result<Json<BillId>> {
-    let sum = util::currency::parse_sum(&bill_payload.sum)?;
-
-    util::file::validate_file_upload_id(&bill_payload.file_upload_id)?;
-
-    if util::date::date_string_to_i64_timestamp(&bill_payload.issue_date, None).is_none() {
-        return Err(service::Error::Validation(String::from("invalid issue date")).into());
-    }
-
-    if util::date::date_string_to_i64_timestamp(&bill_payload.maturity_date, None).is_none() {
-        return Err(service::Error::Validation(String::from("invalid maturity date")).into());
-    }
-
     let (drawer_public_data, drawer_keys) = get_signer_public_data_and_keys(state).await?;
-
-    let bill_type = BillType::try_from(bill_payload.t)?;
-
-    if bill_payload.drawee == bill_payload.payee {
-        return Err(service::Error::Validation(String::from(
-            "Drawee can't be Payee at the same time",
-        ))
-        .into());
-    }
-
-    let (public_data_drawee, public_data_payee) = match bill_type {
-        // Drawer is payee
-        BillType::SelfDrafted => {
-            let public_data_drawee = match state
-                .contact_service
-                .get_identity_by_node_id(&bill_payload.drawee)
-                .await
-            {
-                Ok(Some(drawee)) => drawee,
-                Ok(None) | Err(_) => {
-                    return Err(service::Error::Validation(String::from(
-                        "Can not get drawee identity from contacts.",
-                    ))
-                    .into());
-                }
-            };
-
-            let public_data_payee = drawer_public_data.clone();
-
-            (public_data_drawee, public_data_payee)
-        }
-        // Drawer is drawee
-        BillType::PromissoryNote => {
-            let public_data_drawee = drawer_public_data.clone();
-
-            let public_data_payee = match state
-                .contact_service
-                .get_identity_by_node_id(&bill_payload.payee)
-                .await
-            {
-                Ok(Some(drawee)) => drawee,
-                Ok(None) | Err(_) => {
-                    return Err(service::Error::Validation(String::from(
-                        "Can not get payee identity from contacts.",
-                    ))
-                    .into());
-                }
-            };
-
-            (public_data_drawee, public_data_payee)
-        }
-        // Drawer is neither drawee nor payee
-        BillType::ThreeParties => {
-            let public_data_drawee = match state
-                .contact_service
-                .get_identity_by_node_id(&bill_payload.drawee)
-                .await
-            {
-                Ok(Some(drawee)) => drawee,
-                Ok(None) | Err(_) => {
-                    return Err(service::Error::Validation(String::from(
-                        "Can not get drawee identity from contacts.",
-                    ))
-                    .into());
-                }
-            };
-
-            let public_data_payee = match state
-                .contact_service
-                .get_identity_by_node_id(&bill_payload.payee)
-                .await
-            {
-                Ok(Some(drawee)) => drawee,
-                Ok(None) | Err(_) => {
-                    return Err(service::Error::Validation(String::from(
-                        "Can not get payee identity from contacts.",
-                    ))
-                    .into());
-                }
-            };
-
-            (public_data_drawee, public_data_payee)
-        }
-    };
-
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
+
     let bill = state
         .bill_service
         .issue_new_bill(
+            bill_payload.t,
             bill_payload.country_of_issuing.to_owned(),
             bill_payload.city_of_issuing.to_owned(),
             bill_payload.issue_date.to_owned(),
             bill_payload.maturity_date.to_owned(),
-            public_data_drawee,
-            public_data_payee,
-            sum,
+            bill_payload.drawee.to_owned(),
+            bill_payload.payee.to_owned(),
+            bill_payload.sum.to_owned(),
             bill_payload.currency.to_owned(),
             bill_payload.country_of_payment.to_owned(),
             bill_payload.city_of_payment.to_owned(),

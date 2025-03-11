@@ -1,5 +1,6 @@
 use crate::{get_config, util};
 use async_trait::async_trait;
+use bcr_ebill_core::ServiceTraitBounds;
 use bitcoin::{Network, secp256k1::Scalar};
 use serde::Deserialize;
 use std::str::FromStr;
@@ -32,8 +33,9 @@ pub enum Error {
 use mockall::automock;
 
 #[cfg_attr(test, automock)]
-#[async_trait]
-pub trait BitcoinClientApi: Send + Sync {
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+pub trait BitcoinClientApi: ServiceTraitBounds {
     async fn get_address_info(&self, address: &str) -> Result<AddressInfo>;
 
     #[allow(dead_code)]
@@ -62,6 +64,11 @@ pub trait BitcoinClientApi: Send + Sync {
 
 #[derive(Clone)]
 pub struct BitcoinClient;
+
+impl ServiceTraitBounds for BitcoinClient {}
+
+#[cfg(test)]
+impl ServiceTraitBounds for MockBitcoinClientApi {}
 
 impl BitcoinClient {
     pub fn new() -> Self {
@@ -97,7 +104,8 @@ impl Default for BitcoinClient {
     }
 }
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl BitcoinClientApi for BitcoinClient {
     async fn get_address_info(&self, address: &str) -> Result<AddressInfo> {
         let address: AddressInfo = reqwest::get(&self.request_url(&format!("/address/{address}")))

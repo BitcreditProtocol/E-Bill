@@ -24,8 +24,8 @@ pub enum Error {
     #[error("io error {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("SurrealDB connection error {0}")]
-    SurrealConnection(#[from] surrealdb::Error),
+    #[error("SurrealDB error {0}")]
+    SurrealConnection(String),
 
     #[error("Failed to insert into database: {0}")]
     InsertFailed(String),
@@ -81,6 +81,12 @@ pub enum Error {
 
     #[error("No seed phrase available")]
     NoSeedPhrase,
+}
+
+impl From<surrealdb::Error> for Error {
+    fn from(e: surrealdb::Error) -> Self {
+        Error::SurrealConnection(format!("SurrealDB connection error: {}", e))
+    }
 }
 
 pub use backup::BackupStoreApi;

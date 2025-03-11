@@ -10,10 +10,10 @@ use nostr_sdk::{
 };
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 
 use crate::service::contact_service::ContactServiceApi;
 use crate::util::{BcrKeys, crypto};
+use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_persistence::{NostrEventOffset, NostrEventOffsetStoreApi};
 use bcr_ebill_transport::{Error, NotificationJsonTransportApi, Result};
 
@@ -31,10 +31,10 @@ impl NostrConfig {
 
     #[allow(dead_code)]
     pub fn get_npub(&self) -> bcr_ebill_transport::Result<String> {
-        Ok(self.keys.get_nostr_npub().map_err(|e| {
+        self.keys.get_nostr_npub().map_err(|e| {
             error!("Failed to get Nostr npub: {e}");
             Error::Crypto("Failed to get Nostr npub".to_string())
-        })?)
+        })
     }
 }
 
@@ -119,7 +119,10 @@ impl NostrClient {
     }
 }
 
-#[async_trait]
+impl ServiceTraitBounds for NostrClient {}
+
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationJsonTransportApi for NostrClient {
     async fn send(
         &self,
@@ -175,6 +178,7 @@ impl NostrConsumer {
     ) -> Self {
         Self {
             client,
+            #[allow(clippy::arc_with_non_send_sync)]
             event_handlers: Arc::new(event_handlers),
             contact_service,
             offset_store,
@@ -182,7 +186,7 @@ impl NostrConsumer {
     }
 
     #[allow(dead_code)]
-    pub async fn start(&self) -> Result<JoinHandle<()>> {
+    pub async fn start(&self) -> Result<()> {
         // move dependencies into thread scope
         let client = self.client.clone();
         let event_handlers = self.event_handlers.clone();
@@ -205,9 +209,7 @@ impl NostrConsumer {
             .await
             .expect("Failed to subscribe to Nostr events");
 
-        // run subscription in a tokio task
-        let handle = tokio::spawn(async move {
-            client
+        client
                 .client
                 .handle_notifications(|note| async {
                     if let Some((envelope, sender, event_id, time)) =
@@ -232,8 +234,7 @@ impl NostrConsumer {
                 })
                 .await
                 .expect("Nostr notification handler failed");
-        });
-        Ok(handle)
+        Ok(())
     }
 }
 
@@ -305,6 +306,7 @@ async fn handle_event(
 mod tests {
     use std::{sync::Arc, time::Duration};
 
+    use bcr_ebill_core::ServiceTraitBounds;
     use bcr_ebill_transport::event::Event;
     use bcr_ebill_transport::handler::NotificationHandlerApi;
     use mockall::predicate;
@@ -321,6 +323,7 @@ mod tests {
     use crate::util::BcrKeys;
     use mockall::mock;
 
+    impl ServiceTraitBounds for MockNotificationHandler {}
     mock! {
         pub NotificationHandler {}
         #[async_trait::async_trait]
@@ -425,19 +428,27 @@ mod tests {
             vec![Box::new(handler)],
             Arc::new(offset_store),
         );
-        let handle = consumer
-            .start()
-            .await
-            .expect("failed to start nostr consumer");
 
-        // and send an event
-        client1
-            .send(&contact, event.try_into().expect("could not convert event"))
-            .await
-            .expect("failed to send event");
+        // run in a local set
+        let local = tokio::task::LocalSet::new();
+        local
+            .run_until(async move {
+                let handle = tokio::task::spawn_local(async move {
+                    consumer
+                        .start()
+                        .await
+                        .expect("failed to start nostr consumer");
+                });
+                // and send an event
+                client1
+                    .send(&contact, event.try_into().expect("could not convert event"))
+                    .await
+                    .expect("failed to send event");
 
-        // give it a little bit of time to process the event
-        time::sleep(Duration::from_millis(100)).await;
-        handle.abort();
+                // give it a little bit of time to process the event
+                time::sleep(Duration::from_millis(100)).await;
+                handle.abort();
+            })
+            .await;
     }
 }

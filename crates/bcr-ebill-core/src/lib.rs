@@ -16,7 +16,17 @@ pub mod notification;
 mod tests;
 pub mod util;
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+/// This is needed, so we can have our services be used both in a single threaded (wasm32) and in a
+/// multi-threaded (e.g. web) environment without issues.
+#[cfg(not(target_arch = "wasm32"))]
+pub trait ServiceTraitBounds: Send + Sync {}
+
+#[cfg(target_arch = "wasm32")]
+pub trait ServiceTraitBounds {}
+
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default,
+)]
 pub struct PostalAddress {
     pub country: String,
     pub city: String,

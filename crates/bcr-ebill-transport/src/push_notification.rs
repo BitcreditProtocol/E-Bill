@@ -2,10 +2,10 @@ use async_trait::async_trait;
 use log::error;
 use std::sync::Arc;
 
+use async_broadcast::{InactiveReceiver, Receiver, Sender};
 #[cfg(test)]
 use mockall::automock;
 use serde_json::Value;
-use tokio::sync::broadcast::{Receiver, Sender};
 
 #[cfg_attr(test, automock)]
 #[async_trait]
@@ -18,13 +18,16 @@ pub trait PushApi: Send + Sync {
 
 pub struct PushService {
     sender: Arc<Sender<Value>>,
+    _receiver: InactiveReceiver<Value>, // keep receiver around, so channel doesn't get closed
 }
 
 impl PushService {
     pub fn new() -> Self {
-        let (rx, _) = tokio::sync::broadcast::channel::<Value>(5);
+        let (tx, rx) = async_broadcast::broadcast::<Value>(5);
+        let inactive = rx.deactivate();
         Self {
-            sender: Arc::new(rx),
+            sender: Arc::new(tx),
+            _receiver: inactive,
         }
     }
 }
@@ -38,7 +41,7 @@ impl Default for PushService {
 #[async_trait]
 impl PushApi for PushService {
     async fn send(&self, value: Value) {
-        match self.sender.send(value) {
+        match self.sender.broadcast(value).await {
             Ok(_) => {}
             Err(err) => {
                 error!("Error sending push message: {}", err);
@@ -47,6 +50,6 @@ impl PushApi for PushService {
     }
 
     async fn subscribe(&self) -> Receiver<Value> {
-        self.sender.subscribe()
+        self.sender.new_receiver()
     }
 }

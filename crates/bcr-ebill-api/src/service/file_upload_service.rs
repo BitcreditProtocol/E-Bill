@@ -162,12 +162,9 @@ mod tests {
     async fn upload_files_baseline_fails_on_folder_creation() {
         let file_bytes = String::from("hello world").as_bytes().to_vec();
         let mut storage = MockFileUploadStoreApiMock::new();
-        storage.expect_create_temp_upload_folder().returning(|_| {
-            Err(persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "test error",
-            )))
-        });
+        storage
+            .expect_create_temp_upload_folder()
+            .returning(|_| Err(persistence::Error::Io(std::io::Error::other("test error"))));
         let mut file = MockUploadFileHandler::new();
         file.expect_name()
             .returning(|| Some(String::from("invoice")));
@@ -193,7 +190,7 @@ mod tests {
         file.expect_extension()
             .returning(|| Some(String::from("pdf")));
         file.expect_get_contents()
-            .returning(|| Err(std::io::Error::new(std::io::ErrorKind::Other, "test error")));
+            .returning(|| Err(std::io::Error::other("test error")));
         let service = get_service(storage);
 
         let res = service.upload_files(vec![&file]).await;
@@ -220,12 +217,7 @@ mod tests {
         let mut storage = MockFileUploadStoreApiMock::new();
         storage
             .expect_write_temp_upload_file()
-            .returning(|_, _, _| {
-                Err(persistence::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "test error",
-                )))
-            });
+            .returning(|_, _, _| Err(persistence::Error::Io(std::io::Error::other("test error"))));
         storage
             .expect_create_temp_upload_folder()
             .returning(|_| Ok(()));
@@ -298,7 +290,7 @@ mod tests {
         file.expect_name()
             .returning(move || Some(String::from("goodname")));
         file.expect_detect_content_type()
-            .returning(move || Err(std::io::Error::new(std::io::ErrorKind::Other, "test error")));
+            .returning(move || Err(std::io::Error::other("test error")));
 
         let service = get_service(MockFileUploadStoreApiMock::new());
         let res = service.validate_attached_file(&file).await;
@@ -386,12 +378,9 @@ mod tests {
     #[tokio::test]
     async fn get_temp_file_err() {
         let mut storage = MockFileUploadStoreApiMock::new();
-        storage.expect_read_temp_upload_files().returning(|_| {
-            Err(persistence::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "test error",
-            )))
-        });
+        storage
+            .expect_read_temp_upload_files()
+            .returning(|_| Err(persistence::Error::Io(std::io::Error::other("test error"))));
         let service = get_service(storage);
 
         let res = service.get_temp_file("1234").await;

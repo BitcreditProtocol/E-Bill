@@ -8,6 +8,10 @@ pub enum Error {
     #[error("not found")]
     NotFound,
 
+    /// errors stemming from providing an invalid bill type
+    #[error("invalid bill type")]
+    InvalidBillType,
+
     /// errors stemming from trying to do invalid operations
     #[error("invalid operation")]
     InvalidOperation,
@@ -145,4 +149,8 @@ pub enum Error {
 
     #[error("io error {0}")]
     Io(#[from] std::io::Error),
+
+    /// errors that stem from validation
+    #[error("Validation Error: {0}")]
+    Validation(String),
 }

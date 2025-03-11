@@ -5,11 +5,12 @@ use crate::data::{
     FromWeb, IntoWeb, ListSignatoriesResponse, RemoveSignatoryPayload, SuccessResponse,
     TempFileWrapper, UploadFileForm, UploadFilesResponse,
 };
+use crate::service_context::ServiceContext;
 use bcr_ebill_api::data::{OptionalPostalAddress, PostalAddress};
 use bcr_ebill_api::util;
 use bcr_ebill_api::{
     external,
-    service::{self, ServiceContext},
+    service::{self},
     util::file::{UploadFileHandler, detect_content_type_for_bytes},
 };
 use rocket::{State, form::Form, get, http::ContentType, post, put, serde::json::Json};
@@ -140,6 +141,10 @@ pub async fn edit(
     edit_company_payload: Json<EditCompanyPayload>,
 ) -> Result<Json<SuccessResponse>> {
     let payload = edit_company_payload.0;
+
+    util::file::validate_file_upload_id(&payload.logo_file_upload_id)?;
+    util::file::validate_file_upload_id(&payload.proof_of_registration_file_upload_id)?;
+
     if payload.name.is_none()
         && payload.email.is_none()
         && payload.postal_address.is_none()

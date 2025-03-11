@@ -15,6 +15,8 @@ pub mod util;
 pub use blockchain::Block;
 pub use blockchain::Blockchain;
 pub use persistence::DbContext;
+pub use persistence::Error as PersistenceError;
+pub use persistence::db::SurrealDbConfig;
 pub use persistence::get_db_context;
 pub use persistence::notification::NotificationFilter;
 
