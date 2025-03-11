@@ -28,6 +28,9 @@ bcr-ebill-core = { path = "../bcr-ebill-core" }
 bcr-ebill-persistence = { path = "../bcr-ebill-persistence" }
 bcr-ebill-transport = { path = "../bcr-ebill-transport" }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio.workspace = true
+
 [dev-dependencies]
 mockall = "0.13.1"
 nostr-relay-builder = "0.39.0"

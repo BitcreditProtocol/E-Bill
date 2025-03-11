@@ -27,6 +27,7 @@ surrealdb = { version = "2.2", default-features = false, features = ["kv-indxdb"
 # Enable "protocol-ws" for all other targets
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 surrealdb = { version = "2.2", default-features = false, features = ["protocol-ws"] }
+tokio.workspace = true
 
 [dev-dependencies]
 surrealdb = { version = "2.2.0", features = ["kv-mem"], default-features = false }

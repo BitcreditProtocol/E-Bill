@@ -1,10 +1,9 @@
 #![allow(clippy::arc_with_non_send_sync)]
 use super::{CONTEXT, Result};
 use bcr_ebill_api::{
-    Config, DbContext, SurrealDbConfig,
+    Config, DbContext,
     external::bitcoin::BitcoinClient,
     service::{
-        backup_service::{BackupService, BackupServiceApi},
         bill_service::{BillServiceApi, service::BillService},
         company_service::{CompanyService, CompanyServiceApi},
         contact_service::{ContactService, ContactServiceApi},
@@ -35,8 +34,6 @@ pub struct Context {
     pub nostr_consumer: NostrConsumer,
     pub notification_service: Arc<dyn NotificationServiceApi>,
     pub push_service: Arc<dyn PushApi>,
-    #[allow(dead_code)]
-    pub backup_service: Arc<dyn BackupServiceApi>,
     pub current_identity: SwitchIdentityState,
     pub cfg: Config,
 }
@@ -103,11 +100,6 @@ impl Context {
             Arc::new(company_service.clone()),
         );
 
-        let backup_service = BackupService::new(
-            db.backup_store.clone(),
-            db.identity_store.clone(),
-            SurrealDbConfig::new(&cfg.surreal_db_connection),
-        );
         Ok(Self {
             contact_service,
             search_service: Arc::new(search_service),
@@ -118,7 +110,6 @@ impl Context {
             nostr_consumer,
             notification_service,
             push_service,
-            backup_service: Arc::new(backup_service),
             current_identity: SwitchIdentityState {
                 personal: local_node_id.to_owned(),
                 company: None,

@@ -5,6 +5,8 @@ document.getElementById("notif").addEventListener("click", triggerNotif);
 document.getElementById("nostrnotif").addEventListener("click", triggerNostrNotif);
 document.getElementById("contact_test").addEventListener("click", triggerContact);
 document.getElementById("bill_test").addEventListener("click", triggerBill);
+document.getElementById("fetch_temp").addEventListener("click", fetchTempFile);
+document.getElementById("fetch_contact_file").addEventListener("click", fetchContactFile);
 
 async function start() {
     let config = {
@@ -77,10 +79,10 @@ async function start() {
         await companyApi.edit({ id: company.id, email: "different@example.com", postal_address: {} });
         let detail = await companyApi.detail(company.id);
         console.log("company detail: ", detail);
-        await companyApi.add_signatory({ id: detail.id, signatory_node_id: contact_node_id });
-        let signatories = await companyApi.list_signatories(detail.id);
-        console.log("signatories: ", signatories);
-        await companyApi.remove_signatory({ id: detail.id, signatory_node_id: contact_node_id });
+        // await companyApi.add_signatory({ id: detail.id, signatory_node_id: contact_node_id });
+        // let signatories = await companyApi.list_signatories(detail.id);
+        // console.log("signatories: ", signatories);
+        // await companyApi.remove_signatory({ id: detail.id, signatory_node_id: contact_node_id });
     }
 
     // Bills
@@ -102,11 +104,12 @@ async function start() {
     // Notifications
     let notifications = await notificationApi.list();
     console.log("notifications: ", notifications);
-    return { identityApi, billApi, contactApi, notificationApi };
+    return { companyApi, generalApi, identityApi, billApi, contactApi, notificationApi };
 }
 
 let apis = await start();
 let contactApi = apis.contactApi;
+let generalApi = apis.generalApi;
 let identityApi = apis.identityApi;
 let billApi = apis.billApi;
 let notificationTriggerApi = apis.notificationApi;
@@ -129,10 +132,10 @@ async function uploadFile(event) {
     try {
         let file_upload_response = await contactApi.upload(uploadedFile);
         console.log("success uploading:", file_upload_response);
+        document.getElementById("file_upload_id").value = file_upload_response.file_upload_id;
     } catch(err) {
         console.log("upload error: ", err);
     }
-    
 }
 
 async function triggerContact() {
@@ -155,6 +158,7 @@ async function triggerContact() {
         console.log("contact:", contact);
     } catch(err) {
         console.log("No contact found - creating..");
+        let file_upload_id = document.getElementById("file_upload_id").value || undefined;
         await contactApi.create({
             t: 0,
             node_id: node_id,
@@ -165,11 +169,18 @@ async function triggerContact() {
                 city: "Vienna",
                 zip: "1020",
                 address: "street 1",
-            }
+            },
+            avatar_file_upload_id: file_upload_id,
         });
     }
     let contacts = await contactApi.list();
     console.log("contacts: ", contacts);
+    let contact = await contactApi.detail(node_id);
+    console.log("contact: ", contact);
+    document.getElementById("contact_id").value = node_id;
+    if (contact.avatar_file) {
+        document.getElementById("contact_file_name").value = contact.avatar_file.name;
+    }
 }
 
 async function triggerBill() {
@@ -214,5 +225,30 @@ async function triggerNotif() {
 async function triggerNostrNotif() {
     let node_id = document.getElementById("node_id").value;
     await notificationTriggerApi.trigger_test_notification(node_id);
+}
+
+async function fetchTempFile() {
+    let file_upload_id = document.getElementById("file_upload_id").value;
+    let temp_file = await generalApi.temp_file(file_upload_id);
+    let file_bytes = temp_file.data;
+    let arr = new Uint8Array(file_bytes);
+    let blob = new Blob([arr], { type: temp_file.content_type });
+    let url = URL.createObjectURL(blob);
+
+    console.log("file", temp_file, url, blob);
+    document.getElementById("uploaded_file").src = url;
+}
+
+async function fetchContactFile() {
+    let node_id = document.getElementById("contact_id").value;
+    let file_name = document.getElementById("contact_file_name").value;
+    let file = await contactApi.file(node_id, file_name);
+    let file_bytes = file.data;
+    let arr = new Uint8Array(file_bytes);
+    let blob = new Blob([arr], { type: file.content_type });
+    let url = URL.createObjectURL(blob);
+
+    console.log("file", file, url, blob);
+    document.getElementById("attached_file").src = url;
 }
 

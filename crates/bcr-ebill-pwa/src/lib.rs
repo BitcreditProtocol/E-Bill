@@ -5,9 +5,10 @@ use futures::{StreamExt, future::ready};
 use gloo_timers::future::{IntervalStream, TimeoutFuture};
 use job::run_jobs;
 use log::info;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::thread_local;
+use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
 pub mod api;
@@ -17,41 +18,15 @@ mod data;
 mod error;
 mod job;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[wasm_bindgen]
+#[derive(Tsify, Debug, Clone, Deserialize)]
+#[tsify(from_wasm_abi)]
 pub struct Config {
-    #[wasm_bindgen(getter_with_clone)]
     pub bitcoin_network: String,
-    #[wasm_bindgen(getter_with_clone)]
     pub nostr_relay: String,
-    #[wasm_bindgen(getter_with_clone)]
     pub surreal_db_connection: String,
-    #[wasm_bindgen(getter_with_clone)]
     pub data_dir: String,
     pub job_runner_initial_delay_seconds: u32,
     pub job_runner_check_interval_seconds: u32,
-}
-
-#[wasm_bindgen]
-impl Config {
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        bitcoin_network: String,
-        nostr_relay: String,
-        surreal_db_connection: String,
-        data_dir: String,
-        job_runner_initial_delay_seconds: u32,
-        job_runner_check_interval_seconds: u32,
-    ) -> Self {
-        Self {
-            bitcoin_network,
-            nostr_relay,
-            surreal_db_connection,
-            data_dir,
-            job_runner_initial_delay_seconds,
-            job_runner_check_interval_seconds,
-        }
-    }
 }
 
 pub type Result<T> = std::result::Result<T, error::WasmError>;
@@ -101,7 +76,6 @@ pub async fn initialize_api(
         TimeoutFuture::new(config.job_runner_initial_delay_seconds * 1000).await;
         IntervalStream::new(config.job_runner_check_interval_seconds * 1000)
             .for_each(|_| {
-                info!("tick: {}", chrono::Utc::now());
                 run_jobs();
                 ready(())
             })

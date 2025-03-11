@@ -1,7 +1,9 @@
 use super::Result;
 use async_trait::async_trait;
-use log::info;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::io::AsyncReadExt;
 
 #[async_trait]
 pub trait FileUploadStoreApi: Send + Sync {
@@ -39,25 +41,25 @@ pub trait FileUploadStoreApi: Send + Sync {
     async fn delete_attached_files(&self, id: &str) -> Result<()>;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
 pub struct FileUploadStore {
-    #[allow(dead_code)]
     temp_upload_folder: String,
     files_folder: String,
 }
 
 /// Given a base path and a directory path, ensures that the directory
 /// exists and returns the full path.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn file_storage_path(data_dir: &str, path: &str) -> Result<String> {
     let directory = format!("{}/{}", data_dir, path);
     if !Path::new(&directory).exists() {
-        info!("TODO: file upload: create directory");
-        // TODO: create directory
-        // tokio::fs::create_dir_all(&directory).await?;
+        tokio::fs::create_dir_all(&directory).await?;
     }
     Ok(directory)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl FileUploadStore {
     pub async fn new(data_dir: &str, files_path: &str, temp_upload_path: &str) -> Result<Self> {
         let files_folder = file_storage_path(data_dir, files_path).await?;
@@ -75,112 +77,100 @@ impl FileUploadStore {
 
     pub async fn cleanup_temp_uploads(&self) -> Result<()> {
         log::info!("cleaning up temp upload folder");
-        // TODO: read directory and remove
-        // let path = Path::new(&self.temp_upload_folder);
-        // let mut dir = tokio::fs::read_dir(path).await?;
-        // while let Some(entry) = dir.next_entry().await? {
-        //     let path = entry.path();
-        //     if path.is_dir() {
-        //         log::info!("deleting temp upload folder at {path:?}");
-        // TODO: remove directory
-        // tokio::fs::remove_dir_all(path).await?;
-        // }
-        // }
+        let path = Path::new(&self.temp_upload_folder);
+        let mut dir = tokio::fs::read_dir(path).await?;
+        while let Some(entry) = dir.next_entry().await? {
+            let path = entry.path();
+            if path.is_dir() {
+                log::info!("deleting temp upload folder at {path:?}");
+                tokio::fs::remove_dir_all(path).await?;
+            }
+        }
         Ok(())
     }
 }
 
 #[async_trait]
+#[cfg(not(target_arch = "wasm32"))]
 impl FileUploadStoreApi for FileUploadStore {
-    async fn create_temp_upload_folder(&self, _file_upload_id: &str) -> Result<()> {
-        // TODO: create temp directory
-        // let dest_dir = Path::new(&self.temp_upload_folder).join(file_upload_id);
-        // if !dest_dir.exists() {
-        //     tokio::fs::create_dir_all(&dest_dir).await?;
-        // }
+    async fn create_temp_upload_folder(&self, file_upload_id: &str) -> Result<()> {
+        let dest_dir = Path::new(&self.temp_upload_folder).join(file_upload_id);
+        if !dest_dir.exists() {
+            tokio::fs::create_dir_all(&dest_dir).await?;
+        }
         Ok(())
     }
 
-    async fn remove_temp_upload_folder(&self, _file_upload_id: &str) -> Result<()> {
-        // TODO: remove temp directory
-        // let dest_dir = Path::new(&self.temp_upload_folder).join(file_upload_id);
-        // if dest_dir.exists() {
-        //     log::info!("deleting temp upload folder for bill at {dest_dir:?}");
-        //     tokio::fs::remove_dir_all(dest_dir).await?;
-        // }
+    async fn remove_temp_upload_folder(&self, file_upload_id: &str) -> Result<()> {
+        let dest_dir = Path::new(&self.temp_upload_folder).join(file_upload_id);
+        if dest_dir.exists() {
+            log::info!("deleting temp upload folder for bill at {dest_dir:?}");
+            tokio::fs::remove_dir_all(dest_dir).await?;
+        }
         Ok(())
     }
 
     async fn write_temp_upload_file(
         &self,
-        _file_upload_id: &str,
-        _file_name: &str,
-        _file_bytes: &[u8],
+        file_upload_id: &str,
+        file_name: &str,
+        file_bytes: &[u8],
     ) -> Result<()> {
-        // TODO: write file to disk
-        // let dest = Path::new(&self.temp_upload_folder)
-        //     .join(file_upload_id)
-        //     .join(file_name);
-        // tokio::fs::write(dest, file_bytes).await?;
+        let dest = Path::new(&self.temp_upload_folder)
+            .join(file_upload_id)
+            .join(file_name);
+        tokio::fs::write(dest, file_bytes).await?;
         Ok(())
     }
 
-    async fn read_temp_upload_files(
-        &self,
-        _file_upload_id: &str,
-    ) -> Result<Vec<(String, Vec<u8>)>> {
-        // TODO: read dir and files in dir
-        let files = Vec::new();
-        // let folder = Path::new(&self.temp_upload_folder).join(file_upload_id);
-        // let mut dir = tokio::fs::read_dir(&folder).await?;
-        // while let Some(entry) = dir.next_entry().await? {
-        //     let file_path = entry.path();
-        //     if let Some(file_name) = file_path.file_name() {
-        //         if let Some(file_name_str) = file_name.to_str() {
-        //             let file_bytes = tokio::fs::read(&file_path).await?;
-        //             files.push((file_name_str.to_owned(), file_bytes));
-        //         }
-        //     }
-        // }
+    async fn read_temp_upload_files(&self, file_upload_id: &str) -> Result<Vec<(String, Vec<u8>)>> {
+        let mut files = Vec::new();
+        let folder = Path::new(&self.temp_upload_folder).join(file_upload_id);
+        let mut dir = tokio::fs::read_dir(&folder).await?;
+        while let Some(entry) = dir.next_entry().await? {
+            let file_path = entry.path();
+            if let Some(file_name) = file_path.file_name() {
+                if let Some(file_name_str) = file_name.to_str() {
+                    let file_bytes = tokio::fs::read(&file_path).await?;
+                    files.push((file_name_str.to_owned(), file_bytes));
+                }
+            }
+        }
         Ok(files)
     }
 
     async fn save_attached_file(
         &self,
-        _encrypted_bytes: &[u8],
-        _id: &str,
-        _file_name: &str,
+        encrypted_bytes: &[u8],
+        id: &str,
+        file_name: &str,
     ) -> Result<()> {
-        // TODO: save file to disk
-        // let dest_dir = self.get_path_for_files(id);
-        // if !dest_dir.exists() {
-        //     tokio::fs::create_dir_all(&dest_dir).await?;
-        // }
-        // let dest_file = dest_dir.join(file_name);
-        // tokio::fs::write(dest_file, encrypted_bytes).await?;
+        let dest_dir = self.get_path_for_files(id);
+        if !dest_dir.exists() {
+            tokio::fs::create_dir_all(&dest_dir).await?;
+        }
+        let dest_file = dest_dir.join(file_name);
+        tokio::fs::write(dest_file, encrypted_bytes).await?;
         Ok(())
     }
 
-    async fn open_attached_file(&self, _id: &str, _file_name: &str) -> Result<Vec<u8>> {
-        // TODO: open file
-        // let path = self.get_path_for_files(id).join(file_name);
+    async fn open_attached_file(&self, id: &str, file_name: &str) -> Result<Vec<u8>> {
+        let path = self.get_path_for_files(id).join(file_name);
 
-        // let mut file = tokio::fs::File::open(&path).await?;
-        // let mut buf = Vec::new();
+        let mut file = tokio::fs::File::open(&path).await?;
+        let mut buf = Vec::new();
 
-        // file.read_to_end(&mut buf).await?;
-        // Ok(buf)
-        Ok(vec![])
+        file.read_to_end(&mut buf).await?;
+        Ok(buf)
     }
 
-    async fn delete_attached_files(&self, _id: &str) -> Result<()> {
-        // TODO: delete dir and files within
-        // let path = self.get_path_for_files(id);
+    async fn delete_attached_files(&self, id: &str) -> Result<()> {
+        let path = self.get_path_for_files(id);
 
-        // if path.is_dir() {
-        //     log::info!("deleting attached files at {path:?}");
-        //     tokio::fs::remove_dir_all(path).await?;
-        // }
+        if path.is_dir() {
+            log::info!("deleting attached files at {path:?}");
+            tokio::fs::remove_dir_all(path).await?;
+        }
         Ok(())
     }
 }

@@ -14,7 +14,6 @@ use bcr_ebill_api::{
     service::Error,
     util::{
         self,
-        date::{format_date_string, now},
         file::{UploadFileHandler, detect_content_type_for_bytes},
     },
 };
@@ -234,24 +233,6 @@ impl Identity {
             .identity_service
             .recover_from_seedphrase(&seed_phrase_payload.seed_phrase)
             .await?;
-        Ok(())
-    }
-
-    #[wasm_bindgen(unchecked_return_type = "BinaryFileResponse")]
-    pub async fn backup(&self) -> Result<JsValue> {
-        // TODO: db export not supported on WASM by surrealdb
-        let file_name = format!("bitcredit_backup_{}.ecies", format_date_string(now()));
-        let res = serde_wasm_bindgen::to_value(&BinaryFileResponse {
-            data: vec![],
-            name: file_name.to_string(),
-            content_type: "application/pdf".to_string(),
-        })?;
-        Ok(res)
-    }
-
-    #[wasm_bindgen]
-    pub async fn restore(&self, _payload: Vec<u8>) -> Result<()> {
-        // TODO: db import not supported on WASM by surrealdb
         Ok(())
     }
 }

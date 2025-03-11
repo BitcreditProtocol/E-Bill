@@ -14,3 +14,6 @@ pub const DB_OP_CODE: &str = "op_code";
 pub const DB_COMPANY_ID: &str = "company_id";
 pub const DB_BILL_ID: &str = "bill_id";
 pub const DB_SEARCH_TERM: &str = "search_term";
+
+pub const DB_ENTITY_ID: &str = "entity_id";
+pub const DB_FILE_NAME: &str = "file_name";
