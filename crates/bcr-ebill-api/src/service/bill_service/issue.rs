@@ -10,6 +10,7 @@ use bcr_ebill_core::{
     contact::IdentityPublicData,
     util::BcrKeys,
 };
+use bcr_ebill_transport::BillChainEvent;
 use log::error;
 
 impl BillService {
@@ -37,16 +38,12 @@ impl BillService {
         let public_key = keys.get_public_key();
 
         let bill_id = util::sha256_hash(public_key.as_bytes());
+        let bill_keys = BillKeys {
+            private_key: keys.get_private_key_string(),
+            public_key: keys.get_public_key(),
+        };
 
-        self.store
-            .save_keys(
-                &bill_id,
-                &BillKeys {
-                    private_key: keys.get_private_key_string(),
-                    public_key: keys.get_public_key(),
-                },
-            )
-            .await?;
+        self.store.save_keys(&bill_id, &bill_keys).await?;
 
         let mut bill_files: Vec<File> = vec![];
         if let Some(ref upload_id) = file_upload_id {
@@ -121,7 +118,7 @@ impl BillService {
 
         // send notification to all required recipients
         self.notification_service
-            .send_bill_is_signed_event(&bill)
+            .send_bill_is_signed_event(&BillChainEvent::new(&bill, &chain, &bill_keys)?)
             .await?;
 
         // propagate the bill

@@ -1,18 +1,10 @@
-use super::Result;
-use bcr_ebill_core::notification::{ActionType, EventType};
+pub mod bill_events;
+pub mod chain_event;
+
+use crate::{Error, Result};
+use bcr_ebill_core::notification::EventType;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-
-/// Can be used for all events that are just signalling an action
-/// to be performed by the receiver. If we want to also notify
-/// recipients via email or push notifications, we probably need to
-/// add more fields here and create multiple event types.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct BillActionEventPayload {
-    pub bill_id: String,
-    pub action_type: ActionType,
-    pub sum: Option<u64>,
-}
 
 /// A generic event that can be sent to a specific recipient
 /// and is serializable. The recipient is currently just a string,
@@ -62,7 +54,7 @@ pub struct EventEnvelope {
 }
 
 impl<T: Serialize> TryFrom<Event<T>> for EventEnvelope {
-    type Error = super::Error;
+    type Error = Error;
 
     fn try_from(event: Event<T>) -> Result<Self> {
         Ok(Self {
@@ -99,7 +91,7 @@ impl<T: Serialize> TryFrom<Event<T>> for EventEnvelope {
 /// ```
 ///
 impl<T: DeserializeOwned + Serialize> TryFrom<EventEnvelope> for Event<T> {
-    type Error = super::Error;
+    type Error = Error;
     fn try_from(envelope: EventEnvelope) -> Result<Self> {
         let data: T = serde_json::from_value(envelope.data)?;
         Ok(Self {
@@ -113,7 +105,7 @@ impl<T: DeserializeOwned + Serialize> TryFrom<EventEnvelope> for Event<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_utils::*;
+
     use super::*;
 
     #[test]
@@ -149,5 +141,18 @@ mod tests {
             &deserialized_event.node_id, &event.node_id,
             "deserialized event has wrong node id"
         );
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    pub struct TestEventPayload {
+        pub foo: String,
+        pub bar: u32,
+    }
+
+    pub fn create_test_event_payload() -> TestEventPayload {
+        TestEventPayload {
+            foo: "foo".to_string(),
+            bar: 42,
+        }
     }
 }

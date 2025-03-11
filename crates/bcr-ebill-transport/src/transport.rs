@@ -1,9 +1,10 @@
-use super::{EventEnvelope, Result};
-use crate::data::contact::IdentityPublicData;
 use async_trait::async_trait;
 use log::info;
 #[cfg(test)]
 use mockall::automock;
+
+use crate::{Result, event::EventEnvelope};
+use bcr_ebill_core::contact::IdentityPublicData;
 
 #[cfg_attr(test, automock)]
 #[async_trait]

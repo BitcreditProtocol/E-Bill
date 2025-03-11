@@ -1,8 +1,15 @@
-use super::{EventEnvelope, EventType, Result};
+use super::Result;
 use async_trait::async_trait;
 use log::info;
 #[cfg(test)]
 use mockall::automock;
+
+use super::EventEnvelope;
+use bcr_ebill_core::notification::EventType;
+
+mod bill_action_event_handler;
+
+pub use bill_action_event_handler::BillActionEventHandler;
 
 /// Handle an event when we receive it from a channel.
 #[allow(dead_code)]
@@ -42,7 +49,12 @@ impl NotificationHandlerApi for LoggingEventHandler {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_utils::*;
+
+    use serde::{Deserialize, Serialize, de::DeserializeOwned};
+    use tokio::sync::Mutex;
+
+    use crate::Event;
+
     use super::*;
 
     #[tokio::test]
@@ -73,5 +85,59 @@ mod tests {
         // and the event should have been received
         let received = event_handler.received_event.lock().await.clone().unwrap();
         assert_eq!(event.data, received.data, "handled payload was not correct");
+    }
+
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    struct TestEventPayload {
+        pub foo: String,
+        pub bar: u32,
+    }
+
+    struct TestEventHandler<T: Serialize + DeserializeOwned> {
+        pub called: Mutex<bool>,
+        pub received_event: Mutex<Option<Event<T>>>,
+        pub accepted_event: Option<EventType>,
+    }
+
+    impl<T: Serialize + DeserializeOwned> TestEventHandler<T> {
+        pub fn new(accepted_event: Option<EventType>) -> Self {
+            Self {
+                called: Mutex::new(false),
+                received_event: Mutex::new(None),
+                accepted_event,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl NotificationHandlerApi for TestEventHandler<TestEventPayload> {
+        fn handles_event(&self, event_type: &EventType) -> bool {
+            match &self.accepted_event {
+                Some(e) => e == event_type,
+                None => true,
+            }
+        }
+
+        async fn handle_event(&self, event: EventEnvelope, _: &str) -> Result<()> {
+            *self.called.lock().await = true;
+            let event: Event<TestEventPayload> = event.try_into()?;
+            *self.received_event.lock().await = Some(event);
+            Ok(())
+        }
+    }
+
+    fn create_test_event_payload() -> TestEventPayload {
+        TestEventPayload {
+            foo: "foo".to_string(),
+            bar: 42,
+        }
+    }
+
+    fn create_test_event(event_type: &EventType) -> Event<TestEventPayload> {
+        Event::new(
+            event_type.to_owned(),
+            "node_id",
+            create_test_event_payload(),
+        )
     }
 }

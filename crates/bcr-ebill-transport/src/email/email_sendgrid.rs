@@ -1,5 +1,7 @@
-use super::{NotificationEmailTransportApi, Result, email::EmailMessage};
+use super::{EmailMessage, NotificationEmailTransportApi};
+use crate::{Error, Result};
 use async_trait::async_trait;
+use log::error;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -32,7 +34,10 @@ impl SendgridTransport {
             .post(url)
             .json(&message)
             .bearer_auth(&self.config.api_key);
-        let _ = request.send().await?;
+        let _ = request.send().await.map_err(|e| {
+            error!("Failed to send email: {}", e);
+            Error::Network("Failed to send email".to_string())
+        })?;
         Ok(())
     }
 }
@@ -55,7 +60,7 @@ struct SendgridMessage {
 }
 
 impl TryFrom<EmailMessage> for SendgridMessage {
-    type Error = super::Error;
+    type Error = crate::Error;
     fn try_from(message: EmailMessage) -> Result<Self> {
         let from = SendgridAddress::new(message.from);
         let to = SendgridAddress::new(message.to);
@@ -113,7 +118,6 @@ impl SendgridContent {
 #[cfg(test)]
 mod tests {
 
-    use super::super::test_utils::get_test_email_message;
     use super::*;
 
     #[test]
@@ -136,5 +140,14 @@ mod tests {
             api_key: "api_key".to_string(),
             url: "https://api.sendgrid.com".to_string(),
         });
+    }
+
+    pub fn get_test_email_message() -> EmailMessage {
+        EmailMessage {
+            from: "sender@example.com".to_string(),
+            to: "recipient@example.com".to_string(),
+            subject: "Hello World".to_string(),
+            body: "This is a test email.".to_string(),
+        }
     }
 }
