@@ -13,6 +13,8 @@ pub mod bill_chain;
 pub mod company;
 pub mod company_chain;
 pub mod contact;
+#[cfg(any(target_arch = "wasm32", test))]
+pub mod file_upload;
 pub mod identity;
 pub mod identity_chain;
 pub mod nostr_event_offset;

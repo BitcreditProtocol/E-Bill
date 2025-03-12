@@ -10,6 +10,20 @@
     <h1>E-Bill PWA</h1>
     <input type="file" id="fileInput" />
     <div>
+        <h2>Uploads</h2>
+        <div>
+            File Upload Id: <input type="text" id="file_upload_id"/>
+            <button type="button" id="fetch_temp">fetch file by id and display</button>
+            <img id="uploaded_file"/>
+        </div>
+        <div>
+            Contact node id: <input type="text" id="contact_id"/>
+            File name: <input type="text" id="contact_file_name"/>
+            <button type="button" id="fetch_contact_file">fetch file by node id and file name</button>
+            <img id="attached_file"/>
+        </div>
+    </div>
+    <div>
         <h2>Notification Testing</h2>
         <div>
             <button type="button" id="notif">trigger local push notif</button>

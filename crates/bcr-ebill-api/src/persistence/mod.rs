@@ -1,10 +1,9 @@
 use crate::Config;
 use bcr_ebill_persistence::{
-    BackupStoreApi, ContactStoreApi, FileUploadStore, NostrEventOffsetStoreApi,
-    NotificationStoreApi, SurrealBackupStore, SurrealBillChainStore, SurrealBillStore,
-    SurrealCompanyChainStore, SurrealCompanyStore, SurrealContactStore, SurrealDbConfig,
-    SurrealIdentityChainStore, SurrealIdentityStore, SurrealNostrEventOffsetStore,
-    SurrealNotificationStore,
+    BackupStoreApi, ContactStoreApi, NostrEventOffsetStoreApi, NotificationStoreApi,
+    SurrealBackupStore, SurrealBillChainStore, SurrealBillStore, SurrealCompanyChainStore,
+    SurrealCompanyStore, SurrealContactStore, SurrealDbConfig, SurrealIdentityChainStore,
+    SurrealIdentityStore, SurrealNostrEventOffsetStore, SurrealNotificationStore,
     bill::{BillChainStoreApi, BillStoreApi},
     company::{CompanyChainStoreApi, CompanyStoreApi},
     file_upload::FileUploadStoreApi,
@@ -15,6 +14,7 @@ use log::error;
 use std::sync::Arc;
 
 pub use bcr_ebill_persistence::Error;
+#[cfg(not(target_arch = "wasm32"))]
 pub use bcr_ebill_persistence::backup;
 pub use bcr_ebill_persistence::bill;
 pub use bcr_ebill_persistence::company;
@@ -47,11 +47,22 @@ pub async fn get_db_context(conf: &Config) -> bcr_ebill_persistence::Result<DbCo
     let db = get_surreal_db(&surreal_db_config).await?;
 
     let company_store = Arc::new(SurrealCompanyStore::new(db.clone()));
+    #[cfg(target_arch = "wasm32")]
     let file_upload_store =
-        Arc::new(FileUploadStore::new(&conf.data_dir, "files", "temp_upload").await?);
+        Arc::new(bcr_ebill_persistence::db::file_upload::FileUploadStore::new(db.clone()));
+
+    #[cfg(not(target_arch = "wasm32"))]
+    let file_upload_store = Arc::new(
+        bcr_ebill_persistence::file_upload::FileUploadStore::new(
+            &conf.data_dir,
+            "files",
+            "temp_upload",
+        )
+        .await?,
+    );
 
     if let Err(e) = file_upload_store.cleanup_temp_uploads().await {
-        error!("Error cleaning up temp upload folder for bill: {e}");
+        error!("Error cleaning up temp uploads: {e}");
     }
 
     let contact_store = Arc::new(SurrealContactStore::new(db.clone()));

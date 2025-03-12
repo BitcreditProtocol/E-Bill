@@ -148,6 +148,7 @@ pub async fn create_service_context(
         db.backup_store.clone(),
         db.identity_store.clone(),
         SurrealDbConfig::new(&config.surreal_db_connection),
+        reboot_sender.clone(),
     );
 
     Ok(ServiceContext {

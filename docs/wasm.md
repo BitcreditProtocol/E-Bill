@@ -12,6 +12,8 @@ curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 ### Development
 
+Within the `bcr-ebill-pwa` crate, run these commands to build the project:
+
 ```bash
 wasm-pack build --dev --target web
 ```
@@ -24,11 +26,13 @@ wasm-pack build --target web
 
 ## Running
 
-After building the project for WASM, you'll find the WASM artifacts in the `./pkg` folder including generated TypeScript bindings.
+After building the project for WASM, you'll find the WASM artifacts in the `.crates/bcr-ebill-pwa/pkg` folder including generated TypeScript bindings.
 
 You can run this by serving it to the web, using any local HTTP-Server. For example, you can use [http-server](https://www.npmjs.com/package/http-server).
 
 There are example `index.html` and `main.js` files, which provide a playground to test the created WASM artifacts.
+
+Within the `bcr-ebill-pwa` crate, you can run:
 
 ```bash
 http-server -c-1 .

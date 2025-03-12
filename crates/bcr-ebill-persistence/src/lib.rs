@@ -91,6 +91,8 @@ impl From<surrealdb::Error> for Error {
 
 pub use backup::BackupStoreApi;
 pub use contact::ContactStoreApi;
+#[cfg(target_arch = "wasm32")]
+pub use db::file_upload::FileUploadStore;
 pub use db::{
     SurrealDbConfig, backup::SurrealBackupStore, bill::SurrealBillStore,
     bill_chain::SurrealBillChainStore, company::SurrealCompanyStore,
@@ -98,6 +100,7 @@ pub use db::{
     identity::SurrealIdentityStore, identity_chain::SurrealIdentityChainStore,
     nostr_event_offset::SurrealNostrEventOffsetStore, notification::SurrealNotificationStore,
 };
+#[cfg(not(target_arch = "wasm32"))]
 pub use file_upload::FileUploadStore;
 pub use nostr::{NostrEventOffset, NostrEventOffsetStoreApi};
 pub use notification::NotificationStoreApi;
