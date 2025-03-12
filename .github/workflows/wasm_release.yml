@@ -1,0 +1,40 @@
+name: WASM Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: WASM Release and Publish
+    runs-on: ubuntu-latest
+
+    # Restrict execution to specific users
+    if: github.ref == 'refs/heads/master' && contains(["mtbitcr", "zupzup", "tompro"], github.actor)
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep -m 1 '^version =' crates/bcr-ebill-pwa/Cargo.toml | cut -d '"' -f2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Detected version: v$VERSION"
+
+      - name: Ensure tag does not already exist
+        run: |
+          if git rev-parse "v${{ env.VERSION }}" >/dev/null 2>&1; then
+            echo "Error: Tag v${{ env.VERSION }} already exists!"
+            exit 1
+          fi
+
+      - name: Install wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
