@@ -48,9 +48,9 @@ jobs:
         run: |
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build WASM for PWA
+      - name: Build WASM version
         run: |
-          cd crates/bcr-ebill-pwa
+          cd crates/bcr-ebill-wasm
           wasm-pack build --target web
 
       - name: Install required cargo
