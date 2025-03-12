@@ -5,12 +5,12 @@ use log::info;
 #[cfg(test)]
 use mockall::automock;
 
-use super::EventEnvelope;
-use bcr_ebill_core::notification::EventType;
+use super::{EventEnvelope, EventType};
+use bcr_ebill_core::notification::BillEventType;
 
-mod bill_action_event_handler;
+mod bill_chain_event_handler;
 
-pub use bill_action_event_handler::BillActionEventHandler;
+pub use bill_chain_event_handler::BillChainEventHandler;
 
 #[cfg(test)]
 impl ServiceTraitBounds for MockNotificationHandlerApi {}
@@ -61,13 +61,13 @@ mod tests {
     use serde::{Deserialize, Serialize, de::DeserializeOwned};
     use tokio::sync::Mutex;
 
-    use crate::Event;
+    use crate::{Event, event::EventType};
 
     use super::*;
 
     #[tokio::test]
     async fn test_event_handling() {
-        let accepted_event = EventType::BillPaid;
+        let accepted_event = EventType::Bill;
 
         // given a handler that accepts the event type
         let event_handler: TestEventHandler<TestEventPayload> =
@@ -77,7 +77,7 @@ mod tests {
         assert!(event_handler.handles_event(&accepted_event));
 
         // given an event and encode it to an envelope
-        let event = create_test_event(&EventType::BillPaid);
+        let event = create_test_event(&BillEventType::BillPaid);
         let envelope: EventEnvelope = event.clone().try_into().unwrap();
 
         // handler should run successfully
@@ -97,6 +97,7 @@ mod tests {
 
     #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
     struct TestEventPayload {
+        pub event_type: BillEventType,
         pub foo: String,
         pub bar: u32,
     }
@@ -136,18 +137,19 @@ mod tests {
         }
     }
 
-    fn create_test_event_payload() -> TestEventPayload {
+    fn create_test_event_payload(event_type: &BillEventType) -> TestEventPayload {
         TestEventPayload {
+            event_type: event_type.clone(),
             foo: "foo".to_string(),
             bar: 42,
         }
     }
 
-    fn create_test_event(event_type: &EventType) -> Event<TestEventPayload> {
+    fn create_test_event(event_type: &BillEventType) -> Event<TestEventPayload> {
         Event::new(
-            event_type.to_owned(),
+            EventType::Bill,
             "node_id",
-            create_test_event_payload(),
+            create_test_event_payload(event_type),
         )
     }
 }

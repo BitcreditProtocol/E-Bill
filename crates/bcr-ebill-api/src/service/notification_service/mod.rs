@@ -5,9 +5,9 @@ use crate::persistence::identity::IdentityStoreApi;
 use crate::persistence::nostr::NostrEventOffsetStoreApi;
 use crate::persistence::notification::NotificationStoreApi;
 use bcr_ebill_transport::handler::{
-    BillActionEventHandler, LoggingEventHandler, NotificationHandlerApi,
+    BillChainEventHandler, LoggingEventHandler, NotificationHandlerApi,
 };
-use bcr_ebill_transport::{Error, Result};
+use bcr_ebill_transport::{Error, EventType, Result};
 use bcr_ebill_transport::{NotificationServiceApi, PushApi};
 use default_service::DefaultNotificationService;
 #[cfg(test)]
@@ -16,7 +16,6 @@ pub mod test_utils;
 pub mod default_service;
 mod nostr;
 
-use bcr_ebill_core::notification::EventType;
 pub use bcr_ebill_transport::NotificationJsonTransportApi;
 use log::error;
 pub use nostr::{NostrClient, NostrConfig, NostrConsumer};
@@ -74,10 +73,7 @@ pub async fn create_nostr_consumer(
         Box::new(LoggingEventHandler {
             event_types: EventType::all(),
         }),
-        Box::new(BillActionEventHandler::new(
-            notification_store,
-            push_service,
-        )),
+        Box::new(BillChainEventHandler::new(notification_store, push_service)),
     ];
     let consumer = NostrConsumer::new(client, contact_service, handlers, nostr_event_offset_store);
     Ok(consumer)

@@ -306,8 +306,8 @@ async fn handle_event(
 mod tests {
     use std::{sync::Arc, time::Duration};
 
-    use bcr_ebill_core::ServiceTraitBounds;
-    use bcr_ebill_transport::event::Event;
+    use bcr_ebill_core::{ServiceTraitBounds, notification::BillEventType};
+    use bcr_ebill_transport::event::{Event, EventType};
     use bcr_ebill_transport::handler::NotificationHandlerApi;
     use mockall::predicate;
     use tokio::time;
@@ -317,7 +317,7 @@ mod tests {
     use crate::persistence::nostr::NostrEventOffset;
     use crate::service::{
         contact_service::MockContactServiceApi,
-        notification_service::{EventType, NotificationJsonTransportApi, test_utils::*},
+        notification_service::{NotificationJsonTransportApi, test_utils::*},
     };
     use crate::tests::tests::MockNostrEventOffsetStoreApiMock;
     use crate::util::BcrKeys;
@@ -366,7 +366,7 @@ mod tests {
         // and a contact we want to send an event to
         let contact =
             get_identity_public_data(&keys2.get_public_key(), "payee@example.com", Some(&url));
-        let mut event = create_test_event(&EventType::BillSigned);
+        let mut event = create_test_event(&BillEventType::BillSigned);
         event.node_id = contact.node_id.to_owned();
 
         // expect the receiver to check if the sender contact is known
@@ -380,7 +380,7 @@ mod tests {
         let mut handler = MockNotificationHandler::new();
         handler
             .expect_handles_event()
-            .with(predicate::eq(&EventType::BillSigned))
+            .with(predicate::eq(&EventType::Bill))
             .returning(|_| true);
 
         // expect a handler receiving the event we sent

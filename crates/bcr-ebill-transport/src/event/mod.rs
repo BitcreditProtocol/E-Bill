@@ -2,9 +2,21 @@ pub mod bill_events;
 pub mod chain_event;
 
 use crate::{Error, Result};
-use bcr_ebill_core::notification::EventType;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
+
+/// The global event type that is used for all events.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum EventType {
+    /// Bill related events
+    Bill,
+}
+
+impl EventType {
+    pub fn all() -> Vec<EventType> {
+        vec![EventType::Bill]
+    }
+}
 
 /// A generic event that can be sent to a specific recipient
 /// and is serializable. The recipient is currently just a string,
@@ -28,6 +40,10 @@ impl<T: Serialize> Event<T> {
             node_id: node_id.to_owned(),
             data,
         }
+    }
+
+    pub fn new_bill(node_id: &str, data: T) -> Self {
+        Self::new(EventType::Bill, node_id, data)
     }
 }
 
@@ -113,7 +129,7 @@ mod tests {
         // give payload
         let payload = create_test_event_payload();
         // create event
-        let event = Event::new(EventType::BillSigned, "node_id", payload.clone());
+        let event = Event::new(EventType::Bill, "node_id", payload.clone());
         // create envelope
         let envelope: EventEnvelope = event.clone().try_into().unwrap();
 

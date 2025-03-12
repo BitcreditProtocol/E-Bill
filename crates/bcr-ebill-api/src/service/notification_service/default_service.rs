@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bcr_ebill_transport::{BillActionEventPayload, BillChainEvent, Error, Event};
+use bcr_ebill_transport::{BillChainEvent, BillChainEventPayload, Error, Event};
 use log::error;
 
 use super::NotificationJsonTransportApi;
@@ -15,7 +15,7 @@ use crate::data::{
 use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
 use crate::service::contact_service::ContactServiceApi;
 use bcr_ebill_core::ServiceTraitBounds;
-use bcr_ebill_core::notification::{ActionType, EventType};
+use bcr_ebill_core::notification::{ActionType, BillEventType};
 
 /// A default implementation of the NotificationServiceApi that can
 /// send events via json and email transports.
@@ -46,7 +46,7 @@ impl DefaultNotificationService {
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationServiceApi for DefaultNotificationService {
     async fn send_bill_is_signed_event(&self, event: &BillChainEvent) -> Result<()> {
-        let event_type = EventType::BillSigned;
+        let event_type = BillEventType::BillSigned;
 
         let all_events = event.generate_action_messages(HashMap::from_iter(vec![
             (
@@ -75,13 +75,14 @@ impl NotificationServiceApi for DefaultNotificationService {
     }
 
     async fn send_bill_is_accepted_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new(
-            EventType::BillAccepted,
+        let event = Event::new_bill(
             &bill.payee.node_id,
-            BillActionEventPayload {
+            BillChainEventPayload {
+                event_type: BillEventType::BillAccepted,
                 bill_id: bill.id.clone(),
-                action_type: ActionType::CheckBill,
+                action_type: Some(ActionType::CheckBill),
                 sum: Some(bill.sum),
+                ..Default::default()
             },
         );
 
@@ -92,13 +93,14 @@ impl NotificationServiceApi for DefaultNotificationService {
     }
 
     async fn send_request_to_accept_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new(
-            EventType::BillAcceptanceRequested,
+        let event = Event::new_bill(
             &bill.drawee.node_id,
-            BillActionEventPayload {
+            BillChainEventPayload {
+                event_type: BillEventType::BillAcceptanceRequested,
                 bill_id: bill.id.clone(),
-                action_type: ActionType::AcceptBill,
+                action_type: Some(ActionType::AcceptBill),
                 sum: Some(bill.sum),
+                ..Default::default()
             },
         );
         self.notification_transport
@@ -108,13 +110,14 @@ impl NotificationServiceApi for DefaultNotificationService {
     }
 
     async fn send_request_to_pay_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new(
-            EventType::BillPaymentRequested,
+        let event = Event::new_bill(
             &bill.drawee.node_id,
-            BillActionEventPayload {
+            BillChainEventPayload {
+                event_type: BillEventType::BillPaymentRequested,
                 bill_id: bill.id.clone(),
-                action_type: ActionType::PayBill,
+                action_type: Some(ActionType::PayBill),
                 sum: Some(bill.sum),
+                ..Default::default()
             },
         );
         self.notification_transport
@@ -124,13 +127,14 @@ impl NotificationServiceApi for DefaultNotificationService {
     }
 
     async fn send_bill_is_paid_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new(
-            EventType::BillPaid,
+        let event = Event::new_bill(
             &bill.payee.node_id,
-            BillActionEventPayload {
+            BillChainEventPayload {
+                event_type: BillEventType::BillPaid,
                 bill_id: bill.id.clone(),
-                action_type: ActionType::CheckBill,
+                action_type: Some(ActionType::CheckBill),
                 sum: Some(bill.sum),
+                ..Default::default()
             },
         );
 
@@ -141,13 +145,14 @@ impl NotificationServiceApi for DefaultNotificationService {
     }
 
     async fn send_bill_is_endorsed_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new(
-            EventType::BillEndorsed,
+        let event = Event::new_bill(
             &bill.endorsee.as_ref().unwrap().node_id,
-            BillActionEventPayload {
+            BillChainEventPayload {
+                event_type: BillEventType::BillEndorsed,
                 bill_id: bill.id.clone(),
-                action_type: ActionType::CheckBill,
+                action_type: Some(ActionType::CheckBill),
                 sum: Some(bill.sum),
+                ..Default::default()
             },
         );
 
@@ -163,13 +168,14 @@ impl NotificationServiceApi for DefaultNotificationService {
         sum: Option<u64>,
         buyer: &IdentityPublicData,
     ) -> Result<()> {
-        let event = Event::new(
-            EventType::BillSellOffered,
+        let event = Event::new_bill(
             &buyer.node_id,
-            BillActionEventPayload {
+            BillChainEventPayload {
+                event_type: BillEventType::BillSellOffered,
                 bill_id: bill_id.to_owned(),
-                action_type: ActionType::CheckBill,
+                action_type: Some(ActionType::CheckBill),
                 sum,
+                ..Default::default()
             },
         );
         self.notification_transport
@@ -184,13 +190,14 @@ impl NotificationServiceApi for DefaultNotificationService {
         sum: Option<u64>,
         buyer: &IdentityPublicData,
     ) -> Result<()> {
-        let event = Event::new(
-            EventType::BillSold,
+        let event = Event::new_bill(
             &buyer.node_id,
-            BillActionEventPayload {
+            BillChainEventPayload {
+                event_type: BillEventType::BillSold,
                 bill_id: bill_id.to_owned(),
-                action_type: ActionType::CheckBill,
+                action_type: Some(ActionType::CheckBill),
                 sum,
+                ..Default::default()
             },
         );
         self.notification_transport
@@ -205,13 +212,14 @@ impl NotificationServiceApi for DefaultNotificationService {
         sum: Option<u64>,
         recoursee: &IdentityPublicData,
     ) -> Result<()> {
-        let event = Event::new(
-            EventType::BillRecoursePaid,
+        let event = Event::new_bill(
             &recoursee.node_id,
-            BillActionEventPayload {
+            BillChainEventPayload {
+                event_type: BillEventType::BillRecoursePaid,
                 bill_id: bill_id.to_owned(),
-                action_type: ActionType::CheckBill,
+                action_type: Some(ActionType::CheckBill),
                 sum,
+                ..Default::default()
             },
         );
         self.notification_transport
@@ -221,13 +229,14 @@ impl NotificationServiceApi for DefaultNotificationService {
     }
 
     async fn send_request_to_mint_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new(
-            EventType::BillMintingRequested,
+        let event = Event::new_bill(
             &bill.endorsee.as_ref().unwrap().node_id,
-            BillActionEventPayload {
+            BillChainEventPayload {
+                event_type: BillEventType::BillMintingRequested,
                 bill_id: bill.id.clone(),
-                action_type: ActionType::CheckBill,
+                action_type: Some(ActionType::CheckBill),
                 sum: Some(bill.sum),
+                ..Default::default()
             },
         );
         self.notification_transport
@@ -244,13 +253,15 @@ impl NotificationServiceApi for DefaultNotificationService {
         recipients: Vec<IdentityPublicData>,
     ) -> Result<()> {
         if let Some(event_type) = rejected_action.get_rejected_event_type() {
-            let payload = BillActionEventPayload {
+            let payload = BillChainEventPayload {
+                event_type,
                 bill_id: bill_id.to_owned(),
-                action_type: ActionType::CheckBill,
+                action_type: Some(ActionType::CheckBill),
                 sum,
+                ..Default::default()
             };
             for recipient in recipients {
-                let event = Event::new(event_type.to_owned(), &recipient.node_id, payload.clone());
+                let event = Event::new_bill(&recipient.node_id, payload.clone());
                 self.notification_transport
                     .send(&recipient, event.try_into()?)
                     .await?;
@@ -271,13 +282,15 @@ impl NotificationServiceApi for DefaultNotificationService {
             let unique: HashMap<String, IdentityPublicData> =
                 HashMap::from_iter(recipients.iter().map(|r| (r.node_id.clone(), r.clone())));
 
-            let payload = BillActionEventPayload {
+            let payload = BillChainEventPayload {
+                event_type,
                 bill_id: bill_id.to_owned(),
-                action_type: ActionType::CheckBill,
+                action_type: Some(ActionType::CheckBill),
                 sum,
+                ..Default::default()
             };
             for (_, recipient) in unique {
-                let event = Event::new(event_type.to_owned(), &recipient.node_id, payload.clone());
+                let event = Event::new_bill(&recipient.node_id, payload.clone());
                 self.notification_transport
                     .send(&recipient, event.try_into()?)
                     .await?;
@@ -294,13 +307,14 @@ impl NotificationServiceApi for DefaultNotificationService {
         recipient: &IdentityPublicData,
     ) -> Result<()> {
         if let Some(event_type) = action.get_recourse_event_type() {
-            let event = Event::new(
-                event_type.to_owned(),
+            let event = Event::new_bill(
                 &recipient.node_id,
-                BillActionEventPayload {
+                BillChainEventPayload {
+                    event_type,
                     bill_id: bill_id.to_owned(),
-                    action_type: action,
+                    action_type: Some(action),
                     sum,
+                    ..Default::default()
                 },
             );
             self.notification_transport
@@ -393,7 +407,7 @@ impl NotificationServiceApi for DefaultNotificationService {
 mod tests {
 
     use bcr_ebill_core::bill::BillKeys;
-    use bcr_ebill_transport::PushApi;
+    use bcr_ebill_transport::{EventEnvelope, EventType, PushApi};
     use mockall::{mock, predicate::eq};
     use std::sync::Arc;
 
@@ -408,7 +422,7 @@ mod tests {
         pub NotificationJsonTransport {}
         #[async_trait]
         impl NotificationJsonTransportApi for NotificationJsonTransport {
-            async fn send(&self, recipient: &IdentityPublicData, event: bcr_ebill_transport::EventEnvelope) -> bcr_ebill_transport::Result<()>;
+            async fn send(&self, recipient: &IdentityPublicData, event: EventEnvelope) -> bcr_ebill_transport::Result<()>;
         }
 
     }
@@ -431,6 +445,12 @@ mod tests {
         TEST_PUB_KEY_SECP,
     };
 
+    fn check_chain_payload(event: &EventEnvelope, bill_event_type: BillEventType) -> bool {
+        let valid_event_type = event.event_type == EventType::Bill;
+        let event: Event<BillChainEventPayload> = event.clone().try_into().unwrap();
+        valid_event_type && event.data.event_type == bill_event_type
+    }
+
     #[tokio::test]
     async fn test_send_request_to_action_rejected_event() {
         let recipients = vec![
@@ -443,25 +463,25 @@ mod tests {
 
         // expect to send payment rejected event to all recipients
         mock.expect_send()
-            .withf(|_, e| e.event_type == EventType::BillPaymentRejected)
+            .withf(|_, e| check_chain_payload(e, BillEventType::BillPaymentRejected))
             .returning(|_, _| Ok(()))
             .times(3);
 
         // expect to send acceptance rejected event to all recipients
         mock.expect_send()
-            .withf(|_, e| e.event_type == EventType::BillAcceptanceRejected)
+            .withf(|_, e| check_chain_payload(e, BillEventType::BillAcceptanceRejected))
             .returning(|_, _| Ok(()))
             .times(3);
 
         // expect to send buying rejected event to all recipients
         mock.expect_send()
-            .withf(|_, e| e.event_type == EventType::BillBuyingRejected)
+            .withf(|_, e| check_chain_payload(e, BillEventType::BillBuyingRejected))
             .returning(|_, _| Ok(()))
             .times(3);
 
         // expect to send recourse rejected event to all recipients
         mock.expect_send()
-            .withf(|_, e| e.event_type == EventType::BillRecourseRejected)
+            .withf(|_, e| check_chain_payload(e, BillEventType::BillRecourseRejected))
             .returning(|_, _| Ok(()))
             .times(3);
 
@@ -554,13 +574,13 @@ mod tests {
 
         // expect to send payment timeout event to all recipients
         mock.expect_send()
-            .withf(|_, e| e.event_type == EventType::BillPaymentTimeout)
+            .withf(|_, e| check_chain_payload(e, BillEventType::BillPaymentTimeout))
             .returning(|_, _| Ok(()))
             .times(3);
 
         // expect to send acceptance timeout event to all recipients
         mock.expect_send()
-            .withf(|_, e| e.event_type == EventType::BillAcceptanceTimeout)
+            .withf(|_, e| check_chain_payload(e, BillEventType::BillAcceptanceTimeout))
             .returning(|_, _| Ok(()))
             .times(3);
 
@@ -629,13 +649,13 @@ mod tests {
 
         // expect to send payment recourse event to all recipients
         mock.expect_send()
-            .withf(|_, e| e.event_type == EventType::BillPaymentRecourse)
+            .withf(|_, e| check_chain_payload(e, BillEventType::BillPaymentRecourse))
             .returning(|_, _| Ok(()))
             .times(1);
 
         // expect to send acceptance recourse event to all recipients
         mock.expect_send()
-            .withf(|_, e| e.event_type == EventType::BillAcceptanceRecourse)
+            .withf(|_, e| check_chain_payload(e, BillEventType::BillAcceptanceRecourse))
             .returning(|_, _| Ok(()))
             .times(1);
 
@@ -718,20 +738,22 @@ mod tests {
         mock.expect_send()
             .withf(|r, e| {
                 let valid_node_id = r.node_id == "drawee" && e.node_id == "drawee";
-                let valid_event_type = e.event_type == EventType::BillSigned;
-                let event: Event<BillActionEventPayload> = e.clone().try_into().unwrap();
+                let event: Event<BillChainEventPayload> = e.clone().try_into().unwrap();
+                let valid_event_type = event.data.event_type == BillEventType::BillSigned;
                 valid_node_id
                     && valid_event_type
-                    && event.data.action_type == ActionType::AcceptBill
+                    && event.data.action_type == Some(ActionType::AcceptBill)
             })
             .returning(|_, _| Ok(()));
 
         mock.expect_send()
             .withf(|r, e| {
                 let valid_node_id = r.node_id == "payee" && e.node_id == "payee";
-                let valid_event_type = e.event_type == EventType::BillSigned;
-                let event: Event<BillActionEventPayload> = e.clone().try_into().unwrap();
-                valid_node_id && valid_event_type && event.data.action_type == ActionType::CheckBill
+                let event: Event<BillChainEventPayload> = e.clone().try_into().unwrap();
+                let valid_event_type = event.data.event_type == BillEventType::BillSigned;
+                valid_node_id
+                    && valid_event_type
+                    && event.data.action_type == Some(ActionType::CheckBill)
             })
             .returning(|_, _| Ok(()));
 
@@ -755,7 +777,7 @@ mod tests {
 
         // should send accepted to payee
         let service =
-            setup_service_expectation("payee", EventType::BillAccepted, ActionType::CheckBill);
+            setup_service_expectation("payee", BillEventType::BillAccepted, ActionType::CheckBill);
 
         service
             .send_bill_is_accepted_event(&bill)
@@ -770,7 +792,7 @@ mod tests {
         // should send request to accept to drawee
         let service = setup_service_expectation(
             "drawee",
-            EventType::BillAcceptanceRequested,
+            BillEventType::BillAcceptanceRequested,
             ActionType::AcceptBill,
         );
 
@@ -787,7 +809,7 @@ mod tests {
         // should send request to pay to drawee
         let service = setup_service_expectation(
             "drawee",
-            EventType::BillPaymentRequested,
+            BillEventType::BillPaymentRequested,
             ActionType::PayBill,
         );
 
@@ -803,7 +825,7 @@ mod tests {
 
         // should send paid to payee
         let service =
-            setup_service_expectation("payee", EventType::BillPaid, ActionType::CheckBill);
+            setup_service_expectation("payee", BillEventType::BillPaid, ActionType::CheckBill);
 
         service
             .send_bill_is_paid_event(&bill)
@@ -816,8 +838,11 @@ mod tests {
         let bill = get_test_bill();
 
         // should send endorsed to endorsee
-        let service =
-            setup_service_expectation("endorsee", EventType::BillEndorsed, ActionType::CheckBill);
+        let service = setup_service_expectation(
+            "endorsee",
+            BillEventType::BillEndorsed,
+            ActionType::CheckBill,
+        );
 
         service
             .send_bill_is_endorsed_event(&bill)
@@ -830,8 +855,11 @@ mod tests {
         let bill = get_test_bill();
 
         // should send offer to sell to endorsee
-        let service =
-            setup_service_expectation("buyer", EventType::BillSellOffered, ActionType::CheckBill);
+        let service = setup_service_expectation(
+            "buyer",
+            BillEventType::BillSellOffered,
+            ActionType::CheckBill,
+        );
 
         service
             .send_offer_to_sell_event(
@@ -849,7 +877,7 @@ mod tests {
 
         // should send sold event to buyer
         let service =
-            setup_service_expectation("buyer", EventType::BillSold, ActionType::CheckBill);
+            setup_service_expectation("buyer", BillEventType::BillSold, ActionType::CheckBill);
 
         service
             .send_bill_is_sold_event(
@@ -868,7 +896,7 @@ mod tests {
         // should send sold event to recoursee
         let service = setup_service_expectation(
             "recoursee",
-            EventType::BillRecoursePaid,
+            BillEventType::BillRecoursePaid,
             ActionType::CheckBill,
         );
 
@@ -889,7 +917,7 @@ mod tests {
         // should send minting requested to endorsee (mint)
         let service = setup_service_expectation(
             "endorsee",
-            EventType::BillMintingRequested,
+            BillEventType::BillMintingRequested,
             ActionType::CheckBill,
         );
 
@@ -949,7 +977,7 @@ mod tests {
 
     fn setup_service_expectation(
         node_id: &str,
-        event_type: EventType,
+        event_type: BillEventType,
         action_type: ActionType,
     ) -> DefaultNotificationService {
         let node_id = node_id.to_owned();
@@ -957,9 +985,10 @@ mod tests {
         mock.expect_send()
             .withf(move |r, e| {
                 let valid_node_id = r.node_id == node_id && e.node_id == node_id;
-                let valid_event_type = e.event_type == event_type;
-                let event: Event<BillActionEventPayload> = e.clone().try_into().unwrap();
-                valid_node_id && valid_event_type && event.data.action_type == action_type
+                let event: Event<BillChainEventPayload> = e.clone().try_into().unwrap();
+                valid_node_id
+                    && event.data.event_type == event_type
+                    && event.data.action_type == Some(action_type.clone())
             })
             .returning(|_, _| Ok(()));
         DefaultNotificationService {

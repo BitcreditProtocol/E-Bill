@@ -6,13 +6,13 @@ use bcr_ebill_core::{
         Blockchain,
         bill::{BillBlock, BillBlockchain},
     },
-    notification::{ActionType, EventType},
+    notification::{ActionType, BillEventType},
 };
 use log::error;
 
 use crate::{BillChainEventPayload, Error, Result};
 
-use super::Event;
+use super::{Event, EventType};
 
 pub struct BillChainEvent {
     pub bill: BitcreditBill,
@@ -58,7 +58,7 @@ impl BillChainEvent {
     /// assigned a specific event and action type by providing an override.
     pub fn generate_action_messages(
         &self,
-        event_overrides: HashMap<String, (EventType, ActionType)>,
+        event_overrides: HashMap<String, (BillEventType, ActionType)>,
     ) -> Vec<Event<BillChainEventPayload>> {
         self.participants
             .keys()
@@ -66,12 +66,13 @@ impl BillChainEvent {
                 let (event_type, action) = event_overrides
                     .get(node_id)
                     .map(|(event_type, action)| (event_type.clone(), Some(action.clone())))
-                    .unwrap_or((EventType::BillBlock, None));
+                    .unwrap_or((BillEventType::BillBlock, None));
 
                 Event::new(
-                    event_type,
+                    EventType::Bill,
                     node_id,
                     BillChainEventPayload {
+                        event_type,
                         bill_id: self.bill.id.to_owned(),
                         action_type: action,
                         sum: Some(self.bill.sum),
