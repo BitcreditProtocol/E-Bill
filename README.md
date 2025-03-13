@@ -11,7 +11,7 @@ The project consists of the following crates:
 * `bcr-ebill-transport` - network transport traits and Nostr implementation
 * `bcr-ebill-api` - API of the E-Bills project, contains most of the business logic
 * `bcr-ebill-web` - Entrypoint for Web applications using the Rocket web server
-* `bcr-ebill-pwa` - Entrypoint for WASM-based Progress Web Apps
+* `bcr-ebill-wasm` - Entrypoint for WASM version of the E-Bill API
 
 ### Entrypoints
 
