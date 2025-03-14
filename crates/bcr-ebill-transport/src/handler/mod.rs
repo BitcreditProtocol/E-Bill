@@ -6,7 +6,6 @@ use log::info;
 use mockall::automock;
 
 use super::{EventEnvelope, EventType};
-use bcr_ebill_core::notification::BillEventType;
 
 mod bill_chain_event_handler;
 
@@ -58,6 +57,7 @@ impl NotificationHandlerApi for LoggingEventHandler {
 #[cfg(test)]
 mod tests {
 
+    use bcr_ebill_core::notification::BillEventType;
     use serde::{Deserialize, Serialize, de::DeserializeOwned};
     use tokio::sync::Mutex;
 
@@ -151,5 +151,97 @@ mod tests {
             "node_id",
             create_test_event_payload(event_type),
         )
+    }
+}
+
+#[cfg(test)]
+mod test_utils {
+    use async_trait::async_trait;
+    use bcr_ebill_core::{
+        bill::BillKeys,
+        blockchain::bill::{BillBlock, BillBlockchain, BillOpCode},
+        notification::{ActionType, Notification, NotificationType},
+    };
+    use bcr_ebill_persistence::{
+        NotificationStoreApi, Result,
+        bill::{BillChainStoreApi, BillStoreApi},
+        notification::NotificationFilter,
+    };
+    use mockall::mock;
+
+    use crate::PushApi;
+
+    mock! {
+        pub NotificationStore {}
+
+        #[async_trait]
+        impl NotificationStoreApi for NotificationStore {
+            async fn add(&self, notification: Notification) -> Result<Notification>;
+            async fn list(&self, filter: NotificationFilter) -> Result<Vec<Notification>>;
+            async fn get_latest_by_reference(
+                &self,
+                reference: &str,
+                notification_type: NotificationType,
+            ) -> Result<Option<Notification>>;
+            #[allow(unused)]
+            async fn list_by_type(&self, notification_type: bcr_ebill_core::notification::NotificationType) -> Result<Vec<Notification>>;
+            async fn mark_as_done(&self, notification_id: &str) -> Result<()>;
+            #[allow(unused)]
+            async fn delete(&self, notification_id: &str) -> Result<()>;
+            async fn set_bill_notification_sent(
+                &self,
+                bill_id: &str,
+                block_height: i32,
+                action_type: ActionType,
+            ) -> Result<()>;
+            async fn bill_notification_sent(
+                &self,
+                bill_id: &str,
+                block_height: i32,
+                action_type: ActionType,
+            ) -> Result<bool>;
+        }
+    }
+
+    mock! {
+        pub PushService {}
+        #[async_trait]
+        impl PushApi for PushService {
+            async fn send(&self, value: serde_json::Value);
+            async fn subscribe(&self) -> async_broadcast::Receiver<serde_json::Value> ;
+        }
+    }
+
+    mock! {
+        pub BillChainStore {}
+
+        #[async_trait]
+        impl BillChainStoreApi for BillChainStore {
+            async fn get_latest_block(&self, id: &str) -> Result<BillBlock>;
+            async fn add_block(&self, id: &str, block: &BillBlock) -> Result<()>;
+            async fn get_chain(&self, id: &str) -> Result<BillBlockchain>;
+        }
+    }
+
+    mock! {
+        pub BillStore {}
+
+        #[async_trait]
+        impl BillStoreApi for BillStore {
+            async fn exists(&self, id: &str) -> bool;
+            async fn get_ids(&self) -> Result<Vec<String>>;
+            async fn save_keys(&self, id: &str, keys: &BillKeys) -> Result<()>;
+            async fn get_keys(&self, id: &str) -> Result<BillKeys>;
+            async fn is_paid(&self, id: &str) -> Result<bool>;
+            async fn set_to_paid(&self, id: &str, payment_address: &str) -> Result<()>;
+            async fn get_bill_ids_waiting_for_payment(&self) -> Result<Vec<String>>;
+            async fn get_bill_ids_waiting_for_sell_payment(&self) -> Result<Vec<String>>;
+            async fn get_bill_ids_waiting_for_recourse_payment(&self) -> Result<Vec<String>>;
+            async fn get_bill_ids_with_op_codes_since(
+                &self,
+                op_code: std::collections::HashSet<BillOpCode> ,
+                since: u64,
+            ) -> Result<Vec<String>>;
+        }
     }
 }

@@ -1,4 +1,3 @@
-use super::BillEventType;
 use super::NotificationHandlerApi;
 use crate::BillChainEventPayload;
 use crate::EventType;
@@ -8,6 +7,7 @@ use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_core::bill::BillKeys;
 use bcr_ebill_core::blockchain::Blockchain;
 use bcr_ebill_core::blockchain::bill::{BillBlock, BillBlockchain};
+use bcr_ebill_core::notification::BillEventType;
 use bcr_ebill_core::notification::{Notification, NotificationType};
 use bcr_ebill_persistence::NotificationStoreApi;
 use bcr_ebill_persistence::bill::BillChainStoreApi;
@@ -242,5 +242,39 @@ fn event_description(event_type: &BillEventType) -> String {
         BillEventType::BillNewQuote => "New quote has been added".to_string(),
         BillEventType::BillQuoteApproved => "Quote has been approved".to_string(),
         BillEventType::BillBlock => "".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::handler::test_utils::{
+        MockBillChainStore, MockBillStore, MockNotificationStore, MockPushService,
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_create_event_handler() {
+        let (notification_store, push_service, bill_chain_store, bill_store) = create_mocks();
+        BillChainEventHandler::new(
+            Arc::new(notification_store),
+            Arc::new(push_service),
+            Arc::new(bill_chain_store),
+            Arc::new(bill_store),
+        );
+    }
+
+    fn create_mocks() -> (
+        MockNotificationStore,
+        MockPushService,
+        MockBillChainStore,
+        MockBillStore,
+    ) {
+        (
+            MockNotificationStore::new(),
+            MockPushService::new(),
+            MockBillChainStore::new(),
+            MockBillStore::new(),
+        )
     }
 }
