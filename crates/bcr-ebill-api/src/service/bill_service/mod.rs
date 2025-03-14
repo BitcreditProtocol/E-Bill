@@ -782,7 +782,7 @@ pub mod tests {
         let returned_bills = res.unwrap();
         assert!(returned_bills.len() == 1);
         assert_eq!(returned_bills[0].id, "1234".to_string());
-        assert!(returned_bills[0].paid);
+        assert!(returned_bills[0].status.payment.paid);
     }
 
     #[tokio::test]
@@ -826,9 +826,12 @@ pub mod tests {
             .await;
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
-        assert_eq!(res.as_ref().unwrap().drawee.node_id, drawee_node_id);
-        assert!(!res.as_ref().unwrap().waiting_for_payment);
-        assert!(!res.as_ref().unwrap().paid);
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(!res.as_ref().unwrap().status.payment.requested_to_pay);
+        assert!(!res.as_ref().unwrap().status.payment.paid);
     }
 
     #[tokio::test]
@@ -895,8 +898,12 @@ pub mod tests {
             .await;
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
-        assert_eq!(res.as_ref().unwrap().drawee.node_id, drawee_node_id);
-        assert!(res.as_ref().unwrap().waiting_for_payment);
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.sell.offered_to_sell);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_some());
     }
 
     #[tokio::test]
@@ -907,7 +914,7 @@ pub mod tests {
         bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
         let drawee_node_id = bill.drawee.node_id.clone();
         ctx.bill_store.expect_exists().returning(|_| true);
-        ctx.bill_store.expect_is_paid().returning(|_| Ok(true));
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
         ctx.bill_blockchain_store
             .expect_get_chain()
             .returning(move |_| {
@@ -950,9 +957,13 @@ pub mod tests {
             .await;
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
-        assert_eq!(res.as_ref().unwrap().drawee.node_id, drawee_node_id);
-        assert!(res.as_ref().unwrap().paid);
-        assert!(!res.as_ref().unwrap().waiting_for_payment);
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(!res.as_ref().unwrap().status.payment.paid);
+        assert!(res.as_ref().unwrap().status.payment.requested_to_pay);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_some());
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-import * as wasm from '../pkg/bcr_ebill_wasm.js';
+import * as wasm from '../pkg/index.js';
 
 document.getElementById("fileInput").addEventListener("change", uploadFile);
 document.getElementById("notif").addEventListener("click", triggerNotif);
