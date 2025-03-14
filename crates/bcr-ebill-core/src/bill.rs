@@ -52,45 +52,119 @@ pub enum RecourseReason {
 #[derive(Debug, Clone)]
 pub struct BitcreditBillResult {
     pub id: String,
-    pub time_of_drawing: u64,
-    pub time_of_maturity: u64,
-    pub country_of_issuing: String,
-    pub city_of_issuing: String,
-    /// The party obliged to pay a Bill
-    pub drawee: IdentityPublicData,
-    /// The party issuing a Bill
-    pub drawer: IdentityPublicData,
-    pub payee: IdentityPublicData,
-    /// The person to whom the Payee or an Endorsee endorses a bill
-    pub endorsee: Option<IdentityPublicData>,
+    pub participants: BillParticipants,
+    pub data: BillData,
+    pub status: BillStatus,
+    pub current_waiting_state: Option<BillCurrentWaitingState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BillCurrentWaitingState {
+    Sell(BillWaitingForSellState),
+    Payment(BillWaitingForPaymentState),
+    Recourse(BillWaitingForRecourseState),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BillWaitingForSellState {
+    pub time_of_request: u64,
+    pub buyer: IdentityPublicData,
+    pub seller: IdentityPublicData,
     pub currency: String,
     pub sum: String,
-    pub maturity_date: String,
-    pub issue_date: String,
-    pub country_of_payment: String,
-    pub city_of_payment: String,
-    pub language: String,
-    pub accepted: bool,
-    pub endorsed: bool,
-    pub requested_to_pay: bool,
-    pub requested_to_accept: bool,
-    pub paid: bool,
-    pub waiting_for_payment: bool,
-    pub buyer: Option<IdentityPublicData>,
-    pub seller: Option<IdentityPublicData>,
-    pub in_recourse: bool,
-    pub recourser: Option<IdentityPublicData>,
-    pub recoursee: Option<IdentityPublicData>,
-    pub link_for_buy: String,
     pub link_to_pay: String,
-    pub link_to_pay_recourse: String,
     pub address_to_pay: String,
     pub mempool_link_for_address_to_pay: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BillWaitingForPaymentState {
+    pub time_of_request: u64,
+    pub payer: IdentityPublicData,
+    pub payee: IdentityPublicData,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub mempool_link_for_address_to_pay: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BillWaitingForRecourseState {
+    pub time_of_request: u64,
+    pub recourser: IdentityPublicData,
+    pub recoursee: IdentityPublicData,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub mempool_link_for_address_to_pay: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct BillStatus {
+    pub acceptance: BillAcceptanceStatus,
+    pub payment: BillPaymentStatus,
+    pub sell: BillSellStatus,
+    pub recourse: BillRecourseStatus,
+    pub redeemed_funds_available: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct BillAcceptanceStatus {
+    pub requested_to_accept: bool,
+    pub accepted: bool,
+    pub request_to_accept_timed_out: bool,
+    pub rejected_to_accept: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct BillPaymentStatus {
+    pub requested_to_pay: bool,
+    pub paid: bool,
+    pub request_to_pay_timed_out: bool,
+    pub rejected_to_pay: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct BillSellStatus {
+    pub offered_to_sell: bool,
+    pub offer_to_sell_timed_out: bool,
+    pub rejected_offer_to_sell: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct BillRecourseStatus {
+    pub requested_to_recourse: bool,
+    pub request_to_recourse_timed_out: bool,
+    pub rejected_request_to_recourse: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct BillData {
+    pub language: String,
+    pub time_of_drawing: u64,
+    pub issue_date: String,
+    pub time_of_maturity: u64,
+    pub maturity_date: String,
+    pub country_of_issuing: String,
+    pub city_of_issuing: String,
+    pub country_of_payment: String,
+    pub city_of_payment: String,
+    pub currency: String,
+    pub sum: String,
     pub files: Vec<File>,
-    /// The currently active notification for this bill if any
     pub active_notification: Option<Notification>,
-    pub bill_participants: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BillParticipants {
+    pub drawee: IdentityPublicData,
+    pub drawer: IdentityPublicData,
+    pub payee: IdentityPublicData,
+    pub endorsee: Option<IdentityPublicData>,
     pub endorsements_count: u64,
+    pub all_participant_node_ids: Vec<String>,
 }
 
 impl BitcreditBillResult {
@@ -98,21 +172,26 @@ impl BitcreditBillResult {
     /// participant in the bill
     pub fn get_bill_role_for_node_id(&self, node_id: &str) -> Option<BillRole> {
         // Node id is not part of the bill
-        if !self.bill_participants.iter().any(|bp| bp == node_id) {
+        if !self
+            .participants
+            .all_participant_node_ids
+            .iter()
+            .any(|bp| bp == node_id)
+        {
             return None;
         }
 
         // Node id is the payer
-        if self.drawee.node_id == *node_id {
+        if self.participants.drawee.node_id == *node_id {
             return Some(BillRole::Payer);
         }
 
         // Node id is payee, or, if an endorsee is set and node id is endorsee, node id is payee
-        if let Some(ref endorsee) = self.endorsee {
+        if let Some(ref endorsee) = self.participants.endorsee {
             if endorsee.node_id == *node_id {
                 return Some(BillRole::Payee);
             }
-        } else if self.payee.node_id == *node_id {
+        } else if self.participants.payee.node_id == *node_id {
             return Some(BillRole::Payee);
         }
 
@@ -124,32 +203,60 @@ impl BitcreditBillResult {
     // Search in the participants for the search term
     pub fn search_bill_for_search_term(&self, search_term: &str) -> bool {
         let search_term_lc = search_term.to_lowercase();
-        if self.payee.name.to_lowercase().contains(&search_term_lc) {
+        if self
+            .participants
+            .payee
+            .name
+            .to_lowercase()
+            .contains(&search_term_lc)
+        {
             return true;
         }
 
-        if self.drawer.name.to_lowercase().contains(&search_term_lc) {
+        if self
+            .participants
+            .drawer
+            .name
+            .to_lowercase()
+            .contains(&search_term_lc)
+        {
             return true;
         }
 
-        if self.drawee.name.to_lowercase().contains(&search_term_lc) {
+        if self
+            .participants
+            .drawee
+            .name
+            .to_lowercase()
+            .contains(&search_term_lc)
+        {
             return true;
         }
 
-        if let Some(ref endorsee) = self.endorsee {
+        if let Some(ref endorsee) = self.participants.endorsee {
             if endorsee.name.to_lowercase().contains(&search_term_lc) {
                 return true;
             }
         }
 
-        if let Some(ref buyer) = self.buyer {
-            if buyer.name.to_lowercase().contains(&search_term_lc) {
+        if let Some(BillCurrentWaitingState::Sell(ref sell_waiting_state)) =
+            self.current_waiting_state
+        {
+            if sell_waiting_state
+                .buyer
+                .name
+                .to_lowercase()
+                .contains(&search_term_lc)
+            {
                 return true;
             }
-        }
 
-        if let Some(ref seller) = self.seller {
-            if seller.name.to_lowercase().contains(&search_term_lc) {
+            if sell_waiting_state
+                .seller
+                .name
+                .to_lowercase()
+                .contains(&search_term_lc)
+            {
                 return true;
             }
         }
@@ -177,17 +284,17 @@ impl From<BitcreditBillResult> for LightBitcreditBillResult {
     fn from(value: BitcreditBillResult) -> Self {
         Self {
             id: value.id,
-            drawee: value.drawee.into(),
-            drawer: value.drawer.into(),
-            payee: value.payee.into(),
-            endorsee: value.endorsee.map(|v| v.into()),
-            active_notification: value.active_notification,
-            sum: value.sum,
-            currency: value.currency,
-            issue_date: value.issue_date,
-            time_of_drawing: value.time_of_drawing,
-            time_of_maturity: date_string_to_i64_timestamp(&value.maturity_date, None).unwrap_or(0)
-                as u64,
+            drawee: value.participants.drawee.into(),
+            drawer: value.participants.drawer.into(),
+            payee: value.participants.payee.into(),
+            endorsee: value.participants.endorsee.map(|v| v.into()),
+            active_notification: value.data.active_notification,
+            sum: value.data.sum,
+            currency: value.data.currency,
+            issue_date: value.data.issue_date,
+            time_of_drawing: value.data.time_of_drawing,
+            time_of_maturity: date_string_to_i64_timestamp(&value.data.maturity_date, None)
+                .unwrap_or(0) as u64,
         }
     }
 }
