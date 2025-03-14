@@ -1,7 +1,10 @@
 use bcr_ebill_api::data::{
     bill::{
-        BillCombinedBitcoinKey, BillsFilterRole, BitcreditBillResult, Endorsement,
-        LightBitcreditBillResult, LightSignedBy, PastEndorsee,
+        BillAcceptanceStatus, BillCombinedBitcoinKey, BillCurrentWaitingState, BillData,
+        BillParticipants, BillPaymentStatus, BillRecourseStatus, BillSellStatus, BillStatus,
+        BillWaitingForPaymentState, BillWaitingForRecourseState, BillWaitingForSellState,
+        BillsFilterRole, BitcreditBillResult, Endorsement, LightBitcreditBillResult, LightSignedBy,
+        PastEndorsee,
     },
     contact::{IdentityPublicData, LightIdentityPublicData, LightIdentityPublicDataWithAddress},
 };
@@ -270,82 +273,285 @@ pub struct BitcreditEbillQuote {
 #[tsify(into_wasm_abi)]
 pub struct BitcreditBillWeb {
     pub id: String,
-    pub time_of_drawing: u64,
-    pub time_of_maturity: u64,
-    pub country_of_issuing: String,
-    pub city_of_issuing: String,
-    pub drawee: IdentityPublicDataWeb,
-    pub drawer: IdentityPublicDataWeb,
-    pub payee: IdentityPublicDataWeb,
-    pub endorsee: Option<IdentityPublicDataWeb>,
-    pub currency: String,
-    pub sum: String,
-    pub maturity_date: String,
-    pub issue_date: String,
-    pub country_of_payment: String,
-    pub city_of_payment: String,
-    pub language: String,
-    pub accepted: bool,
-    pub endorsed: bool,
-    pub requested_to_pay: bool,
-    pub requested_to_accept: bool,
-    pub paid: bool,
-    pub waiting_for_payment: bool,
-    pub buyer: Option<IdentityPublicDataWeb>,
-    pub seller: Option<IdentityPublicDataWeb>,
-    pub in_recourse: bool,
-    pub recourser: Option<IdentityPublicDataWeb>,
-    pub recoursee: Option<IdentityPublicDataWeb>,
-    pub link_for_buy: String,
-    pub link_to_pay: String,
-    pub link_to_pay_recourse: String,
-    pub address_to_pay: String,
-    pub mempool_link_for_address_to_pay: String,
-    pub files: Vec<FileWeb>,
-    pub active_notification: Option<NotificationWeb>,
-    pub bill_participants: Vec<String>,
-    pub endorsements_count: u64,
+    pub participants: BillParticipantsWeb,
+    pub data: BillDataWeb,
+    pub status: BillStatusWeb,
+    pub current_waiting_state: Option<BillCurrentWaitingStateWeb>,
 }
 
 impl IntoWeb<BitcreditBillWeb> for BitcreditBillResult {
     fn into_web(self) -> BitcreditBillWeb {
         BitcreditBillWeb {
             id: self.id,
+            participants: self.participants.into_web(),
+            data: self.data.into_web(),
+            status: self.status.into_web(),
+            current_waiting_state: self.current_waiting_state.map(|cws| cws.into_web()),
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub enum BillCurrentWaitingStateWeb {
+    Sell(BillWaitingForSellStateWeb),
+    Payment(BillWaitingForPaymentStateWeb),
+    Recourse(BillWaitingForRecourseStateWeb),
+}
+
+impl IntoWeb<BillCurrentWaitingStateWeb> for BillCurrentWaitingState {
+    fn into_web(self) -> BillCurrentWaitingStateWeb {
+        match self {
+            BillCurrentWaitingState::Sell(state) => {
+                BillCurrentWaitingStateWeb::Sell(state.into_web())
+            }
+            BillCurrentWaitingState::Payment(state) => {
+                BillCurrentWaitingStateWeb::Payment(state.into_web())
+            }
+            BillCurrentWaitingState::Recourse(state) => {
+                BillCurrentWaitingStateWeb::Recourse(state.into_web())
+            }
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillWaitingForSellStateWeb {
+    pub time_of_request: u64,
+    pub buyer: IdentityPublicDataWeb,
+    pub seller: IdentityPublicDataWeb,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub mempool_link_for_address_to_pay: String,
+}
+
+impl IntoWeb<BillWaitingForSellStateWeb> for BillWaitingForSellState {
+    fn into_web(self) -> BillWaitingForSellStateWeb {
+        BillWaitingForSellStateWeb {
+            time_of_request: self.time_of_request,
+            buyer: self.buyer.into_web(),
+            seller: self.seller.into_web(),
+            currency: self.currency,
+            sum: self.sum,
+            link_to_pay: self.link_to_pay,
+            address_to_pay: self.address_to_pay,
+            mempool_link_for_address_to_pay: self.mempool_link_for_address_to_pay,
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillWaitingForPaymentStateWeb {
+    pub time_of_request: u64,
+    pub payer: IdentityPublicDataWeb,
+    pub payee: IdentityPublicDataWeb,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub mempool_link_for_address_to_pay: String,
+}
+
+impl IntoWeb<BillWaitingForPaymentStateWeb> for BillWaitingForPaymentState {
+    fn into_web(self) -> BillWaitingForPaymentStateWeb {
+        BillWaitingForPaymentStateWeb {
+            time_of_request: self.time_of_request,
+            payer: self.payer.into_web(),
+            payee: self.payee.into_web(),
+            currency: self.currency,
+            sum: self.sum,
+            link_to_pay: self.link_to_pay,
+            address_to_pay: self.address_to_pay,
+            mempool_link_for_address_to_pay: self.mempool_link_for_address_to_pay,
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillWaitingForRecourseStateWeb {
+    pub time_of_request: u64,
+    pub recourser: IdentityPublicDataWeb,
+    pub recoursee: IdentityPublicDataWeb,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub mempool_link_for_address_to_pay: String,
+}
+impl IntoWeb<BillWaitingForRecourseStateWeb> for BillWaitingForRecourseState {
+    fn into_web(self) -> BillWaitingForRecourseStateWeb {
+        BillWaitingForRecourseStateWeb {
+            time_of_request: self.time_of_request,
+            recourser: self.recourser.into_web(),
+            recoursee: self.recoursee.into_web(),
+            currency: self.currency,
+            sum: self.sum,
+            link_to_pay: self.link_to_pay,
+            address_to_pay: self.address_to_pay,
+            mempool_link_for_address_to_pay: self.mempool_link_for_address_to_pay,
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillStatusWeb {
+    pub acceptance: BillAcceptanceStatusWeb,
+    pub payment: BillPaymentStatusWeb,
+    pub sell: BillSellStatusWeb,
+    pub recourse: BillRecourseStatusWeb,
+    pub redeemed_funds_available: bool,
+}
+
+impl IntoWeb<BillStatusWeb> for BillStatus {
+    fn into_web(self) -> BillStatusWeb {
+        BillStatusWeb {
+            acceptance: self.acceptance.into_web(),
+            payment: self.payment.into_web(),
+            sell: self.sell.into_web(),
+            recourse: self.recourse.into_web(),
+            redeemed_funds_available: self.redeemed_funds_available,
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillAcceptanceStatusWeb {
+    pub requested_to_accept: bool,
+    pub accepted: bool,
+    pub request_to_accept_timed_out: bool,
+    pub rejected_to_accept: bool,
+}
+
+impl IntoWeb<BillAcceptanceStatusWeb> for BillAcceptanceStatus {
+    fn into_web(self) -> BillAcceptanceStatusWeb {
+        BillAcceptanceStatusWeb {
+            requested_to_accept: self.requested_to_accept,
+            accepted: self.accepted,
+            request_to_accept_timed_out: self.request_to_accept_timed_out,
+            rejected_to_accept: self.rejected_to_accept,
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillPaymentStatusWeb {
+    pub requested_to_pay: bool,
+    pub paid: bool,
+    pub request_to_pay_timed_out: bool,
+    pub rejected_to_pay: bool,
+}
+impl IntoWeb<BillPaymentStatusWeb> for BillPaymentStatus {
+    fn into_web(self) -> BillPaymentStatusWeb {
+        BillPaymentStatusWeb {
+            requested_to_pay: self.requested_to_pay,
+            paid: self.paid,
+            request_to_pay_timed_out: self.request_to_pay_timed_out,
+            rejected_to_pay: self.rejected_to_pay,
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillSellStatusWeb {
+    pub offered_to_sell: bool,
+    pub offer_to_sell_timed_out: bool,
+    pub rejected_offer_to_sell: bool,
+}
+impl IntoWeb<BillSellStatusWeb> for BillSellStatus {
+    fn into_web(self) -> BillSellStatusWeb {
+        BillSellStatusWeb {
+            offered_to_sell: self.offered_to_sell,
+            offer_to_sell_timed_out: self.offer_to_sell_timed_out,
+            rejected_offer_to_sell: self.rejected_offer_to_sell,
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillRecourseStatusWeb {
+    pub requested_to_recourse: bool,
+    pub request_to_recourse_timed_out: bool,
+    pub rejected_request_to_recourse: bool,
+}
+
+impl IntoWeb<BillRecourseStatusWeb> for BillRecourseStatus {
+    fn into_web(self) -> BillRecourseStatusWeb {
+        BillRecourseStatusWeb {
+            requested_to_recourse: self.requested_to_recourse,
+            request_to_recourse_timed_out: self.request_to_recourse_timed_out,
+            rejected_request_to_recourse: self.rejected_request_to_recourse,
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillDataWeb {
+    pub language: String,
+    pub time_of_drawing: u64,
+    pub issue_date: String,
+    pub time_of_maturity: u64,
+    pub maturity_date: String,
+    pub country_of_issuing: String,
+    pub city_of_issuing: String,
+    pub country_of_payment: String,
+    pub city_of_payment: String,
+    pub currency: String,
+    pub sum: String,
+    pub files: Vec<FileWeb>,
+    pub active_notification: Option<NotificationWeb>,
+}
+
+impl IntoWeb<BillDataWeb> for BillData {
+    fn into_web(self) -> BillDataWeb {
+        BillDataWeb {
+            language: self.language,
+            time_of_drawing: self.time_of_drawing,
+            issue_date: self.issue_date,
+            time_of_maturity: self.time_of_maturity,
+            maturity_date: self.maturity_date,
+            country_of_issuing: self.country_of_issuing,
+            city_of_issuing: self.city_of_issuing,
+            country_of_payment: self.country_of_payment,
+            city_of_payment: self.city_of_payment,
+            currency: self.currency,
+            sum: self.sum,
+            files: self.files.into_iter().map(|f| f.into_web()).collect(),
+            active_notification: self.active_notification.map(|an| an.into_web()),
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct BillParticipantsWeb {
+    pub drawee: IdentityPublicDataWeb,
+    pub drawer: IdentityPublicDataWeb,
+    pub payee: IdentityPublicDataWeb,
+    pub endorsee: Option<IdentityPublicDataWeb>,
+    pub endorsements_count: u64,
+    pub all_participant_node_ids: Vec<String>,
+}
+
+impl IntoWeb<BillParticipantsWeb> for BillParticipants {
+    fn into_web(self) -> BillParticipantsWeb {
+        BillParticipantsWeb {
             drawee: self.drawee.into_web(),
             drawer: self.drawer.into_web(),
             payee: self.payee.into_web(),
             endorsee: self.endorsee.map(|e| e.into_web()),
-            active_notification: self.active_notification.map(|n| n.into_web()),
-            sum: self.sum,
-            currency: self.currency,
-            issue_date: self.issue_date,
-            time_of_drawing: self.time_of_drawing,
-            time_of_maturity: self.time_of_maturity,
-            country_of_issuing: self.country_of_issuing,
-            city_of_issuing: self.city_of_issuing,
-            maturity_date: self.maturity_date,
-            country_of_payment: self.country_of_payment,
-            city_of_payment: self.city_of_payment,
-            language: self.language,
-            accepted: self.accepted,
-            endorsed: self.endorsed,
-            requested_to_pay: self.requested_to_pay,
-            requested_to_accept: self.requested_to_accept,
-            paid: self.paid,
-            waiting_for_payment: self.waiting_for_payment,
-            buyer: self.buyer.map(|b| b.into_web()),
-            seller: self.seller.map(|b| b.into_web()),
-            in_recourse: self.in_recourse,
-            recourser: self.recourser.map(|r| r.into_web()),
-            recoursee: self.recoursee.map(|r| r.into_web()),
-            link_for_buy: self.link_for_buy,
-            link_to_pay: self.link_to_pay,
-            link_to_pay_recourse: self.link_to_pay_recourse,
-            address_to_pay: self.address_to_pay,
-            mempool_link_for_address_to_pay: self.mempool_link_for_address_to_pay,
-            files: self.files.into_iter().map(|f| f.into_web()).collect(),
-            bill_participants: self.bill_participants,
             endorsements_count: self.endorsements_count,
+            all_participant_node_ids: self.all_participant_node_ids,
         }
     }
 }

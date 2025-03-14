@@ -199,7 +199,7 @@ impl BillServiceApi for BillService {
         let mut contingent_sum = 0;
 
         for bill in bills {
-            if let Ok(sum) = util::currency::parse_sum(&bill.sum) {
+            if let Ok(sum) = util::currency::parse_sum(&bill.data.sum) {
                 if let Some(bill_role) = bill.get_bill_role_for_node_id(current_identity_node_id) {
                     match bill_role {
                         BillRole::Payee => payee_sum += sum,
@@ -240,7 +240,7 @@ impl BillServiceApi for BillService {
         for bill in bills {
             // if the bill wasn't issued between from and to, we kick them out
             if let Some(issue_date_ts) =
-                util::date::date_string_to_i64_timestamp(&bill.issue_date, None)
+                util::date::date_string_to_i64_timestamp(&bill.data.issue_date, None)
             {
                 if let Some(from) = date_range_from {
                     if from > issue_date_ts as u64 {
@@ -338,7 +338,8 @@ impl BillServiceApi for BillService {
         Ok(bills
             .into_iter()
             .filter(|b| {
-                b.bill_participants
+                b.participants
+                    .all_participant_node_ids
                     .iter()
                     .any(|p| p == current_identity_node_id)
             })
@@ -392,7 +393,8 @@ impl BillServiceApi for BillService {
             .await?;
         // if currently active identity is not part of the bill, we can't access it
         if !res
-            .bill_participants
+            .participants
+            .all_participant_node_ids
             .iter()
             .any(|p| p == current_identity_node_id)
         {
