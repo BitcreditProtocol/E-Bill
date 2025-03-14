@@ -56,7 +56,7 @@ impl Context {
         .await?;
 
         let bill_service = Arc::new(BillService::new(
-            db.bill_store,
+            db.bill_store.clone(),
             db.bill_blockchain_store.clone(),
             db.identity_store.clone(),
             db.file_upload_store.clone(),
@@ -91,6 +91,8 @@ impl Context {
             db.nostr_event_offset_store.clone(),
             db.notification_store.clone(),
             push_service.clone(),
+            db.bill_blockchain_store.clone(),
+            db.bill_store.clone(),
         )
         .await?;
 

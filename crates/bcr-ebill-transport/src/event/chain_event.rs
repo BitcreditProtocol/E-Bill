@@ -18,6 +18,7 @@ pub struct BillChainEvent {
     pub bill: BitcreditBill,
     chain: BillBlockchain,
     participants: HashMap<String, usize>,
+    bill_keys: BillKeys,
 }
 
 impl BillChainEvent {
@@ -36,6 +37,7 @@ impl BillChainEvent {
             bill: bill.clone(),
             chain: chain.clone(),
             participants,
+            bill_keys: bill_keys.clone(),
         })
     }
 
@@ -51,6 +53,13 @@ impl BillChainEvent {
             Some(height) if *height == self.chain.block_height() => self.chain.blocks().clone(),
             Some(_) => vec![self.latest_block()],
             None => Vec::new(),
+        }
+    }
+
+    fn get_keys_for_node(&self, node_id: &str) -> Option<BillKeys> {
+        match self.participants.get(node_id) {
+            Some(height) if *height == self.chain.block_height() => Some(self.bill_keys.clone()),
+            _ => None,
         }
     }
 
@@ -77,6 +86,7 @@ impl BillChainEvent {
                         action_type: action,
                         sum: Some(self.bill.sum),
                         blocks: self.get_blocks_for_node(node_id),
+                        keys: self.get_keys_for_node(node_id),
                     },
                 )
             })

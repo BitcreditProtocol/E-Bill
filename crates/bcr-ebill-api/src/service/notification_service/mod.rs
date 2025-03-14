@@ -4,6 +4,7 @@ use crate::Config;
 use crate::persistence::identity::IdentityStoreApi;
 use crate::persistence::nostr::NostrEventOffsetStoreApi;
 use crate::persistence::notification::NotificationStoreApi;
+use bcr_ebill_persistence::bill::{BillChainStoreApi, BillStoreApi};
 use bcr_ebill_transport::handler::{
     BillChainEventHandler, LoggingEventHandler, NotificationHandlerApi,
 };
@@ -66,6 +67,8 @@ pub async fn create_nostr_consumer(
     nostr_event_offset_store: Arc<dyn NostrEventOffsetStoreApi>,
     notification_store: Arc<dyn NotificationStoreApi>,
     push_service: Arc<dyn PushApi>,
+    bill_blockchain_store: Arc<dyn BillChainStoreApi>,
+    bill_store: Arc<dyn BillStoreApi>,
 ) -> Result<NostrConsumer> {
     // register the logging event handler for all events for now. Later we will probably
     // setup the handlers outside and pass them to the consumer via this functions arguments.
@@ -73,7 +76,12 @@ pub async fn create_nostr_consumer(
         Box::new(LoggingEventHandler {
             event_types: EventType::all(),
         }),
-        Box::new(BillChainEventHandler::new(notification_store, push_service)),
+        Box::new(BillChainEventHandler::new(
+            notification_store,
+            push_service,
+            bill_blockchain_store,
+            bill_store,
+        )),
     ];
     let consumer = NostrConsumer::new(client, contact_service, handlers, nostr_event_offset_store);
     Ok(consumer)

@@ -5,9 +5,13 @@ use crate::EventType;
 use crate::{Error, Event, EventEnvelope, PushApi, Result};
 use async_trait::async_trait;
 use bcr_ebill_core::ServiceTraitBounds;
-use bcr_ebill_core::blockchain::bill::BillBlock;
+use bcr_ebill_core::bill::BillKeys;
+use bcr_ebill_core::blockchain::Blockchain;
+use bcr_ebill_core::blockchain::bill::{BillBlock, BillBlockchain};
 use bcr_ebill_core::notification::{Notification, NotificationType};
 use bcr_ebill_persistence::NotificationStoreApi;
+use bcr_ebill_persistence::bill::BillChainStoreApi;
+use bcr_ebill_persistence::bill::BillStoreApi;
 use log::error;
 use log::warn;
 use std::sync::Arc;
@@ -16,16 +20,22 @@ use std::sync::Arc;
 pub struct BillChainEventHandler {
     notification_store: Arc<dyn NotificationStoreApi>,
     push_service: Arc<dyn PushApi>,
+    bill_blockchain_store: Arc<dyn BillChainStoreApi>,
+    bill_store: Arc<dyn BillStoreApi>,
 }
 
 impl BillChainEventHandler {
     pub fn new(
         notification_store: Arc<dyn NotificationStoreApi>,
         push_service: Arc<dyn PushApi>,
+        bill_blockchain_store: Arc<dyn BillChainStoreApi>,
+        bill_store: Arc<dyn BillStoreApi>,
     ) -> Self {
         Self {
             notification_store,
             push_service,
+            bill_blockchain_store,
+            bill_store,
         }
     }
 
@@ -83,7 +93,93 @@ impl BillChainEventHandler {
         Ok(())
     }
 
-    async fn process_chain_data(&self, _blocks: Vec<BillBlock>, _node_id: &str) -> Result<()> {
+    async fn process_chain_data(
+        &self,
+        bill_id: &str,
+        blocks: Vec<BillBlock>,
+        keys: Option<BillKeys>,
+    ) -> Result<()> {
+        match keys {
+            Some(keys) => self.add_new_chain(blocks, &keys).await,
+            None if !blocks.is_empty() => self.add_bill_blocks(bill_id, blocks).await,
+            _ => Ok(()),
+        }
+    }
+
+    async fn add_bill_blocks(&self, bill_id: &str, blocks: Vec<BillBlock>) -> Result<()> {
+        if let Ok(mut chain) = self.bill_blockchain_store.get_chain(bill_id).await {
+            for block in blocks {
+                chain.try_add_block(block.clone());
+                if !chain.is_chain_valid() {
+                    error!("Received block is not valid for bill {bill_id}");
+                    return Err(Error::BlockChain(
+                        "Received bill block is not valid".to_string(),
+                    ));
+                }
+                self.save_block(bill_id, &block).await?
+            }
+            Ok(())
+        } else {
+            error!("Failed to get chain for received bill block {bill_id}");
+            Err(Error::BlockChain(
+                "Failed to get chain for bill".to_string(),
+            ))
+        }
+    }
+
+    async fn add_new_chain(&self, blocks: Vec<BillBlock>, keys: &BillKeys) -> Result<()> {
+        let (bill_id, chain) = self.get_valid_chain(blocks, keys)?;
+        for block in chain.blocks() {
+            self.save_block(&bill_id, block).await?;
+        }
+        self.save_keys(&bill_id, keys).await?;
+        Ok(())
+    }
+
+    fn get_valid_chain(
+        &self,
+        blocks: Vec<BillBlock>,
+        keys: &BillKeys,
+    ) -> Result<(String, BillBlockchain)> {
+        match BillBlockchain::new_from_blocks(blocks) {
+            Ok(chain) if chain.is_chain_valid() => match chain.get_first_version_bill(keys) {
+                Ok(bill) => Ok((bill.id, chain)),
+                Err(e) => {
+                    error!(
+                        "Failed to get first version bill from newly received chain: {}",
+                        e
+                    );
+                    Err(Error::Crypto(format!(
+                        "Failed to decrypt new bill chain with given keys: {e}"
+                    )))
+                }
+            },
+            _ => {
+                error!("Newly received chain is not valid");
+                Err(Error::BlockChain(
+                    "Newly received chain is not valid".to_string(),
+                ))
+            }
+        }
+    }
+
+    async fn save_block(&self, bill_id: &str, block: &BillBlock) -> Result<()> {
+        if let Err(e) = self.bill_blockchain_store.add_block(bill_id, block).await {
+            error!("Failed to add block to blockchain store: {}", e);
+            return Err(Error::Persistence(
+                "Failed to add block to blockchain store".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn save_keys(&self, bill_id: &str, keys: &BillKeys) -> Result<()> {
+        if let Err(e) = self.bill_store.save_keys(bill_id, keys).await {
+            error!("Failed to save keys to bill store: {}", e);
+            return Err(Error::Persistence(
+                "Failed to save keys to bill store".to_string(),
+            ));
+        }
         Ok(())
     }
 }
@@ -101,7 +197,11 @@ impl NotificationHandlerApi for BillChainEventHandler {
         if let Ok(decoded) = Event::<BillChainEventPayload>::try_from(event.clone()) {
             if !decoded.data.blocks.is_empty() {
                 if let Err(e) = self
-                    .process_chain_data(decoded.data.blocks.clone(), node_id)
+                    .process_chain_data(
+                        &decoded.data.bill_id,
+                        decoded.data.blocks.clone(),
+                        decoded.data.keys.clone(),
+                    )
                     .await
                 {
                     error!("Failed to process chain data: {}", e);

@@ -1,4 +1,5 @@
 use bcr_ebill_core::{
+    bill::BillKeys,
     blockchain::bill::BillBlock,
     notification::{ActionType, BillEventType},
 };
@@ -15,5 +16,6 @@ pub struct BillChainEventPayload {
     pub bill_id: String,
     pub action_type: Option<ActionType>,
     pub sum: Option<u64>,
+    pub keys: Option<BillKeys>,
     pub blocks: Vec<BillBlock>,
 }

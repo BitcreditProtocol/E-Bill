@@ -441,8 +441,8 @@ mod tests {
     };
     use super::*;
     use crate::tests::tests::{
-        MockNostrEventOffsetStoreApiMock, MockNotificationStoreApiMock, TEST_PRIVATE_KEY_SECP,
-        TEST_PUB_KEY_SECP,
+        MockBillChainStoreApiMock, MockBillStoreApiMock, MockNostrEventOffsetStoreApiMock,
+        MockNotificationStoreApiMock, TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP,
     };
 
     fn check_chain_payload(event: &EventEnvelope, bill_event_type: BillEventType) -> bool {
@@ -1023,12 +1023,16 @@ mod tests {
         let store = Arc::new(MockNostrEventOffsetStoreApiMock::new());
         let notification_store = Arc::new(MockNotificationStoreApiMock::new());
         let push_service = Arc::new(MockPushService::new());
+        let bill_store = Arc::new(MockBillStoreApiMock::new());
+        let bill_blockchain_store = Arc::new(MockBillChainStoreApiMock::new());
         let _ = create_nostr_consumer(
             client,
             contact_service,
             store,
             notification_store,
             push_service,
+            bill_blockchain_store,
+            bill_store,
         )
         .await;
     }
