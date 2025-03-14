@@ -44,6 +44,10 @@ impl BillChainEventHandler {
         event: &BillChainEventPayload,
         node_id: &str,
     ) -> Result<()> {
+        // no action no notification required
+        if event.action_type.is_none() {
+            return Ok(());
+        }
         // create notification
         let notification = Notification::new_bill_notification(
             &event.bill_id,
@@ -247,6 +251,17 @@ fn event_description(event_type: &BillEventType) -> String {
 
 #[cfg(test)]
 mod tests {
+    use bcr_ebill_core::{
+        OptionalPostalAddress, PostalAddress,
+        bill::BitcreditBill,
+        blockchain::bill::block::BillIssueBlockData,
+        contact::{ContactType, IdentityPublicData},
+        identity::{Identity, IdentityWithAll},
+        notification::ActionType,
+        util::BcrKeys,
+    };
+    use mockall::predicate::eq;
+
     use crate::handler::test_utils::{
         MockBillChainStore, MockBillStore, MockNotificationStore, MockPushService,
     };
@@ -263,6 +278,246 @@ mod tests {
             Arc::new(bill_store),
         );
     }
+
+    #[tokio::test]
+    async fn test_creates_new_chain_for_new_chain_event() {
+        let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let chain = get_genesis_chain(Some(bill.clone()));
+
+        let (notification_store, push_service, bill_chain_store, bill_store) = create_mocks();
+
+        let handler = BillChainEventHandler::new(
+            Arc::new(notification_store),
+            Arc::new(push_service),
+            Arc::new(bill_chain_store),
+            Arc::new(bill_store),
+        );
+        let event = Event::new(
+            EventType::Bill,
+            "node_id",
+            BillChainEventPayload {
+                bill_id: "bill_id".to_string(),
+                event_type: BillEventType::BillBlock,
+                blocks: vec![],
+                keys: None,
+                sum: None,
+                action_type: None,
+            },
+        );
+
+        handler
+            .handle_event(event.try_into().expect("Envelope from event"), "node_id")
+            .await
+            .expect("Event should be handled");
+    }
+    #[tokio::test]
+    async fn test_creates_no_notification_for_non_action_event() {
+        let (mut notification_store, mut push_service, bill_chain_store, bill_store) =
+            create_mocks();
+
+        // look for currently active notification
+        notification_store.expect_get_latest_by_reference().never();
+
+        // store new notification
+        notification_store.expect_add().never();
+
+        // send push notification
+        push_service.expect_send().never();
+
+        let handler = BillChainEventHandler::new(
+            Arc::new(notification_store),
+            Arc::new(push_service),
+            Arc::new(bill_chain_store),
+            Arc::new(bill_store),
+        );
+        let event = Event::new(
+            EventType::Bill,
+            "node_id",
+            BillChainEventPayload {
+                bill_id: "bill_id".to_string(),
+                event_type: BillEventType::BillBlock,
+                blocks: vec![],
+                keys: None,
+                sum: None,
+                action_type: None,
+            },
+        );
+
+        handler
+            .handle_event(event.try_into().expect("Envelope from event"), "node_id")
+            .await
+            .expect("Event should be handled");
+    }
+
+    #[tokio::test]
+    async fn test_creates_notification_for_simple_action_event() {
+        let (mut notification_store, mut push_service, bill_chain_store, bill_store) =
+            create_mocks();
+
+        // look for currently active notification
+        notification_store
+            .expect_get_latest_by_reference()
+            .with(eq("bill_id"), eq(NotificationType::Bill))
+            .times(1)
+            .returning(|_, _| Ok(None));
+
+        // store new notification
+        notification_store.expect_add().times(1).returning(|_| {
+            Ok(Notification::new_bill_notification(
+                "bill_id",
+                "node_id",
+                "description",
+                None,
+            ))
+        });
+
+        // send push notification
+        push_service.expect_send().times(1).returning(|_| ());
+
+        let handler = BillChainEventHandler::new(
+            Arc::new(notification_store),
+            Arc::new(push_service),
+            Arc::new(bill_chain_store),
+            Arc::new(bill_store),
+        );
+        let event = Event::new(
+            EventType::Bill,
+            "node_id",
+            BillChainEventPayload {
+                bill_id: "bill_id".to_string(),
+                event_type: BillEventType::BillSigned,
+                blocks: vec![],
+                keys: None,
+                sum: Some(0),
+                action_type: Some(ActionType::CheckBill),
+            },
+        );
+
+        handler
+            .handle_event(event.try_into().expect("Envelope from event"), "node_id")
+            .await
+            .expect("Event should be handled");
+    }
+    pub fn get_test_bitcredit_bill(
+        id: &str,
+        payer: &IdentityPublicData,
+        payee: &IdentityPublicData,
+        drawer: Option<&IdentityPublicData>,
+        endorsee: Option<&IdentityPublicData>,
+    ) -> BitcreditBill {
+        let mut bill = empty_bitcredit_bill();
+        bill.id = id.to_owned();
+        bill.payee = payee.clone();
+        bill.drawee = payer.clone();
+        if let Some(drawer) = drawer {
+            bill.drawer = drawer.clone();
+        }
+        bill.endorsee = endorsee.cloned();
+        bill
+    }
+    fn get_genesis_chain(bill: Option<BitcreditBill>) -> BillBlockchain {
+        let bill = bill.unwrap_or(get_baseline_bill("some id"));
+        BillBlockchain::new(
+            &BillIssueBlockData::from(bill, None, 1731593928),
+            get_baseline_identity().key_pair,
+            None,
+            BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
+            1731593928,
+        )
+        .unwrap()
+    }
+    fn get_baseline_bill(bill_id: &str) -> BitcreditBill {
+        let mut bill = empty_bitcredit_bill();
+        let keys = BcrKeys::new();
+
+        bill.maturity_date = "2099-10-15".to_string();
+        bill.payee = empty_identity_public_data();
+        bill.payee.name = "payee".to_owned();
+        bill.payee.node_id = keys.get_public_key();
+        bill.drawee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        bill.id = bill_id.to_owned();
+        bill
+    }
+    fn empty_bitcredit_bill() -> BitcreditBill {
+        BitcreditBill {
+            id: "".to_string(),
+            country_of_issuing: "".to_string(),
+            city_of_issuing: "".to_string(),
+            drawee: empty_identity_public_data(),
+            drawer: empty_identity_public_data(),
+            payee: empty_identity_public_data(),
+            endorsee: None,
+            currency: "".to_string(),
+            sum: 0,
+            maturity_date: "".to_string(),
+            issue_date: "".to_string(),
+            city_of_payment: "".to_string(),
+            country_of_payment: "".to_string(),
+            language: "".to_string(),
+            files: vec![],
+        }
+    }
+
+    fn get_baseline_identity() -> IdentityWithAll {
+        let keys = BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap();
+        let mut identity = empty_identity();
+        identity.name = "drawer".to_owned();
+        identity.node_id = keys.get_public_key();
+        identity.postal_address.country = Some("AT".to_owned());
+        identity.postal_address.city = Some("Vienna".to_owned());
+        identity.postal_address.address = Some("Hayekweg 5".to_owned());
+        IdentityWithAll {
+            identity,
+            key_pair: keys,
+        }
+    }
+    fn empty_identity_public_data() -> IdentityPublicData {
+        IdentityPublicData {
+            t: ContactType::Person,
+            node_id: "".to_string(),
+            name: "".to_string(),
+            postal_address: empty_address(),
+            email: None,
+            nostr_relay: None,
+        }
+    }
+    fn empty_address() -> PostalAddress {
+        PostalAddress {
+            country: "".to_string(),
+            city: "".to_string(),
+            zip: None,
+            address: "".to_string(),
+        }
+    }
+    fn empty_identity() -> Identity {
+        Identity {
+            node_id: "".to_string(),
+            name: "".to_string(),
+            email: "".to_string(),
+            postal_address: empty_optional_address(),
+            date_of_birth: None,
+            country_of_birth: None,
+            city_of_birth: None,
+            identification_number: None,
+            nostr_relay: None,
+            profile_picture_file: None,
+            identity_document_file: None,
+        }
+    }
+
+    pub fn empty_optional_address() -> OptionalPostalAddress {
+        OptionalPostalAddress {
+            country: None,
+            city: None,
+            zip: None,
+            address: None,
+        }
+    }
+
+    const TEST_PRIVATE_KEY_SECP: &str =
+        "d1ff7427912d3b81743d3b67ffa1e65df2156d3dab257316cbc8d0f35eeeabe9";
 
     fn create_mocks() -> (
         MockNotificationStore,

@@ -52,7 +52,7 @@ impl Notification {
 }
 
 /// The type/topic of a notification we show to the user
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum NotificationType {
     General,
     Bill,
