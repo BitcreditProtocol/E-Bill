@@ -6,6 +6,7 @@ use bcr_ebill_core::{
     identity::Identity,
     notification::ActionType,
 };
+use bcr_ebill_transport::BillChainEvent;
 
 impl BillService {
     pub(super) async fn notify_for_block_action(
@@ -38,10 +39,12 @@ impl BillService {
             }
         };
 
+        let chain_event = BillChainEvent::new(&last_version_bill, blockchain, bill_keys)?;
+
         match bill_action {
             BillAction::Accept => {
                 self.notification_service
-                    .send_bill_is_accepted_event(&last_version_bill)
+                    .send_bill_is_accepted_event(&chain_event)
                     .await?;
             }
             BillAction::RequestAcceptance => {

@@ -26,7 +26,7 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
 
     /// Sent when: A bill is accepted by: Payer
     /// Receiver: Holder, Action: CheckBill
-    async fn send_bill_is_accepted_event(&self, bill: &BitcreditBill) -> Result<()>;
+    async fn send_bill_is_accepted_event(&self, bill: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is requested to be accepted, Sent by: Holder
     /// Receiver: Payer, Action: AcceptBill

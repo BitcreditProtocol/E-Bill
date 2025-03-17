@@ -26,6 +26,23 @@ pub struct DefaultNotificationService {
     contact_service: Arc<dyn ContactServiceApi>,
 }
 
+impl DefaultNotificationService {
+    async fn send_all_events(&self, events: Vec<Event<BillChainEventPayload>>) -> Result<()> {
+        for event_to_process in events.into_iter() {
+            if let Ok(Some(identity)) = self
+                .contact_service
+                .get_identity_by_node_id(&event_to_process.node_id)
+                .await
+            {
+                self.notification_transport
+                    .send(&identity, event_to_process.try_into()?)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl ServiceTraitBounds for DefaultNotificationService {}
 
 impl DefaultNotificationService {
@@ -59,36 +76,16 @@ impl NotificationServiceApi for DefaultNotificationService {
             ),
         ]));
 
-        for event_to_process in all_events.into_iter() {
-            if let Ok(Some(identity)) = self
-                .contact_service
-                .get_identity_by_node_id(&event_to_process.node_id)
-                .await
-            {
-                self.notification_transport
-                    .send(&identity, event_to_process.try_into()?)
-                    .await?;
-            }
-        }
-
+        self.send_all_events(all_events).await?;
         Ok(())
     }
 
-    async fn send_bill_is_accepted_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new_bill(
-            &bill.payee.node_id,
-            BillChainEventPayload {
-                event_type: BillEventType::BillAccepted,
-                bill_id: bill.id.clone(),
-                action_type: Some(ActionType::CheckBill),
-                sum: Some(bill.sum),
-                ..Default::default()
-            },
-        );
-
-        self.notification_transport
-            .send(&bill.payee, event.try_into()?)
-            .await?;
+    async fn send_bill_is_accepted_event(&self, event: &BillChainEvent) -> Result<()> {
+        let all_events = event.generate_action_messages(HashMap::from_iter(vec![(
+            event.bill.payee.node_id.clone(),
+            (BillEventType::BillAccepted, ActionType::CheckBill),
+        )]));
+        self.send_all_events(all_events).await?;
         Ok(())
     }
 
@@ -406,12 +403,17 @@ impl NotificationServiceApi for DefaultNotificationService {
 #[cfg(test)]
 mod tests {
 
+    use bcr_ebill_core::PostalAddress;
     use bcr_ebill_core::bill::BillKeys;
+    use bcr_ebill_core::blockchain::Blockchain;
+    use bcr_ebill_core::blockchain::bill::block::BillAcceptBlockData;
+    use bcr_ebill_core::blockchain::bill::{BillBlock, BillBlockchain};
+    use bcr_ebill_core::util::date::now;
     use bcr_ebill_transport::{EventEnvelope, EventType, PushApi};
     use mockall::{mock, predicate::eq};
     use std::sync::Arc;
 
-    use crate::service::bill_service::test_utils::get_genesis_chain;
+    use crate::service::bill_service::test_utils::{get_baseline_identity, get_genesis_chain};
     use crate::service::contact_service::MockContactServiceApi;
     use crate::service::notification_service::create_nostr_consumer;
     use async_broadcast::Receiver;
@@ -704,58 +706,31 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_send_bill_is_signed_event() {
-        // given a payer and payee with a new bill
-        let payer = get_identity_public_data("drawee", "drawee@example.com", None);
-        let payee = get_identity_public_data("payee", "payee@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
-        let chain = get_genesis_chain(Some(bill.clone()));
-
+    fn setup_chain_expectation(
+        participants: Vec<(IdentityPublicData, BillEventType, Option<ActionType>)>,
+        bill: &BitcreditBill,
+        chain: &BillBlockchain,
+    ) -> (DefaultNotificationService, BillChainEvent) {
         let mut mock_contact_service = MockContactServiceApi::new();
-        mock_contact_service
-            .expect_get_identity_by_node_id()
-            .with(eq("payee"))
-            .returning(|_| {
-                Ok(Some(get_identity_public_data(
-                    "payee",
-                    "payee@example.com",
-                    None,
-                )))
-            });
-        mock_contact_service
-            .expect_get_identity_by_node_id()
-            .with(eq("drawee"))
-            .returning(|_| {
-                Ok(Some(get_identity_public_data(
-                    "drawee",
-                    "drawee@example.com",
-                    None,
-                )))
-            });
-
         let mut mock = MockNotificationJsonTransport::new();
-        mock.expect_send()
-            .withf(|r, e| {
-                let valid_node_id = r.node_id == "drawee" && e.node_id == "drawee";
-                let event: Event<BillChainEventPayload> = e.clone().try_into().unwrap();
-                let valid_event_type = event.data.event_type == BillEventType::BillSigned;
-                valid_node_id
-                    && valid_event_type
-                    && event.data.action_type == Some(ActionType::AcceptBill)
-            })
-            .returning(|_, _| Ok(()));
+        for p in participants.into_iter() {
+            let clone1 = p.clone();
+            mock_contact_service
+                .expect_get_identity_by_node_id()
+                .with(eq(p.0.node_id.clone()))
+                .returning(move |_| Ok(Some(clone1.0.clone())));
 
-        mock.expect_send()
-            .withf(|r, e| {
-                let valid_node_id = r.node_id == "payee" && e.node_id == "payee";
-                let event: Event<BillChainEventPayload> = e.clone().try_into().unwrap();
-                let valid_event_type = event.data.event_type == BillEventType::BillSigned;
-                valid_node_id
-                    && valid_event_type
-                    && event.data.action_type == Some(ActionType::CheckBill)
-            })
-            .returning(|_, _| Ok(()));
+            let clone2 = p.clone();
+            mock.expect_send()
+                .withf(move |r, e| {
+                    let part = clone2.clone();
+                    let valid_node_id = r.node_id == part.0.node_id && e.node_id == part.0.node_id;
+                    let event: Event<BillChainEventPayload> = e.clone().try_into().unwrap();
+                    let valid_event_type = event.data.event_type == part.1;
+                    valid_node_id && valid_event_type && event.data.action_type == part.2
+                })
+                .returning(|_, _| Ok(()));
+        }
 
         let service = DefaultNotificationService {
             notification_transport: Box::new(mock),
@@ -763,8 +738,43 @@ mod tests {
             contact_service: Arc::new(mock_contact_service),
         };
 
-        let event = BillChainEvent::new(&bill, &chain, &bill_keys()).unwrap();
+        (
+            service,
+            BillChainEvent::new(
+                bill,
+                chain,
+                &BillKeys {
+                    private_key: TEST_PRIVATE_KEY_SECP.to_owned(),
+                    public_key: TEST_PUB_KEY_SECP.to_owned(),
+                },
+            )
+            .unwrap(),
+        )
+    }
 
+    #[tokio::test]
+    async fn test_send_bill_is_signed_event() {
+        // given a payer and payee with a new bill
+        let payer = get_identity_public_data("drawee", "drawee@example.com", None);
+        let payee = get_identity_public_data("payee", "payee@example.com", None);
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let chain = get_genesis_chain(Some(bill.clone()));
+        let (service, event) = setup_chain_expectation(
+            vec![
+                (
+                    payer,
+                    BillEventType::BillSigned,
+                    Some(ActionType::AcceptBill),
+                ),
+                (
+                    payee,
+                    BillEventType::BillSigned,
+                    Some(ActionType::CheckBill),
+                ),
+            ],
+            &bill,
+            &chain,
+        );
         service
             .send_bill_is_signed_event(&event)
             .await
@@ -773,14 +783,45 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_bill_is_accepted_event() {
-        let bill = get_test_bill();
+        let payer = get_identity_public_data("drawee", "drawee@example.com", None);
+        let payee = get_identity_public_data("payee", "payee@example.com", None);
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let mut chain = get_genesis_chain(Some(bill.clone()));
+        let timestamp = now().timestamp() as u64;
+        let keys = get_baseline_identity().key_pair;
+        let block = BillBlock::create_block_for_accept(
+            bill.id.to_owned(),
+            chain.get_latest_block(),
+            &BillAcceptBlockData {
+                accepter: payer.clone().into(),
+                signatory: None,
+                signing_timestamp: timestamp,
+                signing_address: PostalAddress::default(),
+            },
+            &keys,
+            None, // company keys
+            &keys,
+            timestamp,
+        )
+        .unwrap();
 
-        // should send accepted to payee
-        let service =
-            setup_service_expectation("payee", BillEventType::BillAccepted, ActionType::CheckBill);
+        chain.try_add_block(block);
+
+        let (service, event) = setup_chain_expectation(
+            vec![
+                (
+                    payee,
+                    BillEventType::BillAccepted,
+                    Some(ActionType::CheckBill),
+                ),
+                (payer, BillEventType::BillBlock, None),
+            ],
+            &bill,
+            &chain,
+        );
 
         service
-            .send_bill_is_accepted_event(&bill)
+            .send_bill_is_accepted_event(&event)
             .await
             .expect("failed to send event");
     }
