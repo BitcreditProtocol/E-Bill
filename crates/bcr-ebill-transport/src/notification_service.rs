@@ -30,19 +30,19 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
 
     /// Sent when: A bill is requested to be accepted, Sent by: Holder
     /// Receiver: Payer, Action: AcceptBill
-    async fn send_request_to_accept_event(&self, bill: &BitcreditBill) -> Result<()>;
+    async fn send_request_to_accept_event(&self, bill: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is requested to be paid, Sent by: Holder
     /// Receiver: Payer, Action: PayBill
-    async fn send_request_to_pay_event(&self, bill: &BitcreditBill) -> Result<()>;
+    async fn send_request_to_pay_event(&self, bill: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is paid by: Payer (Bitcoin API)
     /// Receiver: Payee, Action: CheckBill
-    async fn send_bill_is_paid_event(&self, bill: &BitcreditBill) -> Result<()>;
+    async fn send_bill_is_paid_event(&self, bill: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is endorsed by: Previous Holder
     /// Receiver: NewHolder, Action: CheckBill
-    async fn send_bill_is_endorsed_event(&self, bill: &BitcreditBill) -> Result<()>;
+    async fn send_bill_is_endorsed_event(&self, bill: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is offered to be sold, Sent by: Holder
     /// Receiver: Buyer, Action: CheckBill (with buy page)

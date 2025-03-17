@@ -65,97 +65,84 @@ impl NotificationServiceApi for DefaultNotificationService {
     async fn send_bill_is_signed_event(&self, event: &BillChainEvent) -> Result<()> {
         let event_type = BillEventType::BillSigned;
 
-        let all_events = event.generate_action_messages(HashMap::from_iter(vec![
-            (
-                event.bill.drawee.node_id.clone(),
-                (event_type.clone(), ActionType::AcceptBill),
-            ),
-            (
-                event.bill.payee.node_id.clone(),
-                (event_type, ActionType::CheckBill),
-            ),
-        ]));
+        let all_events = event.generate_action_messages(
+            HashMap::from_iter(vec![
+                (
+                    event.bill.drawee.node_id.clone(),
+                    (event_type.clone(), ActionType::AcceptBill),
+                ),
+                (
+                    event.bill.payee.node_id.clone(),
+                    (event_type, ActionType::CheckBill),
+                ),
+            ]),
+            true,
+        );
 
         self.send_all_events(all_events).await?;
         Ok(())
     }
 
     async fn send_bill_is_accepted_event(&self, event: &BillChainEvent) -> Result<()> {
-        let all_events = event.generate_action_messages(HashMap::from_iter(vec![(
-            event.bill.payee.node_id.clone(),
-            (BillEventType::BillAccepted, ActionType::CheckBill),
-        )]));
+        let all_events = event.generate_action_messages(
+            HashMap::from_iter(vec![(
+                event.bill.payee.node_id.clone(),
+                (BillEventType::BillAccepted, ActionType::CheckBill),
+            )]),
+            true,
+        );
         self.send_all_events(all_events).await?;
         Ok(())
     }
 
-    async fn send_request_to_accept_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new_bill(
-            &bill.drawee.node_id,
-            BillChainEventPayload {
-                event_type: BillEventType::BillAcceptanceRequested,
-                bill_id: bill.id.clone(),
-                action_type: Some(ActionType::AcceptBill),
-                sum: Some(bill.sum),
-                ..Default::default()
-            },
+    async fn send_request_to_accept_event(&self, bill: &BillChainEvent) -> Result<()> {
+        let all_events = bill.generate_action_messages(
+            HashMap::from_iter(vec![(
+                bill.bill.drawee.node_id.clone(),
+                (
+                    BillEventType::BillAcceptanceRequested,
+                    ActionType::AcceptBill,
+                ),
+            )]),
+            true,
         );
-        self.notification_transport
-            .send(&bill.drawee, event.try_into()?)
-            .await?;
+        self.send_all_events(all_events).await?;
         Ok(())
     }
 
-    async fn send_request_to_pay_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new_bill(
-            &bill.drawee.node_id,
-            BillChainEventPayload {
-                event_type: BillEventType::BillPaymentRequested,
-                bill_id: bill.id.clone(),
-                action_type: Some(ActionType::PayBill),
-                sum: Some(bill.sum),
-                ..Default::default()
-            },
+    async fn send_request_to_pay_event(&self, bill: &BillChainEvent) -> Result<()> {
+        let all_events = bill.generate_action_messages(
+            HashMap::from_iter(vec![(
+                bill.bill.drawee.node_id.clone(),
+                (BillEventType::BillPaymentRequested, ActionType::PayBill),
+            )]),
+            true,
         );
-        self.notification_transport
-            .send(&bill.drawee, event.try_into()?)
-            .await?;
+        self.send_all_events(all_events).await?;
         Ok(())
     }
 
-    async fn send_bill_is_paid_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new_bill(
-            &bill.payee.node_id,
-            BillChainEventPayload {
-                event_type: BillEventType::BillPaid,
-                bill_id: bill.id.clone(),
-                action_type: Some(ActionType::CheckBill),
-                sum: Some(bill.sum),
-                ..Default::default()
-            },
+    async fn send_bill_is_paid_event(&self, bill: &BillChainEvent) -> Result<()> {
+        let all_events = bill.generate_action_messages(
+            HashMap::from_iter(vec![(
+                bill.bill.payee.node_id.clone(),
+                (BillEventType::BillPaid, ActionType::CheckBill),
+            )]),
+            false,
         );
-
-        self.notification_transport
-            .send(&bill.payee, event.try_into()?)
-            .await?;
+        self.send_all_events(all_events).await?;
         Ok(())
     }
 
-    async fn send_bill_is_endorsed_event(&self, bill: &BitcreditBill) -> Result<()> {
-        let event = Event::new_bill(
-            &bill.endorsee.as_ref().unwrap().node_id,
-            BillChainEventPayload {
-                event_type: BillEventType::BillEndorsed,
-                bill_id: bill.id.clone(),
-                action_type: Some(ActionType::CheckBill),
-                sum: Some(bill.sum),
-                ..Default::default()
-            },
+    async fn send_bill_is_endorsed_event(&self, bill: &BillChainEvent) -> Result<()> {
+        let all_events = bill.generate_action_messages(
+            HashMap::from_iter(vec![(
+                bill.bill.endorsee.as_ref().unwrap().node_id.clone(),
+                (BillEventType::BillEndorsed, ActionType::CheckBill),
+            )]),
+            false,
         );
-
-        self.notification_transport
-            .send(bill.endorsee.as_ref().unwrap(), event.try_into()?)
-            .await?;
+        self.send_all_events(all_events).await?;
         Ok(())
     }
 
@@ -406,7 +393,9 @@ mod tests {
     use bcr_ebill_core::PostalAddress;
     use bcr_ebill_core::bill::BillKeys;
     use bcr_ebill_core::blockchain::Blockchain;
-    use bcr_ebill_core::blockchain::bill::block::BillAcceptBlockData;
+    use bcr_ebill_core::blockchain::bill::block::{
+        BillAcceptBlockData, BillRequestToAcceptBlockData, BillRequestToPayBlockData,
+    };
     use bcr_ebill_core::blockchain::bill::{BillBlock, BillBlockchain};
     use bcr_ebill_core::util::date::now;
     use bcr_ebill_transport::{EventEnvelope, EventType, PushApi};
@@ -699,13 +688,6 @@ mod tests {
             .expect("failed to send event");
     }
 
-    fn bill_keys() -> BillKeys {
-        BillKeys {
-            private_key: TEST_PRIVATE_KEY_SECP.to_owned(),
-            public_key: TEST_PUB_KEY_SECP.to_owned(),
-        }
-    }
-
     fn setup_chain_expectation(
         participants: Vec<(IdentityPublicData, BillEventType, Option<ActionType>)>,
         bill: &BitcreditBill,
@@ -799,7 +781,7 @@ mod tests {
                 signing_address: PostalAddress::default(),
             },
             &keys,
-            None, // company keys
+            None,
             &keys,
             timestamp,
         )
@@ -828,65 +810,140 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_request_to_accept_event() {
-        let bill = get_test_bill();
+        let payer = get_identity_public_data("drawee", "drawee@example.com", None);
+        let payee = get_identity_public_data("payee", "payee@example.com", None);
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let mut chain = get_genesis_chain(Some(bill.clone()));
+        let timestamp = now().timestamp() as u64;
+        let keys = get_baseline_identity().key_pair;
+        let block = BillBlock::create_block_for_request_to_accept(
+            bill.id.to_owned(),
+            chain.get_latest_block(),
+            &BillRequestToAcceptBlockData {
+                requester: payee.clone().into(),
+                signatory: None,
+                signing_timestamp: timestamp,
+                signing_address: PostalAddress::default(),
+            },
+            &keys,
+            None,
+            &keys,
+            timestamp,
+        )
+        .unwrap();
 
-        // should send request to accept to drawee
-        let service = setup_service_expectation(
-            "drawee",
-            BillEventType::BillAcceptanceRequested,
-            ActionType::AcceptBill,
+        chain.try_add_block(block);
+
+        let (service, event) = setup_chain_expectation(
+            vec![
+                (payee, BillEventType::BillBlock, None),
+                (
+                    payer,
+                    BillEventType::BillAcceptanceRequested,
+                    Some(ActionType::AcceptBill),
+                ),
+            ],
+            &bill,
+            &chain,
         );
 
         service
-            .send_request_to_accept_event(&bill)
+            .send_request_to_accept_event(&event)
             .await
             .expect("failed to send event");
     }
 
     #[tokio::test]
     async fn test_send_request_to_pay_event() {
-        let bill = get_test_bill();
+        let payer = get_identity_public_data("drawee", "drawee@example.com", None);
+        let payee = get_identity_public_data("payee", "payee@example.com", None);
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let mut chain = get_genesis_chain(Some(bill.clone()));
+        let timestamp = now().timestamp() as u64;
+        let keys = get_baseline_identity().key_pair;
+        let block = BillBlock::create_block_for_request_to_pay(
+            bill.id.to_owned(),
+            chain.get_latest_block(),
+            &BillRequestToPayBlockData {
+                requester: payee.clone().into(),
+                currency: "USD".to_string(),
+                signatory: None,
+                signing_timestamp: timestamp,
+                signing_address: PostalAddress::default(),
+            },
+            &keys,
+            None,
+            &keys,
+            timestamp,
+        )
+        .unwrap();
 
-        // should send request to pay to drawee
-        let service = setup_service_expectation(
-            "drawee",
-            BillEventType::BillPaymentRequested,
-            ActionType::PayBill,
+        chain.try_add_block(block);
+
+        let (service, event) = setup_chain_expectation(
+            vec![
+                (payee, BillEventType::BillBlock, None),
+                (
+                    payer,
+                    BillEventType::BillPaymentRequested,
+                    Some(ActionType::PayBill),
+                ),
+            ],
+            &bill,
+            &chain,
         );
 
         service
-            .send_request_to_pay_event(&bill)
+            .send_request_to_pay_event(&event)
             .await
             .expect("failed to send event");
     }
 
     #[tokio::test]
     async fn test_send_bill_is_paid_event() {
-        let bill = get_test_bill();
-
-        // should send paid to payee
-        let service =
-            setup_service_expectation("payee", BillEventType::BillPaid, ActionType::CheckBill);
+        let payer = get_identity_public_data("drawee", "drawee@example.com", None);
+        let payee = get_identity_public_data("payee", "payee@example.com", None);
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let chain = get_genesis_chain(Some(bill.clone()));
+        let (service, event) = setup_chain_expectation(
+            vec![
+                (payee, BillEventType::BillPaid, Some(ActionType::CheckBill)),
+                (payer, BillEventType::BillBlock, None),
+            ],
+            &bill,
+            &chain,
+        );
 
         service
-            .send_bill_is_paid_event(&bill)
+            .send_bill_is_paid_event(&event)
             .await
             .expect("failed to send event");
     }
 
     #[tokio::test]
     async fn test_send_bill_is_endorsed_event() {
-        let bill = get_test_bill();
+        let payer = get_identity_public_data("drawee", "drawee@example.com", None);
+        let payee = get_identity_public_data("payee", "payee@example.com", None);
+        let endorsee = get_identity_public_data("endorsee", "endorsee@example.com", None);
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, Some(&endorsee));
+        let chain = get_genesis_chain(Some(bill.clone()));
 
-        // should send endorsed to endorsee
-        let service = setup_service_expectation(
-            "endorsee",
-            BillEventType::BillEndorsed,
-            ActionType::CheckBill,
+        let (service, event) = setup_chain_expectation(
+            vec![
+                (payee, BillEventType::BillBlock, None),
+                (payer, BillEventType::BillBlock, None),
+                (
+                    endorsee,
+                    BillEventType::BillAcceptanceRequested,
+                    Some(ActionType::AcceptBill),
+                ),
+            ],
+            &bill,
+            &chain,
         );
 
         service
-            .send_bill_is_endorsed_event(&bill)
+            .send_bill_is_endorsed_event(&event)
             .await
             .expect("failed to send event");
     }

@@ -220,10 +220,10 @@ pub mod tests {
         impl NotificationServiceApi for NotificationService {
             async fn send_bill_is_signed_event(&self, bill: &BillChainEvent) -> bcr_ebill_transport::Result<()>;
             async fn send_bill_is_accepted_event(&self, bill: &BillChainEvent) -> bcr_ebill_transport::Result<()>;
-            async fn send_request_to_accept_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
-            async fn send_request_to_pay_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
-            async fn send_bill_is_paid_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
-            async fn send_bill_is_endorsed_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn send_request_to_accept_event(&self, bill: &BillChainEvent) -> bcr_ebill_transport::Result<()>;
+            async fn send_request_to_pay_event(&self, bill: &BillChainEvent) -> bcr_ebill_transport::Result<()>;
+            async fn send_bill_is_paid_event(&self, bill: &BillChainEvent) -> bcr_ebill_transport::Result<()>;
+            async fn send_bill_is_endorsed_event(&self, bill: &BillChainEvent) -> bcr_ebill_transport::Result<()>;
             async fn send_offer_to_sell_event(
                 &self,
                 bill_id: &str,

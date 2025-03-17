@@ -48,11 +48,14 @@ impl BillChainEvent {
 
     // Returns all blocks for newly added participants, otherwise just the latest block or no
     // blocks if the node is not a participant.
-    fn get_blocks_for_node(&self, node_id: &str) -> Vec<BillBlock> {
+    fn get_blocks_for_node(&self, node_id: &str, add_blocks: bool) -> Vec<BillBlock> {
+        if !add_blocks {
+            return Vec::new();
+        }
         match self.participants.get(node_id) {
             Some(height) if *height == self.chain.block_height() => self.chain.blocks().clone(),
             Some(_) => vec![self.latest_block()],
-            None => Vec::new(),
+            _ => Vec::new(),
         }
     }
 
@@ -64,10 +67,12 @@ impl BillChainEvent {
     }
 
     /// Generates bill block events for all participants in the chain. Individual node_ids can be
-    /// assigned a specific event and action type by providing an override.
+    /// assigned a specific event and action type by providing an override. If include_blocks is
+    /// false, the blocks list will be empty in the generated events.
     pub fn generate_action_messages(
         &self,
         event_overrides: HashMap<String, (BillEventType, ActionType)>,
+        include_blocks: bool,
     ) -> Vec<Event<BillChainEventPayload>> {
         self.participants
             .keys()
@@ -76,7 +81,7 @@ impl BillChainEvent {
                     .get(node_id)
                     .map(|(event_type, action)| (event_type.clone(), Some(action.clone())))
                     .unwrap_or((BillEventType::BillBlock, None));
-
+                let add_blocks = self.get_keys_for_node(node_id).is_some() || include_blocks;
                 Event::new(
                     EventType::Bill,
                     node_id,
@@ -85,7 +90,7 @@ impl BillChainEvent {
                         bill_id: self.bill.id.to_owned(),
                         action_type: action,
                         sum: Some(self.bill.sum),
-                        blocks: self.get_blocks_for_node(node_id),
+                        blocks: self.get_blocks_for_node(node_id, add_blocks),
                         keys: self.get_keys_for_node(node_id),
                     },
                 )

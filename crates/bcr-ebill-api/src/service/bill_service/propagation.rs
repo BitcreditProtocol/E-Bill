@@ -49,12 +49,12 @@ impl BillService {
             }
             BillAction::RequestAcceptance => {
                 self.notification_service
-                    .send_request_to_accept_event(&last_version_bill)
+                    .send_request_to_accept_event(&chain_event)
                     .await?;
             }
             BillAction::RequestToPay(_) => {
                 self.notification_service
-                    .send_request_to_pay_event(&last_version_bill)
+                    .send_request_to_pay_event(&chain_event)
                     .await?;
             }
             BillAction::RequestRecourse(recoursee, recourse_reason) => {
@@ -93,7 +93,7 @@ impl BillService {
             }
             BillAction::Endorse(_) => {
                 self.notification_service
-                    .send_bill_is_endorsed_event(&last_version_bill)
+                    .send_bill_is_endorsed_event(&chain_event)
                     .await?;
             }
             BillAction::RejectAcceptance => {
