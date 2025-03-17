@@ -134,7 +134,7 @@ pub fn rocket_main(conf: crate::Config, context: ServiceContext) -> Rocket<Build
                 handlers::bill::list,
                 handlers::bill::list_light,
                 handlers::bill::attachment,
-                handlers::bill::upload_files,
+                handlers::bill::upload_file,
                 handlers::bill::endorse_bill,
                 handlers::bill::request_to_accept_bill,
                 handlers::bill::accept_bill,

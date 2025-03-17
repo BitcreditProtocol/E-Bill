@@ -69,7 +69,7 @@ impl FileUploadStoreApi for FileUploadStore {
         Ok(())
     }
 
-    async fn read_temp_upload_files(&self, file_upload_id: &str) -> Result<Vec<(String, Vec<u8>)>> {
+    async fn read_temp_upload_file(&self, file_upload_id: &str) -> Result<(String, Vec<u8>)> {
         let result: Option<FileDb> = self
             .db
             .select((Self::TEMP_FILES_TABLE, file_upload_id))
@@ -79,7 +79,7 @@ impl FileUploadStoreApi for FileUploadStore {
                 "file".to_string(),
                 file_upload_id.to_owned(),
             )),
-            Some(f) => Ok(vec![(f.file_name, f.file_bytes)]),
+            Some(f) => Ok((f.file_name, f.file_bytes)),
         }
     }
 
@@ -145,7 +145,11 @@ pub mod tests {
             .write_temp_upload_file("some_id", "file_name.jpg", &[])
             .await
             .unwrap();
-        let temp_file = temp_store.read_temp_upload_files("some_id").await.unwrap()[0].clone();
+        let temp_file = temp_store
+            .read_temp_upload_file("some_id")
+            .await
+            .unwrap()
+            .clone();
         assert_eq!(temp_file.0, String::from("file_name.jpg"));
     }
 

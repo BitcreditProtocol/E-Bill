@@ -135,7 +135,7 @@ pub trait BillServiceApi: ServiceTraitBounds {
         country_of_payment: String,
         city_of_payment: String,
         language: String,
-        file_upload_id: Option<String>,
+        file_upload_ids: Vec<String>,
         drawer_public_data: IdentityPublicData,
         drawer_keys: BcrKeys,
         timestamp: u64,
@@ -417,8 +417,8 @@ pub mod tests {
         let file_bytes = String::from("hello world").as_bytes().to_vec();
 
         ctx.file_upload_store
-            .expect_read_temp_upload_files()
-            .returning(move |_| Ok(vec![(expected_file_name.to_string(), file_bytes.clone())]));
+            .expect_read_temp_upload_file()
+            .returning(move |_| Ok((expected_file_name.to_string(), file_bytes.clone())));
         ctx.file_upload_store
             .expect_remove_temp_upload_folder()
             .returning(|_| Ok(()));
@@ -453,7 +453,7 @@ pub mod tests {
                 String::from("AT"),
                 String::from("Vienna"),
                 String::from("en-UK"),
-                Some("1234".to_string()),
+                vec!["1234".to_string()],
                 IdentityPublicData::new(drawer.identity).unwrap(),
                 drawer.key_pair,
                 1731593928,
@@ -471,8 +471,8 @@ pub mod tests {
         let file_bytes = String::from("hello world").as_bytes().to_vec();
 
         ctx.file_upload_store
-            .expect_read_temp_upload_files()
-            .returning(move |_| Ok(vec![(expected_file_name.to_string(), file_bytes.clone())]));
+            .expect_read_temp_upload_file()
+            .returning(move |_| Ok((expected_file_name.to_string(), file_bytes.clone())));
         ctx.file_upload_store
             .expect_remove_temp_upload_folder()
             .returning(|_| Ok(()));
@@ -507,7 +507,7 @@ pub mod tests {
                 String::from("AT"),
                 String::from("Vienna"),
                 String::from("en-UK"),
-                Some("1234".to_string()),
+                vec!["1234".to_string()],
                 IdentityPublicData::from(drawer.1.0), // public company data
                 BcrKeys::from_private_key(&drawer.1.1.private_key).unwrap(), // company keys
                 1731593928,

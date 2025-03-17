@@ -17,7 +17,7 @@ impl BillService {
     pub(super) fn validate_bill_issue(
         &self,
         sum: &str,
-        file_upload_id: &Option<String>,
+        file_upload_ids: &Vec<String>,
         issue_date: &str,
         maturity_date: &str,
         drawee: &str,
@@ -26,8 +26,10 @@ impl BillService {
     ) -> Result<(u64, BillType)> {
         let sum = util::currency::parse_sum(sum).map_err(|e| Error::Validation(e.to_string()))?;
 
-        util::file::validate_file_upload_id(file_upload_id)
-            .map_err(|e| Error::Validation(e.to_string()))?;
+        for file_upload_id in file_upload_ids {
+            util::file::validate_file_upload_id(&Some(file_upload_id.to_owned()))
+                .map_err(|e| Error::Validation(e.to_string()))?;
+        }
 
         if util::date::date_string_to_i64_timestamp(issue_date, None).is_none() {
             return Err(Error::Validation(String::from("invalid issue date")));

@@ -1,3 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::Error;
+
 use super::Result;
 use async_trait::async_trait;
 #[cfg(not(target_arch = "wasm32"))]
@@ -23,7 +26,7 @@ pub trait FileUploadStoreApi: Send + Sync {
 
     /// Reads the temporary files from the given file_upload_id and returns their file name and
     /// bytes
-    async fn read_temp_upload_files(&self, file_upload_id: &str) -> Result<Vec<(String, Vec<u8>)>>;
+    async fn read_temp_upload_file(&self, file_upload_id: &str) -> Result<(String, Vec<u8>)>;
 
     /// Writes the given encrypted bytes of an attached file to disk, in a folder named id within
     /// the files folder
@@ -123,7 +126,7 @@ impl FileUploadStoreApi for FileUploadStore {
         Ok(())
     }
 
-    async fn read_temp_upload_files(&self, file_upload_id: &str) -> Result<Vec<(String, Vec<u8>)>> {
+    async fn read_temp_upload_file(&self, file_upload_id: &str) -> Result<(String, Vec<u8>)> {
         let mut files = Vec::new();
         let folder = Path::new(&self.temp_upload_folder).join(file_upload_id);
         let mut dir = tokio::fs::read_dir(&folder).await?;
@@ -136,7 +139,13 @@ impl FileUploadStoreApi for FileUploadStore {
                 }
             }
         }
-        Ok(files)
+        if files.is_empty() {
+            return Err(Error::NoSuchEntity(
+                "file".to_string(),
+                file_upload_id.to_owned(),
+            ));
+        }
+        Ok(files[0].clone())
     }
 
     async fn save_attached_file(

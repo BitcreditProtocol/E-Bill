@@ -186,12 +186,7 @@ pub struct BitcreditBillPayload {
     pub country_of_payment: String,
     pub city_of_payment: String,
     pub language: String,
-    pub file_upload_id: Option<String>,
-}
-
-#[derive(Debug, FromForm)]
-pub struct UploadBillFilesForm<'r> {
-    pub files: Vec<TempFile<'r>>,
+    pub file_upload_ids: Vec<String>,
 }
 
 #[derive(Debug, FromForm, ToSchema)]
