@@ -2,7 +2,12 @@ use super::Result;
 use super::service::BillService;
 use crate::util;
 use bcr_ebill_core::{
-    bill::{BillKeys, BitcreditBill, BitcreditBillResult, LightSignedBy, PastEndorsee},
+    bill::{
+        BillAcceptanceStatus, BillCurrentWaitingState, BillData, BillKeys, BillParticipants,
+        BillPaymentStatus, BillRecourseStatus, BillSellStatus, BillStatus,
+        BillWaitingForPaymentState, BillWaitingForRecourseState, BillWaitingForSellState,
+        BitcreditBill, BitcreditBillResult, LightSignedBy, PastEndorsee,
+    },
     blockchain::{
         Blockchain,
         bill::{
@@ -12,6 +17,7 @@ use bcr_ebill_core::{
             },
         },
     },
+    constants::{ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS},
     contact::{ContactType, IdentityPublicData, LightIdentityPublicData},
     identity::{Identity, IdentityWithAll},
     util::BcrKeys,
@@ -197,168 +203,277 @@ impl BillService {
         let first_version_bill = chain.get_first_version_bill(&bill_keys)?;
         let time_of_drawing = first_version_bill.signing_timestamp;
 
-        // handle expensive deserialization and decryption logic in parallel on a blocking thread
-        // pool as not to block the task queue
         let chain_clone = chain.clone();
-        let keys_clone = bill_keys.clone();
-        let bill_participants = chain_clone.get_all_nodes_from_bill(&keys_clone)?;
-
+        let bill_participants = chain_clone.get_all_nodes_from_bill(&bill_keys)?;
         let endorsements_count = chain.get_endorsements_count();
-        let mut in_recourse = false;
-        let mut link_to_pay_recourse = "".to_string();
-        let mut link_for_buy = "".to_string();
-        let endorsed = chain.block_with_operation_code_exists(BillOpCode::Endorse);
-        let accepted = chain.block_with_operation_code_exists(BillOpCode::Accept);
-        let last_offer_to_sell_block_waiting_for_payment =
-            chain.is_last_offer_to_sell_block_waiting_for_payment(&bill_keys, current_timestamp)?;
-        let last_req_to_recourse_block_waiting_for_payment = chain
-            .is_last_request_to_recourse_block_waiting_for_payment(&bill_keys, current_timestamp)?;
-        let mut waiting_for_payment = false;
-        let mut buyer = None;
-        let mut seller = None;
-        if let OfferToSellWaitingForPayment::Yes(payment_info) =
-            last_offer_to_sell_block_waiting_for_payment
-        {
-            waiting_for_payment = true;
-            buyer = Some(
-                self.extend_bill_chain_identity_data_from_contacts_or_identity(
-                    payment_info.buyer.clone(),
-                    local_identity,
-                )
-                .await,
-            );
-            seller = Some(
-                self.extend_bill_chain_identity_data_from_contacts_or_identity(
-                    payment_info.seller.clone(),
-                    local_identity,
-                )
-                .await,
-            );
 
-            let address_to_pay = self
-                .bitcoin_client
-                .get_address_to_pay(&bill_keys.public_key, &payment_info.seller.node_id)?;
-
-            if current_identity_node_id
-                .to_string()
-                .eq(&payment_info.buyer.node_id)
-                || current_identity_node_id
-                    .to_string()
-                    .eq(&payment_info.seller.node_id)
-            {
-                let message: String = format!("Payment in relation to a bill {}", &bill.id);
-                link_for_buy = self.bitcoin_client.generate_link_to_pay(
-                    &address_to_pay,
-                    payment_info.sum,
-                    &message,
-                );
-            }
-        }
-        let mut recourser = None;
-        let mut recoursee = None;
-        if let RecourseWaitingForPayment::Yes(payment_info) =
-            last_req_to_recourse_block_waiting_for_payment
-        {
-            in_recourse = true;
-            recourser = Some(
-                self.extend_bill_chain_identity_data_from_contacts_or_identity(
-                    payment_info.recourser.clone(),
-                    local_identity,
-                )
-                .await,
-            );
-            recoursee = Some(
-                self.extend_bill_chain_identity_data_from_contacts_or_identity(
-                    payment_info.recoursee.clone(),
-                    local_identity,
-                )
-                .await,
-            );
-
-            let address_to_pay = self
-                .bitcoin_client
-                .get_address_to_pay(&bill_keys.public_key, &payment_info.recourser.node_id)?;
-
-            if current_identity_node_id
-                .to_string()
-                .eq(&payment_info.recoursee.node_id)
-                || current_identity_node_id
-                    .to_string()
-                    .eq(&payment_info.recourser.node_id)
-            {
-                let message: String = format!("Payment in relation to a bill {}", &bill.id);
-                link_to_pay_recourse = self.bitcoin_client.generate_link_to_pay(
-                    &address_to_pay,
-                    payment_info.sum,
-                    &message,
-                );
-            }
-        }
-        let requested_to_pay = chain.block_with_operation_code_exists(BillOpCode::RequestToPay);
-        let requested_to_accept =
-            chain.block_with_operation_code_exists(BillOpCode::RequestToAccept);
-        let holder_public_key = match bill.endorsee {
-            None => &bill.payee.node_id,
-            Some(ref endorsee) => &endorsee.node_id,
+        let holder = match bill.endorsee {
+            None => &bill.payee,
+            Some(ref endorsee) => endorsee,
         };
-        let address_to_pay = self
-            .bitcoin_client
-            .get_address_to_pay(&bill_keys.public_key, holder_public_key)?;
-        let mempool_link_for_address_to_pay = self
-            .bitcoin_client
-            .get_mempool_link_for_address(&address_to_pay);
+
+        let mut requested_to_pay = chain.block_with_operation_code_exists(BillOpCode::RequestToPay);
         let mut paid = false;
         if requested_to_pay {
             paid = self.store.is_paid(&bill.id).await?;
         }
-        let message: String = format!("Payment in relation to a bill {}", bill.id.clone());
-        let link_to_pay =
-            self.bitcoin_client
-                .generate_link_to_pay(&address_to_pay, bill.sum, &message);
+
+        // calculate, if the caller has received funds at any point in the bill
+        let mut redeemed_funds_available =
+            chain.is_beneficiary_from_a_block(&bill_keys, current_identity_node_id);
+        if holder.node_id == current_identity_node_id && paid {
+            redeemed_funds_available = true;
+        }
+
+        let mut request_to_pay_timed_out = false;
+
+        let mut offered_to_sell = chain.block_with_operation_code_exists(BillOpCode::OfferToSell);
+        let mut offer_to_sell_timed_out = false;
+
+        let mut requested_to_recourse =
+            chain.block_with_operation_code_exists(BillOpCode::RequestRecourse);
+        let mut request_to_recourse_timed_out = false;
+
+        let accepted = chain.block_with_operation_code_exists(BillOpCode::Accept);
+        let mut requested_to_accept =
+            chain.block_with_operation_code_exists(BillOpCode::RequestToAccept);
+        let rejected_to_accept = chain.block_with_operation_code_exists(BillOpCode::RejectToAccept);
+        let mut request_to_accept_timed_out = false;
+        if requested_to_accept && !accepted && !rejected_to_accept {
+            if let Some(req_block) =
+                chain.get_last_version_block_with_op_code(BillOpCode::RequestToAccept)
+            {
+                if chain.check_if_deadline_has_passed(
+                    req_block.timestamp,
+                    current_timestamp,
+                    ACCEPT_DEADLINE_SECONDS,
+                ) {
+                    request_to_accept_timed_out = true;
+                    requested_to_accept = true;
+                }
+            }
+        }
+
+        let last_block = chain.get_latest_block();
+        let current_waiting_state = match last_block.op_code {
+            BillOpCode::OfferToSell => {
+                if let OfferToSellWaitingForPayment::Yes(payment_info) = chain
+                    .is_last_offer_to_sell_block_waiting_for_payment(
+                        &bill_keys,
+                        current_timestamp,
+                    )?
+                {
+                    // we're waiting, collect data
+                    let buyer = self
+                        .extend_bill_chain_identity_data_from_contacts_or_identity(
+                            payment_info.buyer.clone(),
+                            local_identity,
+                        )
+                        .await;
+                    let seller = self
+                        .extend_bill_chain_identity_data_from_contacts_or_identity(
+                            payment_info.seller.clone(),
+                            local_identity,
+                        )
+                        .await;
+
+                    let address_to_pay = self
+                        .bitcoin_client
+                        .get_address_to_pay(&bill_keys.public_key, &payment_info.seller.node_id)?;
+
+                    let link_to_pay = self.bitcoin_client.generate_link_to_pay(
+                        &address_to_pay,
+                        payment_info.sum,
+                        &format!("Payment in relation to a bill {}", &bill.id),
+                    );
+
+                    let mempool_link_for_address_to_pay = self
+                        .bitcoin_client
+                        .get_mempool_link_for_address(&address_to_pay);
+
+                    Some(BillCurrentWaitingState::Sell(BillWaitingForSellState {
+                        time_of_request: last_block.timestamp,
+                        seller,
+                        buyer,
+                        currency: payment_info.currency,
+                        sum: util::currency::sum_to_string(payment_info.sum),
+                        link_to_pay,
+                        address_to_pay,
+                        mempool_link_for_address_to_pay,
+                    }))
+                } else {
+                    // it timed out, we're not waiting anymore
+                    offer_to_sell_timed_out = true;
+                    offered_to_sell = true;
+                    None
+                }
+            }
+            BillOpCode::RequestToPay => {
+                if paid {
+                    // it's paid - we're not waiting anymore
+                    None
+                } else if chain.check_if_deadline_has_passed(
+                    last_block.timestamp,
+                    current_timestamp,
+                    PAYMENT_DEADLINE_SECONDS,
+                ) {
+                    // it timed out, we're not waiting anymore
+                    request_to_pay_timed_out = true;
+                    requested_to_pay = true;
+                    None
+                } else {
+                    // we're waiting, collect data
+                    let address_to_pay = self
+                        .bitcoin_client
+                        .get_address_to_pay(&bill_keys.public_key, &holder.node_id)?;
+
+                    let link_to_pay = self.bitcoin_client.generate_link_to_pay(
+                        &address_to_pay,
+                        bill.sum,
+                        &format!("Payment in relation to a bill {}", bill.id.clone()),
+                    );
+
+                    let mempool_link_for_address_to_pay = self
+                        .bitcoin_client
+                        .get_mempool_link_for_address(&address_to_pay);
+
+                    Some(BillCurrentWaitingState::Payment(
+                        BillWaitingForPaymentState {
+                            time_of_request: last_block.timestamp,
+                            payer: bill.drawee.clone(),
+                            payee: holder.clone(),
+                            currency: bill.currency.clone(),
+                            sum: util::currency::sum_to_string(bill.sum),
+                            link_to_pay,
+                            address_to_pay,
+                            mempool_link_for_address_to_pay,
+                        },
+                    ))
+                }
+            }
+            BillOpCode::RequestRecourse => {
+                if let RecourseWaitingForPayment::Yes(payment_info) = chain
+                    .is_last_request_to_recourse_block_waiting_for_payment(
+                        &bill_keys,
+                        current_timestamp,
+                    )?
+                {
+                    // we're waiting, collect data
+                    let recourser = self
+                        .extend_bill_chain_identity_data_from_contacts_or_identity(
+                            payment_info.recourser.clone(),
+                            local_identity,
+                        )
+                        .await;
+                    let recoursee = self
+                        .extend_bill_chain_identity_data_from_contacts_or_identity(
+                            payment_info.recoursee.clone(),
+                            local_identity,
+                        )
+                        .await;
+
+                    let address_to_pay = self.bitcoin_client.get_address_to_pay(
+                        &bill_keys.public_key,
+                        &payment_info.recourser.node_id,
+                    )?;
+
+                    let link_to_pay = self.bitcoin_client.generate_link_to_pay(
+                        &address_to_pay,
+                        payment_info.sum,
+                        &format!("Payment in relation to a bill {}", &bill.id),
+                    );
+
+                    let mempool_link_for_address_to_pay = self
+                        .bitcoin_client
+                        .get_mempool_link_for_address(&address_to_pay);
+
+                    Some(BillCurrentWaitingState::Recourse(
+                        BillWaitingForRecourseState {
+                            time_of_request: last_block.timestamp,
+                            recourser,
+                            recoursee,
+                            currency: payment_info.currency,
+                            sum: util::currency::sum_to_string(payment_info.sum),
+                            link_to_pay,
+                            address_to_pay,
+                            mempool_link_for_address_to_pay,
+                        },
+                    ))
+                } else {
+                    // it timed out, we're not waiting anymore
+                    request_to_recourse_timed_out = true;
+                    requested_to_recourse = true;
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        let status = BillStatus {
+            acceptance: BillAcceptanceStatus {
+                requested_to_accept,
+                accepted,
+                request_to_accept_timed_out,
+                rejected_to_accept,
+            },
+            payment: BillPaymentStatus {
+                requested_to_pay,
+                paid,
+                request_to_pay_timed_out,
+                rejected_to_pay: chain.block_with_operation_code_exists(BillOpCode::RejectToPay),
+            },
+            sell: BillSellStatus {
+                offered_to_sell,
+                offer_to_sell_timed_out,
+                rejected_offer_to_sell: chain
+                    .block_with_operation_code_exists(BillOpCode::RejectToBuy),
+            },
+            recourse: BillRecourseStatus {
+                requested_to_recourse,
+                request_to_recourse_timed_out,
+                rejected_request_to_recourse: chain
+                    .block_with_operation_code_exists(BillOpCode::RejectToPayRecourse),
+            },
+            redeemed_funds_available,
+        };
 
         let active_notification = self
             .notification_service
             .get_active_bill_notification(&bill.id)
             .await;
 
-        Ok(BitcreditBillResult {
-            id: bill.id,
-            time_of_drawing,
-            time_of_maturity: util::date::date_string_to_i64_timestamp(&bill.maturity_date, None)
-                .unwrap_or(0) as u64,
-            country_of_issuing: bill.country_of_issuing,
-            city_of_issuing: bill.city_of_issuing,
+        let participants = BillParticipants {
             drawee: bill.drawee,
             drawer: bill.drawer,
             payee: bill.payee,
             endorsee: bill.endorsee,
-            currency: bill.currency,
-            sum: util::currency::sum_to_string(bill.sum),
-            maturity_date: bill.maturity_date,
+            endorsements_count,
+            all_participant_node_ids: bill_participants,
+        };
+
+        let bill_data = BillData {
+            language: bill.language,
+            time_of_drawing,
             issue_date: bill.issue_date,
+            time_of_maturity: util::date::date_string_to_i64_timestamp(&bill.maturity_date, None)
+                .unwrap_or(0) as u64,
+            maturity_date: bill.maturity_date,
+            country_of_issuing: bill.country_of_issuing,
+            city_of_issuing: bill.city_of_issuing,
             country_of_payment: bill.country_of_payment,
             city_of_payment: bill.city_of_payment,
-            language: bill.language,
-            accepted,
-            endorsed,
-            requested_to_pay,
-            requested_to_accept,
-            waiting_for_payment,
-            buyer,
-            seller,
-            paid,
-            link_for_buy,
-            link_to_pay,
-            in_recourse,
-            recourser,
-            recoursee,
-            link_to_pay_recourse,
-            address_to_pay,
-            mempool_link_for_address_to_pay,
+            currency: bill.currency,
+            sum: util::currency::sum_to_string(bill.sum),
             files: bill.files,
             active_notification,
-            bill_participants,
-            endorsements_count,
+        };
+
+        Ok(BitcreditBillResult {
+            id: bill.id,
+            participants,
+            data: bill_data,
+            status,
+            current_waiting_state,
         })
     }
 

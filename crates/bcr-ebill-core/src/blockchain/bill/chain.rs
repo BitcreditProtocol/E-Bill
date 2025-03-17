@@ -79,6 +79,16 @@ impl BillBlockchain {
         }
     }
 
+    /// Checks if the given node_id is a beneficiary of a holder-changing block with a financial
+    /// beneficiary (sell, recourse)
+    pub fn is_beneficiary_from_a_block(&self, bill_keys: &BillKeys, node_id: &str) -> bool {
+        self.blocks()
+            .iter()
+            .filter_map(|b| b.get_beneficiary_from_block(bill_keys).ok())
+            .flatten()
+            .any(|s| s == node_id)
+    }
+
     /// Checks if the the chain has Endorse, Mint, or Sell blocks in it
     pub fn has_been_endorsed_sold_or_minted(&self) -> bool {
         self.blocks.iter().any(|block| {
@@ -126,7 +136,7 @@ impl BillBlockchain {
             // we only wait for payment, if the last block is a Request to Recourse block
             if last_block.id == last_version_block.id {
                 // if the deadline is up, we're not waiting for payment anymore
-                if self.check_if_payment_deadline_has_passed(
+                if self.check_if_deadline_has_passed(
                     last_version_block.timestamp,
                     current_timestamp,
                     RECOURSE_DEADLINE_SECONDS,
@@ -163,7 +173,7 @@ impl BillBlockchain {
             // we only wait for payment, if the last block is an Offer to Sell block
             if last_block.id == last_version_block_offer_to_sell.id {
                 // if the deadline is up, we're not waiting for payment anymore
-                if self.check_if_payment_deadline_has_passed(
+                if self.check_if_deadline_has_passed(
                     last_version_block_offer_to_sell.timestamp,
                     current_timestamp,
                     PAYMENT_DEADLINE_SECONDS,
@@ -193,7 +203,7 @@ impl BillBlockchain {
     /// - `true` if the payment deadline for the last sell block has passed.
     /// - `false` if the deadline has not passed.
     ///
-    fn check_if_payment_deadline_has_passed(
+    pub fn check_if_deadline_has_passed(
         &self,
         block_timestamp: u64,
         current_timestamp: u64,

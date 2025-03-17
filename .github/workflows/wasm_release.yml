@@ -1,0 +1,101 @@
+name: WASM Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      changelog:
+        description: "Changelog (optional)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: WASM Release and Publish
+    runs-on: ubuntu-latest
+
+    # Restrict execution to specific users
+    if: contains(fromJson('["mtbitcr", "zupzup", "tompro"]'), github.actor)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep -m 1 '^version =' crates/bcr-ebill-wasm/Cargo.toml | cut -d '"' -f2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Detected version: v$VERSION"
+
+      - name: Ensure tag does not already exist
+        run: |
+          if git rev-parse "v${{ env.VERSION }}" >/dev/null 2>&1; then
+            echo "Error: Tag v${{ env.VERSION }} already exists!"
+            exit 1
+          fi
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.85.0
+
+      - name: Install wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build with wasm-pack
+        env:
+          RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
+        run: |
+          cd crates/bcr-ebill-wasm
+          wasm-pack build --target web --scope bitcredit --out-name index
+
+      - name: Create and push git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ env.VERSION }}"
+          git push origin "v${{ env.VERSION }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: v${{ env.VERSION }}
+          body: |
+            ${{ inputs.changelog }}
+
+            **Version:** v${{ env.VERSION }}
+          draft: false
+          prerelease: false
+
+      - name: Upload WASM artifacts to Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd crates/bcr-ebill-wasm/pkg
+          for file in *; do
+            if [[ "$file" != ".gitignore" ]]; then
+              gh release upload "v${{ env.VERSION }}" "$file"
+            fi
+          done
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_SECRET }}
+        run: |
+          cd crates/bcr-ebill-wasm/pkg
+          npm publish --access public
+

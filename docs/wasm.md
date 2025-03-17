@@ -2,7 +2,7 @@
 
 ## Building
 
-Make sure to have at least Rust version 1.85 as well as a recent version of the toolchain installed.
+Make sure you have all [prerequisites](./prerequisites.md) installed.
 
 You also need the `wasm-pack` tool from [here](https://rustwasm.github.io/wasm-pack/installer/).
 
@@ -12,13 +12,13 @@ curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 ### Development
 
-Within the `bcr-ebill-pwa` crate, run these commands to build the project:
+Within the `bcr-ebill-wasm` crate, run these commands to build the project:
 
 ```bash
 wasm-pack build --dev --target web
 ```
 
-### Release
+### Release Build
 
 ```bash
 wasm-pack build --target web
@@ -26,13 +26,13 @@ wasm-pack build --target web
 
 ## Running
 
-After building the project for WASM, you'll find the WASM artifacts in the `.crates/bcr-ebill-pwa/pkg` folder including generated TypeScript bindings.
+After building the project for WASM, you'll find the WASM artifacts in the `.crates/bcr-ebill-wasm/pkg` folder including generated TypeScript bindings.
 
 You can run this by serving it to the web, using any local HTTP-Server. For example, you can use [http-server](https://www.npmjs.com/package/http-server).
 
 There are example `index.html` and `main.js` files, which provide a playground to test the created WASM artifacts.
 
-Within the `bcr-ebill-pwa` crate, you can run:
+Within the `bcr-ebill-wasm` crate, you can run:
 
 ```bash
 http-server -c-1 .
@@ -50,7 +50,7 @@ The API can be used in the following way (you can also check more examples in `m
 ### API Example
 
 ```javascript
-import * as wasm from '../pkg/bcr_ebill_pwa.js';
+import * as wasm from '../pkg/bcr_ebill_wasm.js';
 
 async function start() {
     let config = {
@@ -235,3 +235,52 @@ Which leads to
 export type NotificationTypeWeb = "General" | "Bill";
 ```
 
+### Using the WASM API
+
+The `bcr-ebill-wasm` API is published to this [npm package](https://www.npmjs.com/package/@bitcredit/bcr-ebill-wasm).
+
+You can simply add it to any JS/TS project:
+
+```json
+  "dependencies": {
+    "@bitcredit/bcr-ebill-wasm": "^0.3.0"
+  }
+```
+
+If you use `Vite`, you'll have to configure the server to not optimize the WASM dependency:
+
+```javascript
+import { defineConfig } from "vite";
+
+export default defineConfig({
+    optimizeDeps: {
+        exclude: [
+            "@bitcredit/bcr-ebill-wasm"
+        ]
+    }
+});
+```
+
+With that, you can just import and use the WASM API in JS/TS:
+
+```javascript
+import * as wasm from '@bitcredit/bcr-ebill-wasm';
+
+async function start() {
+    let config = {
+        bitcoin_network: "testnet",
+        nostr_relay: "wss://bitcr-cloud-run-04-550030097098.europe-west1.run.app",
+        surreal_db_connection: "indxdb://default",
+        data_dir: ".",
+        job_runner_initial_delay_seconds: 1,
+        job_runner_check_interval_seconds: 600,
+    };
+    await wasm.default();
+    await wasm.initialize_api(config);
+
+    let generalApi = wasm.Api.general();
+    let currencies = await generalApi.currencies();
+    console.log("currencies: ", currencies);
+}
+await start();
+```
