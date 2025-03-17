@@ -236,8 +236,7 @@ pub mod tests {
             ) -> bcr_ebill_transport::Result<()>;
             async fn send_bill_recourse_paid_event(
                 &self,
-                bill_id: &str,
-                sum: Option<u64>,
+                event: &BillChainEvent,
                 recoursee: &IdentityPublicData,
             ) -> bcr_ebill_transport::Result<()>;
             async fn send_request_to_action_rejected_event(

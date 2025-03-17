@@ -2577,7 +2577,7 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_bill_recourse_paid_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -2641,7 +2641,7 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_bill_recourse_paid_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service.check_bills_in_recourse_payment().await;
@@ -2865,7 +2865,7 @@ pub mod tests {
         // Recourse paid event should be sent
         ctx.notification_service
             .expect_send_bill_recourse_paid_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 

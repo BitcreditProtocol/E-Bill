@@ -51,9 +51,9 @@ impl BillService {
                     )
                     .await?;
             }
-            BillAction::Recourse(recoursee, sum, _) => {
+            BillAction::Recourse(recoursee, _, _) => {
                 self.notification_service
-                    .send_bill_recourse_paid_event(&last_version_bill.id, Some(*sum), recoursee)
+                    .send_bill_recourse_paid_event(&chain_event, recoursee)
                     .await?;
             }
             BillAction::Mint(_, _, _) => {

@@ -64,8 +64,7 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
     /// Receiver: Recoursee (new holder), Action: CheckBill
     async fn send_bill_recourse_paid_event(
         &self,
-        bill_id: &str,
-        sum: Option<u64>,
+        event: &BillChainEvent,
         recoursee: &IdentityPublicData,
     ) -> Result<()>;
 

@@ -156,23 +156,14 @@ impl NotificationServiceApi for DefaultNotificationService {
 
     async fn send_bill_recourse_paid_event(
         &self,
-        bill_id: &str,
-        sum: Option<u64>,
+        event: &BillChainEvent,
         recoursee: &IdentityPublicData,
     ) -> Result<()> {
-        let event = Event::new_bill(
-            &recoursee.node_id,
-            BillChainEventPayload {
-                event_type: BillEventType::BillRecoursePaid,
-                bill_id: bill_id.to_owned(),
-                action_type: Some(ActionType::CheckBill),
-                sum,
-                ..Default::default()
-            },
-        );
-        self.notification_transport
-            .send(recoursee, event.try_into()?)
-            .await?;
+        let all_events = event.generate_action_messages(HashMap::from_iter(vec![(
+            recoursee.node_id.clone(),
+            (BillEventType::BillRecoursePaid, ActionType::CheckBill),
+        )]));
+        self.send_all_events(all_events).await?;
         Ok(())
     }
 
@@ -358,8 +349,8 @@ mod tests {
     use bcr_ebill_core::bill::BillKeys;
     use bcr_ebill_core::blockchain::Blockchain;
     use bcr_ebill_core::blockchain::bill::block::{
-        BillAcceptBlockData, BillOfferToSellBlockData, BillRequestToAcceptBlockData,
-        BillRequestToPayBlockData,
+        BillAcceptBlockData, BillOfferToSellBlockData, BillRecourseBlockData,
+        BillRequestToAcceptBlockData, BillRequestToPayBlockData,
     };
     use bcr_ebill_core::blockchain::bill::{BillBlock, BillBlockchain};
     use bcr_ebill_core::util::date::now;
@@ -1034,21 +1025,59 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_bill_recourse_paid_event() {
-        let bill = get_test_bill();
+        let payer = get_identity_public_data("drawee", "drawee@example.com", None);
+        let payee = get_identity_public_data("payee", "payee@example.com", None);
+        let recoursee = get_identity_public_data("recoursee", "recoursee@example.com", None);
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let mut chain = get_genesis_chain(Some(bill.clone()));
+        let timestamp = now().timestamp() as u64;
+        let keys = get_baseline_identity().key_pair;
+        let block = BillBlock::create_block_for_recourse(
+            bill.id.to_owned(),
+            chain.get_latest_block(),
+            &BillRecourseBlockData {
+                recourser: payee.clone().into(),
+                recoursee: recoursee.clone().into(),
+                sum: 100,
+                currency: "USD".to_string(),
+                signatory: None,
+                signing_timestamp: timestamp,
+                signing_address: PostalAddress::default(),
+            },
+            &keys,
+            None,
+            &keys,
+            timestamp,
+        )
+        .unwrap();
+
+        chain.try_add_block(block);
+
+        let (service, event) = setup_chain_expectation(
+            vec![
+                (payee, BillEventType::BillBlock, None),
+                (payer, BillEventType::BillBlock, None),
+                (
+                    recoursee.clone(),
+                    BillEventType::BillRecoursePaid,
+                    Some(ActionType::CheckBill),
+                ),
+            ],
+            &bill,
+            &chain,
+            true,
+        );
+        // let bill = get_test_bill();
 
         // should send sold event to recoursee
-        let service = setup_service_expectation(
-            "recoursee",
-            BillEventType::BillRecoursePaid,
-            ActionType::CheckBill,
-        );
+        // let service = setup_service_expectation(
+        //     "recoursee",
+        //     BillEventType::BillRecoursePaid,
+        //     ActionType::CheckBill,
+        // );
 
         service
-            .send_bill_recourse_paid_event(
-                &bill.id,
-                Some(100),
-                &get_identity_public_data("recoursee", "recoursee@example.com", None),
-            )
+            .send_bill_recourse_paid_event(&event, &recoursee)
             .await
             .expect("failed to send event");
     }
