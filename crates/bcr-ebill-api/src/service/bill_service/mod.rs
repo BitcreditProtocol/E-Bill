@@ -207,7 +207,7 @@ pub mod tests {
                 },
             },
         },
-        constants::PAYMENT_DEADLINE_SECONDS,
+        constants::{ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS},
         notification::ActionType,
     };
     use core::str;
@@ -215,7 +215,9 @@ pub mod tests {
     use std::collections::{HashMap, HashSet};
     use test_utils::{
         accept_block, get_baseline_bill, get_baseline_identity, get_ctx, get_genesis_chain,
-        get_service, offer_to_sell_block, request_to_accept_block, request_to_pay_block,
+        get_service, offer_to_sell_block, recourse_block, reject_accept_block, reject_buy_block,
+        reject_recourse_block, reject_to_pay_block, request_to_accept_block, request_to_pay_block,
+        request_to_recourse_block, sell_block,
     };
     use util::crypto::BcrKeys;
 
@@ -773,25 +775,21 @@ pub mod tests {
             .with(eq("1234"))
             .returning(|_| None);
 
-        let service = get_service(ctx);
-
-        let res = service
+        let res = get_service(ctx)
             .get_bills(&get_baseline_identity().identity.node_id)
             .await;
         assert!(res.is_ok());
         let returned_bills = res.unwrap();
         assert!(returned_bills.len() == 1);
         assert_eq!(returned_bills[0].id, "1234".to_string());
-        assert!(returned_bills[0].paid);
+        assert!(returned_bills[0].status.payment.paid);
     }
 
     #[tokio::test]
     async fn get_bills_empty_for_no_bills() {
         let mut ctx = get_ctx();
         ctx.bill_store.expect_get_ids().returning(|| Ok(vec![]));
-        let service = get_service(ctx);
-
-        let res = service
+        let res = get_service(ctx)
             .get_bills(&get_baseline_identity().identity.node_id)
             .await;
         assert!(res.is_ok());
@@ -814,9 +812,7 @@ pub mod tests {
             .with(eq("some id"))
             .returning(|_| None);
 
-        let service = get_service(ctx);
-
-        let res = service
+        let res = get_service(ctx)
             .get_detail(
                 "some id",
                 &identity.identity,
@@ -826,9 +822,13 @@ pub mod tests {
             .await;
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
-        assert_eq!(res.as_ref().unwrap().drawee.node_id, drawee_node_id);
-        assert!(!res.as_ref().unwrap().waiting_for_payment);
-        assert!(!res.as_ref().unwrap().paid);
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(!res.as_ref().unwrap().status.payment.requested_to_pay);
+        assert!(!res.as_ref().unwrap().status.payment.paid);
+        assert!(!res.as_ref().unwrap().status.redeemed_funds_available);
     }
 
     #[tokio::test]
@@ -846,9 +846,7 @@ pub mod tests {
             .with(eq("some id"))
             .returning(|_| None);
 
-        let service = get_service(ctx);
-
-        let res = service
+        let res = get_service(ctx)
             .get_detail(
                 "some id",
                 &identity.identity,
@@ -874,8 +872,8 @@ pub mod tests {
                 assert!(chain.try_add_block(offer_to_sell_block(
                     "1234",
                     chain.get_latest_block(),
-                    &bill.drawee.node_id,
-                    &get_baseline_identity().identity.node_id
+                    &identity_public_data_only_node_id(bill.drawee.node_id.clone()),
+                    None,
                 )));
                 Ok(chain)
             });
@@ -883,9 +881,8 @@ pub mod tests {
             .expect_get_active_bill_notification()
             .with(eq("some id"))
             .returning(|_| None);
-        let service = get_service(ctx);
 
-        let res = service
+        let res = get_service(ctx)
             .get_detail(
                 "some id",
                 &identity.identity,
@@ -895,8 +892,418 @@ pub mod tests {
             .await;
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
-        assert_eq!(res.as_ref().unwrap().drawee.node_id, drawee_node_id);
-        assert!(res.as_ref().unwrap().waiting_for_payment);
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.sell.offered_to_sell);
+        assert!(!res.as_ref().unwrap().status.sell.offer_to_sell_timed_out);
+        assert!(!res.as_ref().unwrap().status.sell.rejected_offer_to_sell);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_some());
+        assert!(!res.as_ref().unwrap().status.redeemed_funds_available);
+    }
+
+    #[tokio::test]
+    async fn get_detail_waiting_for_offer_to_sell_and_sell() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                assert!(chain.try_add_block(offer_to_sell_block(
+                    "1234",
+                    chain.get_latest_block(),
+                    &bill.drawee,
+                    None,
+                )));
+                assert!(chain.try_add_block(sell_block(
+                    "1234",
+                    chain.get_latest_block(),
+                    &bill.drawee,
+                )));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.sell.offered_to_sell);
+        assert!(!res.as_ref().unwrap().status.sell.offer_to_sell_timed_out);
+        assert!(!res.as_ref().unwrap().status.sell.rejected_offer_to_sell);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert_eq!(
+            res.as_ref()
+                .unwrap()
+                .participants
+                .endorsee
+                .as_ref()
+                .unwrap()
+                .node_id,
+            identity.identity.node_id
+        );
+        assert!(res.as_ref().unwrap().status.redeemed_funds_available); // caller is endorsee
+    }
+
+    #[tokio::test]
+    async fn get_detail_waiting_for_offer_to_sell_and_expire() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let last_block = chain.get_latest_block();
+                assert!(chain.try_add_block(offer_to_sell_block(
+                    "1234",
+                    chain.get_latest_block(),
+                    &bill.drawee,
+                    // expired
+                    Some(last_block.timestamp - PAYMENT_DEADLINE_SECONDS * 2),
+                )));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.sell.offered_to_sell);
+        assert!(res.as_ref().unwrap().status.sell.offer_to_sell_timed_out);
+        assert!(!res.as_ref().unwrap().status.sell.rejected_offer_to_sell);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_waiting_for_offer_to_sell_and_reject() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let last_block = chain.get_latest_block();
+                assert!(chain.try_add_block(offer_to_sell_block(
+                    "1234",
+                    chain.get_latest_block(),
+                    &bill.drawee,
+                    // expired
+                    Some(last_block.timestamp - PAYMENT_DEADLINE_SECONDS * 2),
+                )));
+                assert!(chain.try_add_block(reject_buy_block("1234", chain.get_latest_block(),)));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.sell.offered_to_sell);
+        assert!(!res.as_ref().unwrap().status.sell.offer_to_sell_timed_out);
+        assert!(res.as_ref().unwrap().status.sell.rejected_offer_to_sell);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_recourse() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block = request_to_recourse_block(
+                    "some_id",
+                    chain.get_latest_block(),
+                    &identity_public_data_only_node_id(bill.drawee.node_id.clone()),
+                    None,
+                );
+                assert!(chain.try_add_block(req_to_pay_block));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.recourse.requested_to_recourse);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .recourse
+                .request_to_recourse_timed_out
+        );
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .recourse
+                .rejected_request_to_recourse
+        );
+        assert!(res.as_ref().unwrap().current_waiting_state.is_some());
+        assert!(!res.as_ref().unwrap().status.redeemed_funds_available);
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_recourse_recoursed() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some_id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block = request_to_recourse_block(
+                    "some_id",
+                    chain.get_latest_block(),
+                    &identity_public_data_only_node_id(bill.drawee.node_id.clone()),
+                    None,
+                );
+                assert!(chain.try_add_block(req_to_pay_block));
+                assert!(chain.try_add_block(recourse_block(
+                    "some_id",
+                    chain.get_latest_block(),
+                    &identity_public_data_only_node_id(bill.drawee.node_id.clone())
+                )));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some_id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some_id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some_id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.recourse.requested_to_recourse);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .recourse
+                .request_to_recourse_timed_out
+        );
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .recourse
+                .rejected_request_to_recourse
+        );
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(res.as_ref().unwrap().status.redeemed_funds_available); // caller is endorsee
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_recourse_rejected() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some_id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block = request_to_recourse_block(
+                    "some_id",
+                    chain.get_latest_block(),
+                    &identity_public_data_only_node_id(bill.drawee.node_id.clone()),
+                    None,
+                );
+                assert!(chain.try_add_block(req_to_pay_block));
+                assert!(
+                    chain
+                        .try_add_block(reject_recourse_block("some_id", chain.get_latest_block(),))
+                );
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some_id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some_id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some_id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.recourse.requested_to_recourse);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .recourse
+                .request_to_recourse_timed_out
+        );
+        assert!(
+            res.as_ref()
+                .unwrap()
+                .status
+                .recourse
+                .rejected_request_to_recourse
+        );
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_recourse_expired() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some_id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block = request_to_recourse_block(
+                    "some_id",
+                    chain.get_latest_block(),
+                    &identity_public_data_only_node_id(bill.drawee.node_id.clone()),
+                    Some(chain.get_latest_block().timestamp - RECOURSE_DEADLINE_SECONDS * 2),
+                );
+                assert!(chain.try_add_block(req_to_pay_block));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some_id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some_id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some_id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.recourse.requested_to_recourse);
+        assert!(
+            res.as_ref()
+                .unwrap()
+                .status
+                .recourse
+                .request_to_recourse_timed_out
+        );
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .recourse
+                .rejected_request_to_recourse
+        );
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
     }
 
     #[tokio::test]
@@ -907,30 +1314,13 @@ pub mod tests {
         bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
         let drawee_node_id = bill.drawee.node_id.clone();
         ctx.bill_store.expect_exists().returning(|_| true);
-        ctx.bill_store.expect_is_paid().returning(|_| Ok(true));
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
         ctx.bill_blockchain_store
             .expect_get_chain()
             .returning(move |_| {
-                let now = util::date::now().timestamp() as u64;
                 let mut chain = get_genesis_chain(Some(bill.clone()));
-                let req_to_pay_block = BillBlock::create_block_for_request_to_pay(
-                    "1234".to_string(),
-                    chain.get_latest_block(),
-                    &BillRequestToPayBlockData {
-                        requester: IdentityPublicData::new(get_baseline_identity().identity)
-                            .unwrap()
-                            .into(),
-                        currency: "sat".to_string(),
-                        signatory: None,
-                        signing_timestamp: now,
-                        signing_address: empty_address(),
-                    },
-                    &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
-                    None,
-                    &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
-                    now,
-                )
-                .unwrap();
+                let req_to_pay_block =
+                    request_to_pay_block("some_id", chain.get_latest_block(), None);
                 assert!(chain.try_add_block(req_to_pay_block));
                 Ok(chain)
             });
@@ -938,9 +1328,8 @@ pub mod tests {
             .expect_get_active_bill_notification()
             .with(eq("some id"))
             .returning(|_| None);
-        let service = get_service(ctx);
 
-        let res = service
+        let res = get_service(ctx)
             .get_detail(
                 "some id",
                 &identity.identity,
@@ -950,9 +1339,492 @@ pub mod tests {
             .await;
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
-        assert_eq!(res.as_ref().unwrap().drawee.node_id, drawee_node_id);
-        assert!(res.as_ref().unwrap().paid);
-        assert!(!res.as_ref().unwrap().waiting_for_payment);
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(!res.as_ref().unwrap().status.payment.paid);
+        assert!(res.as_ref().unwrap().status.payment.requested_to_pay);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .payment
+                .request_to_pay_timed_out
+        );
+        assert!(!res.as_ref().unwrap().status.payment.rejected_to_pay);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_some());
+        assert!(!res.as_ref().unwrap().status.redeemed_funds_available);
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_pay_paid() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(true));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block =
+                    request_to_pay_block("some_id", chain.get_latest_block(), None);
+                assert!(chain.try_add_block(req_to_pay_block));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.payment.paid);
+        assert!(res.as_ref().unwrap().status.payment.requested_to_pay);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .payment
+                .request_to_pay_timed_out
+        );
+        assert!(!res.as_ref().unwrap().status.payment.rejected_to_pay);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(!res.as_ref().unwrap().status.redeemed_funds_available); // caller not payee
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_pay_rejected() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block =
+                    request_to_pay_block("some_id", chain.get_latest_block(), None);
+                assert!(chain.try_add_block(req_to_pay_block));
+                assert!(
+                    chain.try_add_block(reject_to_pay_block("some_id", chain.get_latest_block()))
+                );
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(!res.as_ref().unwrap().status.payment.paid);
+        assert!(res.as_ref().unwrap().status.payment.requested_to_pay);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .payment
+                .request_to_pay_timed_out
+        );
+        assert!(res.as_ref().unwrap().status.payment.rejected_to_pay);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_pay_rejected_but_paid() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(true));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block =
+                    request_to_pay_block("some_id", chain.get_latest_block(), None);
+                assert!(chain.try_add_block(req_to_pay_block));
+                assert!(
+                    chain.try_add_block(reject_to_pay_block("some_id", chain.get_latest_block()))
+                );
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.payment.paid);
+        assert!(res.as_ref().unwrap().status.payment.requested_to_pay);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .payment
+                .request_to_pay_timed_out
+        );
+        assert!(res.as_ref().unwrap().status.payment.rejected_to_pay);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_pay_expired() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block = request_to_pay_block(
+                    "some_id",
+                    chain.get_latest_block(),
+                    Some(chain.get_latest_block().timestamp - PAYMENT_DEADLINE_SECONDS * 2),
+                );
+                assert!(chain.try_add_block(req_to_pay_block));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(!res.as_ref().unwrap().status.payment.paid);
+        assert!(res.as_ref().unwrap().status.payment.requested_to_pay);
+        assert!(
+            res.as_ref()
+                .unwrap()
+                .status
+                .payment
+                .request_to_pay_timed_out
+        );
+        assert!(!res.as_ref().unwrap().status.payment.rejected_to_pay);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_pay_expired_but_paid() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(true));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block = request_to_pay_block(
+                    "some_id",
+                    chain.get_latest_block(),
+                    Some(chain.get_latest_block().timestamp - PAYMENT_DEADLINE_SECONDS * 2),
+                );
+                assert!(chain.try_add_block(req_to_pay_block));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.payment.paid);
+        assert!(res.as_ref().unwrap().status.payment.requested_to_pay);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .payment
+                .request_to_pay_timed_out
+        );
+        assert!(!res.as_ref().unwrap().status.payment.rejected_to_pay);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_accept() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block =
+                    request_to_accept_block("some_id", chain.get_latest_block(), None);
+                assert!(chain.try_add_block(req_to_pay_block));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(!res.as_ref().unwrap().status.acceptance.accepted);
+        assert!(res.as_ref().unwrap().status.acceptance.requested_to_accept);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .acceptance
+                .request_to_accept_timed_out
+        );
+        assert!(!res.as_ref().unwrap().status.acceptance.rejected_to_accept);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_accept_accepted() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block =
+                    request_to_accept_block("some_id", chain.get_latest_block(), None);
+                assert!(chain.try_add_block(req_to_pay_block));
+                assert!(chain.try_add_block(accept_block("some_id", chain.get_latest_block())));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(res.as_ref().unwrap().status.acceptance.accepted);
+        assert!(res.as_ref().unwrap().status.acceptance.requested_to_accept);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .acceptance
+                .request_to_accept_timed_out
+        );
+        assert!(!res.as_ref().unwrap().status.acceptance.rejected_to_accept);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_accept_expired() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block =
+                    request_to_accept_block("some_id", chain.get_latest_block(), None);
+                assert!(chain.try_add_block(req_to_pay_block));
+                assert!(
+                    chain.try_add_block(reject_accept_block("some_id", chain.get_latest_block()))
+                );
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(!res.as_ref().unwrap().status.acceptance.accepted);
+        assert!(res.as_ref().unwrap().status.acceptance.requested_to_accept);
+        assert!(
+            !res.as_ref()
+                .unwrap()
+                .status
+                .acceptance
+                .request_to_accept_timed_out
+        );
+        assert!(res.as_ref().unwrap().status.acceptance.rejected_to_accept);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_detail_bill_req_to_accept_rejected() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let mut bill = get_baseline_bill("some id");
+        bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let drawee_node_id = bill.drawee.node_id.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+                let req_to_pay_block = request_to_accept_block(
+                    "some_id",
+                    chain.get_latest_block(),
+                    Some(chain.get_latest_block().timestamp - ACCEPT_DEADLINE_SECONDS * 2),
+                );
+                assert!(chain.try_add_block(req_to_pay_block));
+                Ok(chain)
+            });
+        ctx.notification_service
+            .expect_get_active_bill_notification()
+            .with(eq("some id"))
+            .returning(|_| None);
+
+        let res = get_service(ctx)
+            .get_detail(
+                "some id",
+                &identity.identity,
+                &identity.identity.node_id,
+                1731593928,
+            )
+            .await;
+        assert!(res.is_ok());
+        assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
+        assert_eq!(
+            res.as_ref().unwrap().participants.drawee.node_id,
+            drawee_node_id
+        );
+        assert!(!res.as_ref().unwrap().status.acceptance.accepted);
+        assert!(res.as_ref().unwrap().status.acceptance.requested_to_accept);
+        assert!(
+            res.as_ref()
+                .unwrap()
+                .status
+                .acceptance
+                .request_to_accept_timed_out
+        );
+        assert!(!res.as_ref().unwrap().status.acceptance.rejected_to_accept);
+        assert!(res.as_ref().unwrap().current_waiting_state.is_none());
     }
 
     #[tokio::test]
@@ -1571,8 +2443,8 @@ pub mod tests {
                 assert!(chain.try_add_block(offer_to_sell_block(
                     "1234",
                     chain.get_latest_block(),
-                    &BcrKeys::new().get_public_key(),
-                    &get_baseline_identity().identity.node_id
+                    &identity_public_data_only_node_id(BcrKeys::new().get_public_key()),
+                    None,
                 )));
                 Ok(chain)
             });
@@ -1700,8 +2572,8 @@ pub mod tests {
                 assert!(chain.try_add_block(offer_to_sell_block(
                     "1234",
                     chain.get_latest_block(),
-                    &buyer_node_id,
-                    &get_baseline_identity().identity.node_id
+                    &identity_public_data_only_node_id(buyer_node_id.clone()),
+                    None,
                 )));
                 Ok(chain)
             });
@@ -1746,8 +2618,8 @@ pub mod tests {
                 assert!(chain.try_add_block(offer_to_sell_block(
                     "1234",
                     chain.get_latest_block(),
-                    &buyer_node_id,
-                    &get_baseline_identity().identity.node_id
+                    &identity_public_data_only_node_id(buyer_node_id.clone()),
+                    None,
                 )));
                 Ok(chain)
             });
@@ -1781,7 +2653,7 @@ pub mod tests {
             .with(eq("1234".to_string()))
             .returning(|id| {
                 let mut chain = get_genesis_chain(Some(get_baseline_bill(id)));
-                chain.try_add_block(request_to_accept_block(id, chain.get_latest_block()));
+                chain.try_add_block(request_to_accept_block(id, chain.get_latest_block(), None));
                 Ok(chain)
             });
         // fetches bill chain pay
@@ -1790,7 +2662,7 @@ pub mod tests {
             .with(eq("4321".to_string()))
             .returning(|id| {
                 let mut chain = get_genesis_chain(Some(get_baseline_bill(id)));
-                chain.try_add_block(request_to_pay_block(id, chain.get_latest_block()));
+                chain.try_add_block(request_to_pay_block(id, chain.get_latest_block(), None));
                 Ok(chain)
             });
         let service = get_service(ctx);
@@ -1822,7 +2694,7 @@ pub mod tests {
             .with(eq("1234".to_string()))
             .returning(|id| {
                 let mut chain = get_genesis_chain(Some(get_baseline_bill(id)));
-                chain.try_add_block(request_to_accept_block(id, chain.get_latest_block()));
+                chain.try_add_block(request_to_accept_block(id, chain.get_latest_block(), None));
                 Ok(chain)
             });
 
@@ -1832,7 +2704,7 @@ pub mod tests {
             .with(eq("4321".to_string()))
             .returning(|id| {
                 let mut chain = get_genesis_chain(Some(get_baseline_bill(id)));
-                chain.try_add_block(request_to_pay_block(id, chain.get_latest_block()));
+                chain.try_add_block(request_to_pay_block(id, chain.get_latest_block(), None));
                 Ok(chain)
             });
         // notification already sent
@@ -1877,7 +2749,7 @@ pub mod tests {
             .with(eq("1234".to_string()))
             .returning(|id| {
                 let mut chain = get_genesis_chain(Some(get_baseline_bill(id)));
-                chain.try_add_block(request_to_accept_block(id, chain.get_latest_block()));
+                chain.try_add_block(request_to_accept_block(id, chain.get_latest_block(), None));
                 Ok(chain)
             });
 
@@ -1887,7 +2759,7 @@ pub mod tests {
             .with(eq("4321".to_string()))
             .returning(|id| {
                 let mut chain = get_genesis_chain(Some(get_baseline_bill(id)));
-                chain.try_add_block(request_to_pay_block(id, chain.get_latest_block()));
+                chain.try_add_block(request_to_pay_block(id, chain.get_latest_block(), None));
                 Ok(chain)
             });
 
@@ -2380,8 +3252,8 @@ pub mod tests {
         let mut ctx = get_ctx();
         let identity = get_baseline_identity();
         let bill = get_baseline_bill("1234");
-        let payee = bill.payee.clone();
 
+        let identity_clone = identity.identity.clone();
         ctx.bill_blockchain_store
             .expect_get_chain()
             .returning(move |_| {
@@ -2390,8 +3262,8 @@ pub mod tests {
                 assert!(chain.try_add_block(offer_to_sell_block(
                     "1234",
                     chain.get_latest_block(),
-                    &get_baseline_identity().identity.node_id,
-                    &payee.node_id
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                    None,
                 )));
 
                 Ok(chain)
@@ -2407,7 +3279,7 @@ pub mod tests {
             .execute_bill_action(
                 "1234",
                 BillAction::RejectBuying,
-                &IdentityPublicData::new(identity.identity).unwrap(),
+                &IdentityPublicData::new(identity.identity.clone()).unwrap(),
                 &identity.key_pair,
                 1731593928,
             )

@@ -862,6 +862,22 @@ impl BillBlock {
         Ok(nodes.into_iter().collect())
     }
 
+    /// If the block is a holder-changing block with a financial beneficiary(sell, recourse),
+    /// return the node_id of the beneficiary
+    pub fn get_beneficiary_from_block(&self, bill_keys: &BillKeys) -> Result<Option<String>> {
+        match self.op_code {
+            Sell => {
+                let block: BillSellBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                Ok(Some(block.seller.node_id))
+            }
+            Recourse => {
+                let block: BillRecourseBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                Ok(Some(block.recourser.node_id))
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// If the block is holder-changing block (issue, endorse, sell, mint, recourse), returns
     /// the new holder and signer data from the block
     pub fn get_holder_from_block(&self, bill_keys: &BillKeys) -> Result<Option<HolderFromBlock>> {
