@@ -78,7 +78,7 @@ impl BillService {
             }
             BillAction::RejectBuying => {
                 self.notification_service
-                    .send_request_to_action_rejected_event(&&chain_event, ActionType::BuyBill)
+                    .send_request_to_action_rejected_event(&chain_event, ActionType::BuyBill)
                     .await?;
             }
             BillAction::RejectPayment => {
