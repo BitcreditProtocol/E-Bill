@@ -26,30 +26,29 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
 
     /// Sent when: A bill is accepted by: Payer
     /// Receiver: Holder, Action: CheckBill
-    async fn send_bill_is_accepted_event(&self, bill: &BillChainEvent) -> Result<()>;
+    async fn send_bill_is_accepted_event(&self, event: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is requested to be accepted, Sent by: Holder
     /// Receiver: Payer, Action: AcceptBill
-    async fn send_request_to_accept_event(&self, bill: &BillChainEvent) -> Result<()>;
+    async fn send_request_to_accept_event(&self, event: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is requested to be paid, Sent by: Holder
     /// Receiver: Payer, Action: PayBill
-    async fn send_request_to_pay_event(&self, bill: &BillChainEvent) -> Result<()>;
+    async fn send_request_to_pay_event(&self, event: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is paid by: Payer (Bitcoin API)
     /// Receiver: Payee, Action: CheckBill
-    async fn send_bill_is_paid_event(&self, bill: &BillChainEvent) -> Result<()>;
+    async fn send_bill_is_paid_event(&self, event: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is endorsed by: Previous Holder
     /// Receiver: NewHolder, Action: CheckBill
-    async fn send_bill_is_endorsed_event(&self, bill: &BillChainEvent) -> Result<()>;
+    async fn send_bill_is_endorsed_event(&self, event: &BillChainEvent) -> Result<()>;
 
     /// Sent when: A bill is offered to be sold, Sent by: Holder
     /// Receiver: Buyer, Action: CheckBill (with buy page)
     async fn send_offer_to_sell_event(
         &self,
-        bill_id: &str,
-        sum: Option<u64>,
+        event: &BillChainEvent,
         buyer: &IdentityPublicData,
     ) -> Result<()>;
 
@@ -57,8 +56,7 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
     /// Receiver: Buyer (new holder), Action: CheckBill
     async fn send_bill_is_sold_event(
         &self,
-        bill_id: &str,
-        sum: Option<u64>,
+        event: &BillChainEvent,
         buyer: &IdentityPublicData,
     ) -> Result<()>;
 

@@ -184,7 +184,7 @@ impl BillService {
 
         // send notification to all required recipients
         self.notification_service
-            .send_bill_is_signed_event(&BillChainEvent::new(&bill, &chain, &bill_keys)?)
+            .send_bill_is_signed_event(&BillChainEvent::new(&bill, &chain, &bill_keys, true)?)
             .await?;
 
         // propagate the bill

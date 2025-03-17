@@ -3,7 +3,7 @@ use crate::{
     context::get_ctx,
     data::{IntoWeb, notification::NotificationWeb},
 };
-use bcr_ebill_api::{NotificationFilter, data::contact::IdentityPublicData};
+use bcr_ebill_api::NotificationFilter;
 use log::{error, info};
 use wasm_bindgen::prelude::*;
 
@@ -78,32 +78,6 @@ impl Notification {
             .push_service
             .send(serde_json::to_value(msg).unwrap())
             .await;
-        Ok(())
-    }
-
-    #[wasm_bindgen]
-    pub async fn trigger_test_notification(&self, node_id: &str) -> Result<()> {
-        get_ctx()
-            .notification_service
-            .send_offer_to_sell_event(
-                "some_id",
-                Some(10),
-                &IdentityPublicData {
-                    t: bcr_ebill_api::data::contact::ContactType::Person,
-                    node_id: node_id.to_owned(),
-                    name: "some name".to_string(),
-                    postal_address: bcr_ebill_api::data::PostalAddress {
-                        country: "AT".to_string(),
-                        city: "AT".to_string(),
-                        zip: Some("1020".to_string()),
-                        address: "street".to_string(),
-                    },
-                    email: None,
-                    nostr_relay: Some(get_ctx().cfg.nostr_relay),
-                },
-            )
-            .await
-            .unwrap();
         Ok(())
     }
 }

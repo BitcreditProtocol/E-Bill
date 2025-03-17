@@ -19,11 +19,17 @@ pub struct BillChainEvent {
     chain: BillBlockchain,
     participants: HashMap<String, usize>,
     bill_keys: BillKeys,
+    new_blocks: bool,
 }
 
 impl BillChainEvent {
     /// Create a new BillChainEvent instance.
-    pub fn new(bill: &BitcreditBill, chain: &BillBlockchain, bill_keys: &BillKeys) -> Result<Self> {
+    pub fn new(
+        bill: &BitcreditBill,
+        chain: &BillBlockchain,
+        bill_keys: &BillKeys,
+        new_blocks: bool,
+    ) -> Result<Self> {
         let participants = chain
             .get_all_nodes_with_added_block_height(bill_keys)
             .map_err(|e| {
@@ -38,6 +44,7 @@ impl BillChainEvent {
             chain: chain.clone(),
             participants,
             bill_keys: bill_keys.clone(),
+            new_blocks,
         })
     }
 
@@ -48,8 +55,8 @@ impl BillChainEvent {
 
     // Returns all blocks for newly added participants, otherwise just the latest block or no
     // blocks if the node is not a participant.
-    fn get_blocks_for_node(&self, node_id: &str, add_blocks: bool) -> Vec<BillBlock> {
-        if !add_blocks {
+    fn get_blocks_for_node(&self, node_id: &str) -> Vec<BillBlock> {
+        if !self.new_blocks {
             return Vec::new();
         }
         match self.participants.get(node_id) {
@@ -60,6 +67,9 @@ impl BillChainEvent {
     }
 
     fn get_keys_for_node(&self, node_id: &str) -> Option<BillKeys> {
+        if !self.new_blocks {
+            return None;
+        }
         match self.participants.get(node_id) {
             Some(height) if *height == self.chain.block_height() => Some(self.bill_keys.clone()),
             _ => None,
@@ -72,7 +82,6 @@ impl BillChainEvent {
     pub fn generate_action_messages(
         &self,
         event_overrides: HashMap<String, (BillEventType, ActionType)>,
-        include_blocks: bool,
     ) -> Vec<Event<BillChainEventPayload>> {
         self.participants
             .keys()
@@ -81,7 +90,6 @@ impl BillChainEvent {
                     .get(node_id)
                     .map(|(event_type, action)| (event_type.clone(), Some(action.clone())))
                     .unwrap_or((BillEventType::BillBlock, None));
-                let add_blocks = self.get_keys_for_node(node_id).is_some() || include_blocks;
                 Event::new(
                     EventType::Bill,
                     node_id,
@@ -90,7 +98,7 @@ impl BillChainEvent {
                         bill_id: self.bill.id.to_owned(),
                         action_type: action,
                         sum: Some(self.bill.sum),
-                        blocks: self.get_blocks_for_node(node_id, add_blocks),
+                        blocks: self.get_blocks_for_node(node_id),
                         keys: self.get_keys_for_node(node_id),
                     },
                 )

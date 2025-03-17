@@ -264,3 +264,10 @@ pub fn request_to_pay_block(id: &str, first_block: &BillBlock) -> BillBlock {
     )
     .expect("block could not be created")
 }
+
+pub fn bill_keys() -> BillKeys {
+    BillKeys {
+        private_key: TEST_PRIVATE_KEY_SECP.to_owned(),
+        public_key: TEST_PUB_KEY_SECP.to_owned(),
+    }
+}

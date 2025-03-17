@@ -1301,7 +1301,7 @@ pub mod tests {
         // Request to sell event should be sent
         ctx.notification_service
             .expect_send_offer_to_sell_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service
@@ -1386,7 +1386,7 @@ pub mod tests {
         // Request to sell event should be sent
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -1446,7 +1446,7 @@ pub mod tests {
         // Sold event should be sent
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -1479,7 +1479,7 @@ pub mod tests {
         // Request to sell event should be sent
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service
@@ -1707,7 +1707,7 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -1753,7 +1753,7 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service.check_bills_offer_to_sell_payment().await;

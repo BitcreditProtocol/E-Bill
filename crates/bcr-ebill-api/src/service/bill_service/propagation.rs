@@ -2,7 +2,6 @@ use super::{BillAction, Result, service::BillService};
 use bcr_ebill_core::{
     bill::{BillKeys, RecourseReason},
     blockchain::bill::{BillBlock, BillBlockchain},
-    contact::IdentityPublicData,
     identity::Identity,
     notification::ActionType,
 };
@@ -20,26 +19,7 @@ impl BillService {
             .get_last_version_bill(blockchain, bill_keys, identity)
             .await?;
 
-        // calculate possible recipients
-        let mut recipients = vec![];
-        if matches!(
-            bill_action,
-            BillAction::RejectAcceptance
-                | BillAction::RejectBuying
-                | BillAction::RejectPayment
-                | BillAction::RejectPaymentForRecourse
-        ) {
-            if let Some(self_identity) = IdentityPublicData::new(identity.clone()) {
-                recipients.push(self_identity);
-            }
-            for node_id in blockchain.get_all_nodes_from_bill(bill_keys)? {
-                if let Some(contact) = self.contact_store.get(&node_id).await?.map(|c| c.into()) {
-                    recipients.push(contact);
-                }
-            }
-        };
-
-        let chain_event = BillChainEvent::new(&last_version_bill, blockchain, bill_keys)?;
+        let chain_event = BillChainEvent::new(&last_version_bill, blockchain, bill_keys, true)?;
 
         match bill_action {
             BillAction::Accept => {
@@ -81,14 +61,14 @@ impl BillService {
                     .send_request_to_mint_event(&last_version_bill)
                     .await?;
             }
-            BillAction::OfferToSell(buyer, sum, _) => {
+            BillAction::OfferToSell(buyer, _, _) => {
                 self.notification_service
-                    .send_offer_to_sell_event(&last_version_bill.id, Some(*sum), buyer)
+                    .send_offer_to_sell_event(&chain_event, buyer)
                     .await?;
             }
-            BillAction::Sell(buyer, sum, _, _) => {
+            BillAction::Sell(buyer, _, _, _) => {
                 self.notification_service
-                    .send_bill_is_sold_event(&last_version_bill.id, Some(*sum), buyer)
+                    .send_bill_is_sold_event(&chain_event, buyer)
                     .await?;
             }
             BillAction::Endorse(_) => {
@@ -102,7 +82,7 @@ impl BillService {
                         &last_version_bill.id,
                         Some(last_version_bill.sum),
                         ActionType::AcceptBill,
-                        recipients,
+                        vec![],
                     )
                     .await?;
             }
@@ -112,7 +92,7 @@ impl BillService {
                         &last_version_bill.id,
                         Some(last_version_bill.sum),
                         ActionType::BuyBill,
-                        recipients,
+                        vec![],
                     )
                     .await?;
             }
@@ -122,7 +102,7 @@ impl BillService {
                         &last_version_bill.id,
                         Some(last_version_bill.sum),
                         ActionType::PayBill,
-                        recipients,
+                        vec![],
                     )
                     .await?;
             }
@@ -132,7 +112,7 @@ impl BillService {
                         &last_version_bill.id,
                         Some(last_version_bill.sum),
                         ActionType::RecourseBill,
-                        recipients,
+                        vec![],
                     )
                     .await?;
             }
