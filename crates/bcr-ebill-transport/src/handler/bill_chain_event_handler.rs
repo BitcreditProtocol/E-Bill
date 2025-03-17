@@ -254,13 +254,13 @@ mod tests {
     use bcr_ebill_core::{
         OptionalPostalAddress, PostalAddress,
         bill::BitcreditBill,
-        blockchain::bill::block::BillIssueBlockData,
+        blockchain::bill::block::{BillEndorseBlockData, BillIssueBlockData},
         contact::{ContactType, IdentityPublicData},
         identity::{Identity, IdentityWithAll},
         notification::ActionType,
         util::BcrKeys,
     };
-    use mockall::predicate::eq;
+    use mockall::predicate::{always, eq};
 
     use crate::handler::test_utils::{
         MockBillChainStore, MockBillStore, MockNotificationStore, MockPushService,
@@ -285,8 +285,22 @@ mod tests {
         let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
         let chain = get_genesis_chain(Some(bill.clone()));
+        let keys = get_bill_keys();
 
-        let (notification_store, push_service, bill_chain_store, bill_store) = create_mocks();
+        let (notification_store, push_service, mut bill_chain_store, mut bill_store) =
+            create_mocks();
+
+        bill_chain_store
+            .expect_add_block()
+            .with(eq("bill"), eq(chain.blocks()[0].clone()))
+            .times(1)
+            .returning(move |_, _| Ok(()));
+
+        bill_store
+            .expect_save_keys()
+            .with(eq("bill"), always())
+            .times(1)
+            .returning(move |_, _| Ok(()));
 
         let handler = BillChainEventHandler::new(
             Arc::new(notification_store),
@@ -300,9 +314,9 @@ mod tests {
             BillChainEventPayload {
                 bill_id: "bill_id".to_string(),
                 event_type: BillEventType::BillBlock,
-                blocks: vec![],
-                keys: None,
-                sum: None,
+                blocks: chain.blocks().clone(),
+                keys: Some(keys.clone()),
+                sum: Some(0),
                 action_type: None,
             },
         );
@@ -312,6 +326,137 @@ mod tests {
             .await
             .expect("Event should be handled");
     }
+
+    #[tokio::test]
+    async fn test_adds_block_for_existing_chain_event() {
+        let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let endorsee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let chain = get_genesis_chain(Some(bill.clone()));
+        let block = BillBlock::create_block_for_endorse(
+            "bill".to_string(),
+            chain.get_latest_block(),
+            &BillEndorseBlockData {
+                endorsee: endorsee.clone().into(),
+                // endorsed by payee
+                endorser: IdentityPublicData::new(get_baseline_identity().identity)
+                    .unwrap()
+                    .into(),
+                signatory: None,
+                signing_timestamp: 1000,
+                signing_address: empty_address(),
+            },
+            &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
+            Some(&BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap()),
+            &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
+            1000,
+        )
+        .unwrap();
+
+        let (notification_store, push_service, mut bill_chain_store, bill_store) = create_mocks();
+
+        let chain_clone = chain.clone();
+        bill_chain_store
+            .expect_get_chain()
+            .with(eq("bill"))
+            .times(1)
+            .returning(move |_| Ok(chain_clone.clone()));
+
+        bill_chain_store
+            .expect_add_block()
+            .with(eq("bill"), eq(block.clone()))
+            .times(1)
+            .returning(move |_, _| Ok(()));
+
+        let handler = BillChainEventHandler::new(
+            Arc::new(notification_store),
+            Arc::new(push_service),
+            Arc::new(bill_chain_store),
+            Arc::new(bill_store),
+        );
+        let event = Event::new(
+            EventType::Bill,
+            "node_id",
+            BillChainEventPayload {
+                bill_id: "bill".to_string(),
+                event_type: BillEventType::BillBlock,
+                blocks: vec![block.clone()],
+                keys: None,
+                sum: Some(0),
+                action_type: None,
+            },
+        );
+
+        handler
+            .handle_event(event.try_into().expect("Envelope from event"), "node_id")
+            .await
+            .expect("Event should be handled");
+    }
+
+    #[tokio::test]
+    async fn test_fails_to_add_block_for_unknown_chain() {
+        let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let endorsee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let chain = get_genesis_chain(Some(bill.clone()));
+
+        let block = BillBlock::create_block_for_endorse(
+            "bill".to_string(),
+            chain.get_latest_block(),
+            &BillEndorseBlockData {
+                endorsee: endorsee.clone().into(),
+                // endorsed by payee
+                endorser: IdentityPublicData::new(get_baseline_identity().identity)
+                    .unwrap()
+                    .into(),
+                signatory: None,
+                signing_timestamp: 1000,
+                signing_address: empty_address(),
+            },
+            &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
+            Some(&BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap()),
+            &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
+            1000,
+        )
+        .unwrap();
+
+        let (notification_store, push_service, mut bill_chain_store, bill_store) = create_mocks();
+
+        bill_chain_store
+            .expect_get_chain()
+            .with(eq("bill"))
+            .times(1)
+            .returning(move |_| Err(bcr_ebill_persistence::Error::NoBillBlock));
+
+        bill_chain_store.expect_add_block().never();
+
+        let handler = BillChainEventHandler::new(
+            Arc::new(notification_store),
+            Arc::new(push_service),
+            Arc::new(bill_chain_store),
+            Arc::new(bill_store),
+        );
+        let event = Event::new(
+            EventType::Bill,
+            "node_id",
+            BillChainEventPayload {
+                bill_id: "bill".to_string(),
+                event_type: BillEventType::BillBlock,
+                blocks: vec![block.clone()],
+                keys: None,
+                sum: Some(0),
+                action_type: None,
+            },
+        );
+
+        handler
+            .handle_event(event.try_into().expect("Envelope from event"), "node_id")
+            .await
+            .expect("Event should be handled");
+    }
+
     #[tokio::test]
     async fn test_creates_no_notification_for_non_action_event() {
         let (mut notification_store, mut push_service, bill_chain_store, bill_store) =
@@ -460,6 +605,13 @@ mod tests {
         }
     }
 
+    pub fn get_bill_keys() -> BillKeys {
+        BillKeys {
+            private_key: TEST_PRIVATE_KEY_SECP.to_owned(),
+            public_key: TEST_PUB_KEY_SECP.to_owned(),
+        }
+    }
+
     fn get_baseline_identity() -> IdentityWithAll {
         let keys = BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap();
         let mut identity = empty_identity();
@@ -518,6 +670,9 @@ mod tests {
 
     const TEST_PRIVATE_KEY_SECP: &str =
         "d1ff7427912d3b81743d3b67ffa1e65df2156d3dab257316cbc8d0f35eeeabe9";
+
+    pub const TEST_PUB_KEY_SECP: &str =
+        "02295fb5f4eeb2f21e01eaf3a2d9a3be10f39db870d28f02146130317973a40ac0";
 
     fn create_mocks() -> (
         MockNotificationStore,
