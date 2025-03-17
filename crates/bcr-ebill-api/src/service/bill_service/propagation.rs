@@ -78,42 +78,22 @@ impl BillService {
             }
             BillAction::RejectAcceptance => {
                 self.notification_service
-                    .send_request_to_action_rejected_event(
-                        &last_version_bill.id,
-                        Some(last_version_bill.sum),
-                        ActionType::AcceptBill,
-                        vec![],
-                    )
+                    .send_request_to_action_rejected_event(&chain_event, ActionType::AcceptBill)
                     .await?;
             }
             BillAction::RejectBuying => {
                 self.notification_service
-                    .send_request_to_action_rejected_event(
-                        &last_version_bill.id,
-                        Some(last_version_bill.sum),
-                        ActionType::BuyBill,
-                        vec![],
-                    )
+                    .send_request_to_action_rejected_event(&&chain_event, ActionType::BuyBill)
                     .await?;
             }
             BillAction::RejectPayment => {
                 self.notification_service
-                    .send_request_to_action_rejected_event(
-                        &last_version_bill.id,
-                        Some(last_version_bill.sum),
-                        ActionType::PayBill,
-                        vec![],
-                    )
+                    .send_request_to_action_rejected_event(&chain_event, ActionType::PayBill)
                     .await?;
             }
             BillAction::RejectPaymentForRecourse => {
                 self.notification_service
-                    .send_request_to_action_rejected_event(
-                        &last_version_bill.id,
-                        Some(last_version_bill.sum),
-                        ActionType::RecourseBill,
-                        vec![],
-                    )
+                    .send_request_to_action_rejected_event(&chain_event, ActionType::RecourseBill)
                     .await?;
             }
         };

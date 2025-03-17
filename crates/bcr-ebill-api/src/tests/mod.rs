@@ -241,10 +241,8 @@ pub mod tests {
             ) -> bcr_ebill_transport::Result<()>;
             async fn send_request_to_action_rejected_event(
                 &self,
-                bill_id: &str,
-                sum: Option<u64>,
+                event: &BillChainEvent,
                 rejected_action: ActionType,
-                recipients: Vec<IdentityPublicData>,
             ) -> bcr_ebill_transport::Result<()>;
             async fn send_request_to_action_timed_out_event(
                 &self,

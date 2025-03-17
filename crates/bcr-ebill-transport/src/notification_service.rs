@@ -77,10 +77,8 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
     /// * recipients: The list of recipients that should receive the notification
     async fn send_request_to_action_rejected_event(
         &self,
-        bill_id: &str,
-        sum: Option<u64>,
+        event: &BillChainEvent,
         rejected_action: ActionType,
-        recipients: Vec<IdentityPublicData>,
     ) -> Result<()>;
 
     /// In case a participant did not perform an action (e.g. request to accept, request
