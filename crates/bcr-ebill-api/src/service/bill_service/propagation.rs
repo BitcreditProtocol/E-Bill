@@ -43,12 +43,7 @@ impl BillService {
                     RecourseReason::Pay(_, _) => ActionType::PayBill,
                 };
                 self.notification_service
-                    .send_recourse_action_event(
-                        &last_version_bill.id,
-                        Some(last_version_bill.sum),
-                        action_type,
-                        recoursee,
-                    )
+                    .send_recourse_action_event(&chain_event, action_type, recoursee)
                     .await?;
             }
             BillAction::Recourse(recoursee, _, _) => {

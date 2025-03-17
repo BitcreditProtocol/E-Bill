@@ -2716,7 +2716,7 @@ pub mod tests {
         // Request to recourse event should be sent
         ctx.notification_service
             .expect_send_recourse_action_event()
-            .returning(|_, _, _, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service
@@ -2803,7 +2803,7 @@ pub mod tests {
         // Request to recourse event should be sent
         ctx.notification_service
             .expect_send_recourse_action_event()
-            .returning(|_, _, _, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service

@@ -106,10 +106,9 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
     /// * recipient: The recourse recipient that should perform the action
     async fn send_recourse_action_event(
         &self,
-        bill_id: &str,
-        sum: Option<u64>,
+        event: &BillChainEvent,
         action: ActionType,
-        recipient: &IdentityPublicData,
+        recoursee: &IdentityPublicData,
     ) -> Result<()>;
 
     /// Sent when: A bill is requested to be minted, Sent by: Holder
