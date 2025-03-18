@@ -10,6 +10,7 @@ document.getElementById("fetch_contact_file").addEventListener("click", fetchCon
 
 async function start() {
     let config = {
+        log_level: "info",
         bitcoin_network: "testnet",
         nostr_relay: "wss://bitcr-cloud-run-04-550030097098.europe-west1.run.app",
         surreal_db_connection: "indxdb://default",
@@ -112,6 +113,7 @@ let contactApi = apis.contactApi;
 let generalApi = apis.generalApi;
 let identityApi = apis.identityApi;
 let billApi = apis.billApi;
+window.billApi = billApi;
 let notificationTriggerApi = apis.notificationApi;
 
 async function uploadFile(event) {
@@ -184,6 +186,7 @@ async function triggerContact() {
 }
 
 async function triggerBill() {
+    let file_upload_id = document.getElementById("file_upload_id").value || undefined;
     let node_id = document.getElementById("node_id_bill").value;
     let identity = await identityApi.detail();
     let bill = await billApi.issue(
@@ -200,7 +203,7 @@ async function triggerBill() {
             country_of_payment: "UK",
             city_of_payment: "London",
             language: "en-UK",
-            file_upload_id: null
+            file_upload_ids: file_upload_id ? [file_upload_id] : [] 
         }
     );
     let bill_id = bill.id;

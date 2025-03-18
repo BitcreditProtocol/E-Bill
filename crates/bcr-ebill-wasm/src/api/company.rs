@@ -119,8 +119,12 @@ impl Company {
         let company_payload: CreateCompanyPayload = serde_wasm_bindgen::from_value(payload)?;
         let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
 
-        util::file::validate_file_upload_id(&company_payload.logo_file_upload_id)?;
-        util::file::validate_file_upload_id(&company_payload.proof_of_registration_file_upload_id)?;
+        util::file::validate_file_upload_id(company_payload.logo_file_upload_id.as_deref())?;
+        util::file::validate_file_upload_id(
+            company_payload
+                .proof_of_registration_file_upload_id
+                .as_deref(),
+        )?;
 
         let created_company = get_ctx()
             .company_service
@@ -148,8 +152,12 @@ impl Company {
         #[wasm_bindgen(unchecked_param_type = "EditCompanyPayload")] payload: JsValue,
     ) -> Result<()> {
         let company_payload: EditCompanyPayload = serde_wasm_bindgen::from_value(payload)?;
-        util::file::validate_file_upload_id(&company_payload.logo_file_upload_id)?;
-        util::file::validate_file_upload_id(&company_payload.proof_of_registration_file_upload_id)?;
+        util::file::validate_file_upload_id(company_payload.logo_file_upload_id.as_deref())?;
+        util::file::validate_file_upload_id(
+            company_payload
+                .proof_of_registration_file_upload_id
+                .as_deref(),
+        )?;
 
         if company_payload.name.is_none()
             && company_payload.email.is_none()

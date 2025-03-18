@@ -106,17 +106,13 @@ impl FileUploadServiceApi for FileUploadService {
     }
 
     async fn get_temp_file(&self, file_upload_id: &str) -> Result<Option<(String, Vec<u8>)>> {
-        let mut files = self
+        let file = self
             .file_upload_store
-            .read_temp_upload_files(file_upload_id)
+            .read_temp_upload_file(file_upload_id)
             .await
             .map_err(|_| crate::service::Error::NoFileForFileUploadId)?;
-        // return the first file in the folder
-        if !files.is_empty() {
-            let (file_name, file_bytes) = files.remove(0);
-            return Ok(Some((file_name, file_bytes)));
-        }
-        Ok(None)
+        let (file_name, file_bytes) = file;
+        return Ok(Some((file_name, file_bytes)));
     }
 }
 
@@ -346,12 +342,9 @@ mod tests {
     #[tokio::test]
     async fn get_temp_file_baseline() {
         let mut storage = MockFileUploadStoreApiMock::new();
-        storage.expect_read_temp_upload_files().returning(|_| {
-            Ok(vec![(
-                "some_file".to_string(),
-                "hello_world".as_bytes().to_vec(),
-            )])
-        });
+        storage
+            .expect_read_temp_upload_file()
+            .returning(|_| Ok(("some_file".to_string(), "hello_world".as_bytes().to_vec())));
         let service = get_service(storage);
 
         let res = service.get_temp_file("1234").await;
@@ -363,23 +356,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_temp_file_no_file() {
-        let mut storage = MockFileUploadStoreApiMock::new();
-        storage
-            .expect_read_temp_upload_files()
-            .returning(|_| Ok(vec![]));
-        let service = get_service(storage);
-
-        let res = service.get_temp_file("1234").await;
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), None);
-    }
-
-    #[tokio::test]
     async fn get_temp_file_err() {
         let mut storage = MockFileUploadStoreApiMock::new();
         storage
-            .expect_read_temp_upload_files()
+            .expect_read_temp_upload_file()
             .returning(|_| Err(persistence::Error::Io(std::io::Error::other("test error"))));
         let service = get_service(storage);
 

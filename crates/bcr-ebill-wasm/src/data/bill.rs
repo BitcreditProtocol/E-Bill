@@ -38,7 +38,7 @@ pub struct BitcreditBillPayload {
     pub country_of_payment: String,
     pub city_of_payment: String,
     pub language: String,
-    pub file_upload_id: Option<String>,
+    pub file_upload_ids: Vec<String>,
 }
 
 #[derive(Tsify, Debug, Clone, Serialize)]

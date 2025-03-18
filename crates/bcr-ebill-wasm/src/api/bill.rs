@@ -267,7 +267,7 @@ impl Bill {
                 bill_payload.country_of_payment.to_owned(),
                 bill_payload.city_of_payment.to_owned(),
                 bill_payload.language.to_owned(),
-                bill_payload.file_upload_id.to_owned(),
+                bill_payload.file_upload_ids.to_owned(),
                 drawer_public_data.clone(),
                 drawer_keys.clone(),
                 timestamp,

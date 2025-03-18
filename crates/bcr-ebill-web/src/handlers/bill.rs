@@ -7,7 +7,7 @@ use crate::data::{
     MintBitcreditBillPayload, OfferToSellBitcreditBillPayload, PastEndorseesResponse,
     RejectActionBillPayload, RequestRecourseForAcceptancePayload, RequestRecourseForPaymentPayload,
     RequestToAcceptBitcreditBillPayload, RequestToMintBitcreditBillPayload,
-    RequestToPayBitcreditBillPayload, SuccessResponse, TempFileWrapper, UploadBillFilesForm,
+    RequestToPayBitcreditBillPayload, SuccessResponse, TempFileWrapper, UploadFileForm,
     UploadFilesResponse,
 };
 use crate::service_context::ServiceContext;
@@ -326,40 +326,24 @@ pub async fn check_payment(
     Ok(Json(SuccessResponse::new()))
 }
 
-#[post("/upload_files", data = "<files_upload_form>")]
-pub async fn upload_files(
+#[post("/upload_file", data = "<file_upload_form>")]
+pub async fn upload_file(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
-    files_upload_form: Form<UploadBillFilesForm<'_>>,
+    file_upload_form: Form<UploadFileForm<'_>>,
 ) -> Result<Json<UploadFilesResponse>> {
-    if files_upload_form.files.is_empty() {
-        return Err(service::Error::Validation(String::from(
-            "File upload form has empty files field",
-        ))
-        .into());
-    }
+    let file = &file_upload_form.file;
+    let upload_file_handler: &dyn UploadFileHandler =
+        &TempFileWrapper(file) as &dyn UploadFileHandler;
 
-    let files: Vec<TempFileWrapper> = files_upload_form
-        .files
-        .iter()
-        .map(TempFileWrapper)
-        .collect();
-    let upload_file_handlers: Vec<&dyn UploadFileHandler> = files
-        .iter()
-        .map(|temp_file_wrapper| temp_file_wrapper as &dyn UploadFileHandler)
-        .collect();
-
-    // Validate Files
-    for file in &upload_file_handlers {
-        state
-            .file_upload_service
-            .validate_attached_file(*file)
-            .await?;
-    }
+    state
+        .file_upload_service
+        .validate_attached_file(upload_file_handler)
+        .await?;
 
     let file_upload_response = state
         .file_upload_service
-        .upload_files(upload_file_handlers)
+        .upload_files(vec![upload_file_handler])
         .await?;
 
     Ok(Json(file_upload_response.into_web()))
@@ -389,7 +373,7 @@ pub async fn issue_bill(
             bill_payload.country_of_payment.to_owned(),
             bill_payload.city_of_payment.to_owned(),
             bill_payload.language.to_owned(),
-            bill_payload.file_upload_id.to_owned(),
+            bill_payload.file_upload_ids.to_owned(),
             drawer_public_data.clone(),
             drawer_keys.clone(),
             timestamp,

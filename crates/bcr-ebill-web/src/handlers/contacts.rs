@@ -113,8 +113,8 @@ pub async fn new_contact(
 ) -> Result<Json<ContactWeb>> {
     let payload = new_contact_payload.0;
 
-    util::file::validate_file_upload_id(&payload.avatar_file_upload_id)?;
-    util::file::validate_file_upload_id(&payload.proof_document_file_upload_id)?;
+    util::file::validate_file_upload_id(payload.avatar_file_upload_id.as_deref())?;
+    util::file::validate_file_upload_id(payload.proof_document_file_upload_id.as_deref())?;
 
     let contact = state
         .contact_service
@@ -142,8 +142,8 @@ pub async fn edit_contact(
     edit_contact_payload: Json<EditContactPayload>,
 ) -> Result<Json<SuccessResponse>> {
     let payload = edit_contact_payload.0;
-    util::file::validate_file_upload_id(&payload.avatar_file_upload_id)?;
-    util::file::validate_file_upload_id(&payload.proof_document_file_upload_id)?;
+    util::file::validate_file_upload_id(payload.avatar_file_upload_id.as_deref())?;
+    util::file::validate_file_upload_id(payload.proof_document_file_upload_id.as_deref())?;
     state
         .contact_service
         .update_contact(

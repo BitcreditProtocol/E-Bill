@@ -112,8 +112,8 @@ pub async fn create(
     let payload = create_company_payload.0;
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
 
-    util::file::validate_file_upload_id(&payload.logo_file_upload_id)?;
-    util::file::validate_file_upload_id(&payload.proof_of_registration_file_upload_id)?;
+    util::file::validate_file_upload_id(payload.logo_file_upload_id.as_deref())?;
+    util::file::validate_file_upload_id(payload.proof_of_registration_file_upload_id.as_deref())?;
 
     let created_company = state
         .company_service
@@ -142,8 +142,8 @@ pub async fn edit(
 ) -> Result<Json<SuccessResponse>> {
     let payload = edit_company_payload.0;
 
-    util::file::validate_file_upload_id(&payload.logo_file_upload_id)?;
-    util::file::validate_file_upload_id(&payload.proof_of_registration_file_upload_id)?;
+    util::file::validate_file_upload_id(payload.logo_file_upload_id.as_deref())?;
+    util::file::validate_file_upload_id(payload.proof_of_registration_file_upload_id.as_deref())?;
 
     if payload.name.is_none()
         && payload.email.is_none()

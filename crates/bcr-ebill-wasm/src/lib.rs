@@ -21,6 +21,7 @@ mod job;
 #[derive(Tsify, Debug, Clone, Deserialize)]
 #[tsify(from_wasm_abi)]
 pub struct Config {
+    pub log_level: Option<log::Level>,
     pub bitcoin_network: String,
     pub nostr_relay: String,
     pub surreal_db_connection: String,
@@ -39,12 +40,14 @@ thread_local! {
 pub async fn initialize_api(
     #[wasm_bindgen(unchecked_param_type = "Config")] cfg: JsValue,
 ) -> Result<()> {
-    // init logging
-    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-    console_log::init_with_level(log::Level::Info).expect("can initialize logging");
-
     // init config and API
     let config: Config = serde_wasm_bindgen::from_value(cfg)?;
+
+    // init logging
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+    console_log::init_with_level(config.log_level.unwrap_or(log::Level::Info))
+        .expect("can initialize logging");
+    log::debug!("hi");
     let api_config = ApiConfig {
         bitcoin_network: config.bitcoin_network,
         nostr_relay: config.nostr_relay,

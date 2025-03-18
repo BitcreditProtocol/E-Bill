@@ -29,14 +29,14 @@ impl BillService {
         country_of_payment: String,
         city_of_payment: String,
         language: String,
-        file_upload_id: Option<String>,
+        file_upload_ids: Vec<String>,
         drawer_public_data: IdentityPublicData,
         drawer_keys: BcrKeys,
         timestamp: u64,
     ) -> Result<BitcreditBill> {
         let (sum, bill_type) = self.validate_bill_issue(
             &sum,
-            &file_upload_id,
+            &file_upload_ids,
             &issue_date,
             &maturity_date,
             &drawee,
@@ -112,23 +112,16 @@ impl BillService {
         self.store.save_keys(&bill_id, &bill_keys).await?;
 
         let mut bill_files: Vec<File> = vec![];
-        if let Some(ref upload_id) = file_upload_id {
-            let files = self
+        for file_upload_id in file_upload_ids.iter() {
+            let (file_name, file_bytes) = &self
                 .file_upload_store
-                .read_temp_upload_files(upload_id)
+                .read_temp_upload_file(file_upload_id)
                 .await
                 .map_err(|_| Error::NoFileForFileUploadId)?;
-            for (file_name, file_bytes) in files {
-                bill_files.push(
-                    self.encrypt_and_save_uploaded_file(
-                        &file_name,
-                        &file_bytes,
-                        &bill_id,
-                        &public_key,
-                    )
+            bill_files.push(
+                self.encrypt_and_save_uploaded_file(file_name, file_bytes, &bill_id, &public_key)
                     .await?,
-                );
-            }
+            );
         }
 
         let bill = BitcreditBill {
@@ -172,13 +165,16 @@ impl BillService {
         .await?;
 
         // clean up temporary file uploads, if there are any, logging any errors
-        if let Some(ref upload_id) = file_upload_id {
+        for file_upload_id in file_upload_ids.iter() {
             if let Err(e) = self
                 .file_upload_store
-                .remove_temp_upload_folder(upload_id)
+                .remove_temp_upload_folder(file_upload_id)
                 .await
             {
-                error!("Error while cleaning up temporary file uploads for {upload_id}: {e}");
+                error!(
+                    "Error while cleaning up temporary file uploads for {}: {e}",
+                    &file_upload_id
+                );
             }
         }
 
