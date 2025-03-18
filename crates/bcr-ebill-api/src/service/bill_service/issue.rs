@@ -113,14 +113,13 @@ impl BillService {
 
         let mut bill_files: Vec<File> = vec![];
         for file_upload_id in file_upload_ids.iter() {
-            let file = self
+            let (file_name, file_bytes) = &self
                 .file_upload_store
                 .read_temp_upload_file(file_upload_id)
                 .await
                 .map_err(|_| Error::NoFileForFileUploadId)?;
-            let (file_name, file_bytes) = file;
             bill_files.push(
-                self.encrypt_and_save_uploaded_file(&file_name, &file_bytes, &bill_id, &public_key)
+                self.encrypt_and_save_uploaded_file(file_name, file_bytes, &bill_id, &public_key)
                     .await?,
             );
         }

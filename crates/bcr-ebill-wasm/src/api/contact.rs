@@ -103,8 +103,10 @@ impl Contact {
         #[wasm_bindgen(unchecked_param_type = "NewContactPayload")] payload: JsValue,
     ) -> Result<JsValue> {
         let contact_payload: NewContactPayload = serde_wasm_bindgen::from_value(payload)?;
-        util::file::validate_file_upload_id(&contact_payload.avatar_file_upload_id)?;
-        util::file::validate_file_upload_id(&contact_payload.proof_document_file_upload_id)?;
+        util::file::validate_file_upload_id(contact_payload.avatar_file_upload_id.as_deref())?;
+        util::file::validate_file_upload_id(
+            contact_payload.proof_document_file_upload_id.as_deref(),
+        )?;
 
         let contact = get_ctx()
             .contact_service
@@ -132,8 +134,10 @@ impl Contact {
         #[wasm_bindgen(unchecked_param_type = "EditContactPayload")] payload: JsValue,
     ) -> Result<()> {
         let contact_payload: EditContactPayload = serde_wasm_bindgen::from_value(payload)?;
-        util::file::validate_file_upload_id(&contact_payload.avatar_file_upload_id)?;
-        util::file::validate_file_upload_id(&contact_payload.proof_document_file_upload_id)?;
+        util::file::validate_file_upload_id(contact_payload.avatar_file_upload_id.as_deref())?;
+        util::file::validate_file_upload_id(
+            contact_payload.proof_document_file_upload_id.as_deref(),
+        )?;
         get_ctx()
             .contact_service
             .update_contact(

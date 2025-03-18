@@ -91,12 +91,11 @@ impl IdentityService {
         public_key: &str,
     ) -> Result<Option<File>> {
         if let Some(upload_id) = upload_id {
-            let file = self
+            let (file_name, file_bytes) = &self
                 .file_upload_store
                 .read_temp_upload_file(upload_id)
                 .await
                 .map_err(|_| crate::service::Error::NoFileForFileUploadId)?;
-            let (file_name, file_bytes) = &file;
             let file = self
                 .encrypt_and_save_uploaded_file(file_name, file_bytes, id, public_key)
                 .await?;

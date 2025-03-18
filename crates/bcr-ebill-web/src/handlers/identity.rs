@@ -104,8 +104,8 @@ pub async fn create_identity(
     let identity = identity_payload.into_inner();
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
 
-    util::file::validate_file_upload_id(&identity.profile_picture_file_upload_id)?;
-    util::file::validate_file_upload_id(&identity.identity_document_file_upload_id)?;
+    util::file::validate_file_upload_id(identity.profile_picture_file_upload_id.as_deref())?;
+    util::file::validate_file_upload_id(identity.identity_document_file_upload_id.as_deref())?;
 
     state
         .identity_service
@@ -142,8 +142,12 @@ pub async fn change_identity(
 ) -> Result<Json<SuccessResponse>> {
     let identity_payload = identity_payload.into_inner();
 
-    util::file::validate_file_upload_id(&identity_payload.profile_picture_file_upload_id)?;
-    util::file::validate_file_upload_id(&identity_payload.identity_document_file_upload_id)?;
+    util::file::validate_file_upload_id(
+        identity_payload.profile_picture_file_upload_id.as_deref(),
+    )?;
+    util::file::validate_file_upload_id(
+        identity_payload.identity_document_file_upload_id.as_deref(),
+    )?;
 
     if identity_payload.name.is_none()
         && identity_payload.email.is_none()

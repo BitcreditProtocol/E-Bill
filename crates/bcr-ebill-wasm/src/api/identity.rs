@@ -104,8 +104,8 @@ impl Identity {
 
         let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
 
-        util::file::validate_file_upload_id(&identity.profile_picture_file_upload_id)?;
-        util::file::validate_file_upload_id(&identity.identity_document_file_upload_id)?;
+        util::file::validate_file_upload_id(identity.profile_picture_file_upload_id.as_deref())?;
+        util::file::validate_file_upload_id(identity.identity_document_file_upload_id.as_deref())?;
 
         get_ctx()
             .identity_service
@@ -133,8 +133,12 @@ impl Identity {
     ) -> Result<()> {
         let identity_payload: ChangeIdentityPayload = serde_wasm_bindgen::from_value(payload)?;
 
-        util::file::validate_file_upload_id(&identity_payload.profile_picture_file_upload_id)?;
-        util::file::validate_file_upload_id(&identity_payload.identity_document_file_upload_id)?;
+        util::file::validate_file_upload_id(
+            identity_payload.profile_picture_file_upload_id.as_deref(),
+        )?;
+        util::file::validate_file_upload_id(
+            identity_payload.identity_document_file_upload_id.as_deref(),
+        )?;
 
         if identity_payload.name.is_none()
             && identity_payload.email.is_none()

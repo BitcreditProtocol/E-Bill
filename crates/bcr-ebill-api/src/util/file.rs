@@ -23,7 +23,7 @@ pub trait UploadFileHandler: Send + Sync {
     async fn detect_content_type(&self) -> std::io::Result<Option<String>>;
 }
 
-pub fn validate_file_upload_id(file_upload_id: &Option<String>) -> crate::service::Result<()> {
+pub fn validate_file_upload_id(file_upload_id: Option<&str>) -> crate::service::Result<()> {
     if let Some(id) = file_upload_id {
         if id.is_empty() {
             return Err(crate::service::Error::Validation(
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn validate_file_upload_id_baseline() {
-        assert!(validate_file_upload_id(&Some(String::from(""))).is_err(),);
-        assert!(validate_file_upload_id(&Some(String::from("test"))).is_ok(),);
+        assert!(validate_file_upload_id(Some("")).is_err(),);
+        assert!(validate_file_upload_id(Some("test")).is_ok(),);
     }
 }
