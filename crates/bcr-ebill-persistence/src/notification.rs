@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 
 use super::Result;
@@ -9,6 +11,12 @@ pub trait NotificationStoreApi: Send + Sync {
     async fn add(&self, notification: Notification) -> Result<Notification>;
     /// Returns all currently active notifications from the database
     async fn list(&self, filter: NotificationFilter) -> Result<Vec<Notification>>;
+    /// Returns the latest active notifications for the given reference and notification type
+    async fn get_latest_by_references(
+        &self,
+        reference: &[String],
+        notification_type: NotificationType,
+    ) -> Result<HashMap<String, Notification>>;
     /// Returns the latest active notification for the given reference and notification type
     async fn get_latest_by_reference(
         &self,

@@ -9,6 +9,7 @@ use bcr_ebill_core::{
 use bcr_ebill_persistence::notification::NotificationFilter;
 #[cfg(test)]
 use mockall::automock;
+use std::collections::HashMap;
 
 #[cfg(test)]
 impl ServiceTraitBounds for MockNotificationServiceApi {}
@@ -134,6 +135,11 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
 
     /// Returns the active bill notification for the given bill id
     async fn get_active_bill_notification(&self, bill_id: &str) -> Option<Notification>;
+
+    async fn get_active_bill_notifications(
+        &self,
+        bill_ids: &[String],
+    ) -> HashMap<String, Notification>;
 
     /// Returns whether a notification was already sent for the given bill id and action
     async fn check_bill_notification_sent(

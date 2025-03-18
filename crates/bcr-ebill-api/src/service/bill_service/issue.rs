@@ -164,6 +164,17 @@ impl BillService {
         )
         .await?;
 
+        // Calculate bill and persist it to cache
+        self.recalculate_and_persist_bill(
+            &bill_id,
+            &chain,
+            &bill_keys,
+            &identity.identity,
+            &drawer_public_data.node_id,
+            timestamp,
+        )
+        .await?;
+
         // clean up temporary file uploads, if there are any, logging any errors
         for file_upload_id in file_upload_ids.iter() {
             if let Err(e) = self

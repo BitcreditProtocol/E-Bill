@@ -112,6 +112,7 @@ pub struct BillStatus {
 
 #[derive(Debug, Clone)]
 pub struct BillAcceptanceStatus {
+    pub time_of_request_to_accept: Option<u64>,
     pub requested_to_accept: bool,
     pub accepted: bool,
     pub request_to_accept_timed_out: bool,
@@ -120,6 +121,7 @@ pub struct BillAcceptanceStatus {
 
 #[derive(Debug, Clone)]
 pub struct BillPaymentStatus {
+    pub time_of_request_to_pay: Option<u64>,
     pub requested_to_pay: bool,
     pub paid: bool,
     pub request_to_pay_timed_out: bool,
@@ -128,6 +130,8 @@ pub struct BillPaymentStatus {
 
 #[derive(Debug, Clone)]
 pub struct BillSellStatus {
+    pub time_of_last_offer_to_sell: Option<u64>,
+    pub sold: bool,
     pub offered_to_sell: bool,
     pub offer_to_sell_timed_out: bool,
     pub rejected_offer_to_sell: bool,
@@ -135,6 +139,8 @@ pub struct BillSellStatus {
 
 #[derive(Debug, Clone)]
 pub struct BillRecourseStatus {
+    pub time_of_last_request_to_recourse: Option<u64>,
+    pub recoursed: bool,
     pub requested_to_recourse: bool,
     pub request_to_recourse_timed_out: bool,
     pub rejected_request_to_recourse: bool,

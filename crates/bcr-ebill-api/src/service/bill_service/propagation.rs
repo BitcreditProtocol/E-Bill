@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use super::{BillAction, Result, service::BillService};
 use bcr_ebill_core::{
     bill::{BillKeys, RecourseReason},
     blockchain::bill::BillBlockchain,
+    contact::Contact,
     identity::Identity,
     notification::ActionType,
 };
@@ -14,9 +17,10 @@ impl BillService {
         bill_keys: &BillKeys,
         bill_action: &BillAction,
         identity: &Identity,
+        contacts: &HashMap<String, Contact>,
     ) -> Result<()> {
         let last_version_bill = self
-            .get_last_version_bill(blockchain, bill_keys, identity)
+            .get_last_version_bill(blockchain, bill_keys, identity, contacts)
             .await?;
 
         let chain_event = BillChainEvent::new(&last_version_bill, blockchain, bill_keys, true)?;

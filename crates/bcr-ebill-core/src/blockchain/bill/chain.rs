@@ -136,7 +136,7 @@ impl BillBlockchain {
             // we only wait for payment, if the last block is a Request to Recourse block
             if last_block.id == last_version_block.id {
                 // if the deadline is up, we're not waiting for payment anymore
-                if self.check_if_deadline_has_passed(
+                if util::date::check_if_deadline_has_passed(
                     last_version_block.timestamp,
                     current_timestamp,
                     RECOURSE_DEADLINE_SECONDS,
@@ -173,7 +173,7 @@ impl BillBlockchain {
             // we only wait for payment, if the last block is an Offer to Sell block
             if last_block.id == last_version_block_offer_to_sell.id {
                 // if the deadline is up, we're not waiting for payment anymore
-                if self.check_if_deadline_has_passed(
+                if util::date::check_if_deadline_has_passed(
                     last_version_block_offer_to_sell.timestamp,
                     current_timestamp,
                     PAYMENT_DEADLINE_SECONDS,
@@ -193,29 +193,6 @@ impl BillBlockchain {
             }
         }
         Ok(OfferToSellWaitingForPayment::No)
-    }
-
-    /// This function checks if the payment deadline associated with the most recent sell block
-    /// has passed.
-    ///
-    /// # Returns
-    ///
-    /// - `true` if the payment deadline for the last sell block has passed.
-    /// - `false` if the deadline has not passed.
-    ///
-    pub fn check_if_deadline_has_passed(
-        &self,
-        block_timestamp: u64,
-        current_timestamp: u64,
-        deadline_seconds: u64,
-    ) -> bool {
-        // We check this to avoid a u64 underflow, if the block timestamp is in the future, the
-        // deadline can't be expired
-        if block_timestamp > current_timestamp {
-            return false;
-        }
-        let difference = current_timestamp - block_timestamp;
-        difference > deadline_seconds
     }
 
     /// This function extracts the first block's data, decrypts it using the private key

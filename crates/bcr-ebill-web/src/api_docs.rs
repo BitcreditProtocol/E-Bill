@@ -14,7 +14,6 @@ use utoipa::OpenApi;
         handlers::notifications::websocket,
         handlers::notifications::sse,
         handlers::bill::list,
-        handlers::bill::all_bills_from_all_identities,
         handlers::bill::list_light,
         handlers::bill::search,
         handlers::bill::bill_detail,

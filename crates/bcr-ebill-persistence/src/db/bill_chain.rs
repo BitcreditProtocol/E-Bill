@@ -66,7 +66,11 @@ impl BillChainStoreApi for SurrealBillChainStore {
             .query("SELECT * FROM type::table($table) WHERE bill_id = $bill_id ORDER BY block_id DESC LIMIT 1")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_BILL_ID, id.to_owned()))
-            .await?
+            .await
+            .map_err(|e| {
+                log::error!("Get Latest Bill Block: {e}");
+                e
+            })?
             .take(0)?;
 
         match result.first() {
@@ -95,7 +99,10 @@ impl BillChainStoreApi for SurrealBillChainStore {
                     "#,
                         CREATE_BLOCK_QUERY
                     );
-                    self.create_block(&query, entity).await?;
+                    self.create_block(&query, entity).await.map_err(|e| {
+                        log::error!("Create Bill Block: {e}");
+                        e
+                    })?;
                     Ok(())
                 } else {
                     return Err(Error::AddBillBlock(format!(
@@ -126,7 +133,10 @@ impl BillChainStoreApi for SurrealBillChainStore {
                 "#,
                     CREATE_BLOCK_QUERY
                 );
-                self.create_block(&query, entity).await?;
+                self.create_block(&query, entity).await.map_err(|e| {
+                    log::error!("Create Bill Block: {e}");
+                    e
+                })?;
                 Ok(())
             }
             Err(e) => Err(e),
@@ -141,7 +151,11 @@ impl BillChainStoreApi for SurrealBillChainStore {
             )
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_BILL_ID, id.to_owned()))
-            .await?
+            .await
+            .map_err(|e| {
+                log::error!("Get Bill Chain: {e}");
+                e
+            })?
             .take(0)?;
 
         let blocks: Vec<BillBlock> = result.into_iter().map(|b| b.into()).collect();

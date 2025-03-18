@@ -2,15 +2,24 @@ import * as wasm from '../pkg/index.js';
 
 document.getElementById("fileInput").addEventListener("change", uploadFile);
 document.getElementById("notif").addEventListener("click", triggerNotif);
-document.getElementById("nostrnotif").addEventListener("click", triggerNostrNotif);
 document.getElementById("contact_test").addEventListener("click", triggerContact);
-document.getElementById("bill_test").addEventListener("click", triggerBill);
 document.getElementById("fetch_temp").addEventListener("click", fetchTempFile);
 document.getElementById("fetch_contact_file").addEventListener("click", fetchContactFile);
+document.getElementById("switch_identity").addEventListener("click", switchIdentity);
+
+// bill actions
+document.getElementById("bill_fetch_detail").addEventListener("click", fetchBillDetail);
+document.getElementById("bill_fetch_endorsements").addEventListener("click", fetchBillEndorsements);
+document.getElementById("bill_fetch_past_endorsees").addEventListener("click", fetchBillPastEndorsees);
+document.getElementById("bill_fetch_bills").addEventListener("click", fetchBillBills);
+document.getElementById("bill_balances").addEventListener("click", fetchBillBalances);
+document.getElementById("bill_search").addEventListener("click", fetchBillSearch);
+document.getElementById("endorse_bill").addEventListener("click", endorseBill);
+document.getElementById("bill_test").addEventListener("click", triggerBill);
 
 async function start() {
     let config = {
-        log_level: "info",
+        log_level: "debug",
         bitcoin_network: "testnet",
         nostr_relay: "wss://bitcr-cloud-run-04-550030097098.europe-west1.run.app",
         surreal_db_connection: "indxdb://default",
@@ -45,8 +54,24 @@ async function start() {
                 address: "street 1",
             }
         });
+
         identity = await identityApi.detail();
+
+        // add self to contacts
+        await contactApi.create({
+            t: 0,
+            node_id: identity.node_id,
+            name: "Self Contact",
+            email: "selfcont@example.com",
+            postal_address: {
+                country: "AT",
+                city: "Vienna",
+                zip: "1020",
+                address: "street 1",
+            },
+        });
     }
+    document.getElementById("identity").innerHTML = identity.node_id;
 
 
     await notificationApi.subscribe((evt) => {
@@ -55,6 +80,7 @@ async function start() {
 
     let current_identity = await identityApi.active();
     console.log(current_identity);
+    document.getElementById("current_identity").innerHTML = current_identity.node_id;
 
     try {
         await identityApi.switch({ t: 1, node_id: "test" });
@@ -80,17 +106,27 @@ async function start() {
         await companyApi.edit({ id: company.id, email: "different@example.com", postal_address: {} });
         let detail = await companyApi.detail(company.id);
         console.log("company detail: ", detail);
+        // add company to contacts
+        await contactApi.create({
+            t: 1,
+            node_id: detail.id,
+            name: "Company Contact",
+            email: "comcont@example.com",
+            postal_address: {
+                country: "AT",
+                city: "Vienna",
+                zip: "1020",
+                address: "street 1",
+            },
+        });
+
         // await companyApi.add_signatory({ id: detail.id, signatory_node_id: contact_node_id });
         // let signatories = await companyApi.list_signatories(detail.id);
         // console.log("signatories: ", signatories);
         // await companyApi.remove_signatory({ id: detail.id, signatory_node_id: contact_node_id });
+    } else {
+        document.getElementById("companies").innerHTML = "node_id: " + companies.companies[0].id;
     }
-
-    // Bills
-    let light_bills = await billApi.list_light();
-    let bills = await billApi.list();
-    console.log("bills: ", bills.bills.length, light_bills, bills);
-
 
     // General
     let currencies = await generalApi.currencies();
@@ -98,9 +134,6 @@ async function start() {
 
     let status = await generalApi.status();
     console.log("status: ", status);
-
-    let overview = await generalApi.overview("sat");
-    console.log("overview: ", overview);
 
     // Notifications
     let notifications = await notificationApi.list();
@@ -210,11 +243,11 @@ async function triggerBill() {
     console.log("bill id: ", bill_id);
     let detail = await billApi.detail(bill_id);
     console.log("Bill Detail: ", detail);
-    console.log("requesting to pay..");
-    await billApi.request_to_pay({
-        bill_id,
-        currency: "sat",
-    });
+    // console.log("requesting to pay..");
+    // await billApi.request_to_pay({
+    //     bill_id,
+    //     currency: "sat",
+    // });
     detail = await billApi.detail(bill_id);
     console.log("Bill Detail: ", detail);
     let num_to_words = await billApi.numbers_to_words_for_sum(bill_id);
@@ -223,11 +256,6 @@ async function triggerBill() {
 
 async function triggerNotif() {
     await notificationTriggerApi.trigger_test_msg({ test: "Hello, World" });
-}
-
-async function triggerNostrNotif() {
-    let node_id = document.getElementById("node_id").value;
-    await notificationTriggerApi.trigger_test_notification(node_id);
 }
 
 async function fetchTempFile() {
@@ -255,3 +283,74 @@ async function fetchContactFile() {
     document.getElementById("attached_file").src = url;
 }
 
+async function switchIdentity() {
+    let node_id = document.getElementById("node_id_identity").value;
+    await identityApi.switch({ t: 1, node_id });
+    document.getElementById("current_identity").innerHTML = node_id;
+}
+
+async function endorseBill() {
+    let bill_id = document.getElementById("endorse_bill_id").value;
+    let endorsee = document.getElementById("endorsee_id").value;
+    let measured = measure(async () => {
+        return await billApi.endorse_bill({ bill_id, endorsee });
+    });
+    await measured();
+}
+
+async function fetchBillDetail() {
+    let measured = measure(async () => {
+        return await billApi.detail(document.getElementById("bill_id").value);
+    });
+    await measured();
+}
+
+async function fetchBillEndorsements() {
+    let measured = measure(async () => {
+        return await billApi.endorsements(document.getElementById("bill_id").value);
+    });
+    await measured();
+}
+
+async function fetchBillPastEndorsees() {
+    let measured = measure(async () => {
+        return await billApi.past_endorsees(document.getElementById("bill_id").value);
+    });
+    await measured();
+}
+
+async function fetchBillBills() {
+    let measured = measure(async () => {
+        return await billApi.list();
+    });
+    await measured();
+}
+
+async function fetchBillBalances() {
+    let measured = measure(async () => {
+        return await generalApi.overview("sat");
+    });
+    await measured();
+}
+
+async function fetchBillSearch() {
+    let measured = measure(async () => {
+        return await billApi.search({ filter: { currency: "sat", role: "All" } });
+    });
+    await measured();
+}
+
+function measure(promiseFunction) {
+    return async function(...args) {
+        const startTime = performance.now();
+        const result = await promiseFunction(...args);
+        const endTime = performance.now();
+        const exec_time = (endTime - startTime).toFixed(2);
+        console.log(`Execution time: ${exec_time} ms`);
+
+        document.getElementById("bill_execution_time").innerHTML = `${exec_time} ms`;
+        document.getElementById("bill_results").innerHTML = "<pre>" + JSON.stringify(result, null, 2) + "</pre>";
+
+        return result;
+    };
+}

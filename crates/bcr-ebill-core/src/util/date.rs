@@ -57,6 +57,20 @@ pub fn date_time_string_to_i64_timestamp(
     Some(datetime_utc.timestamp())
 }
 
+pub fn check_if_deadline_has_passed(
+    timestamp_to_check: u64,
+    current_timestamp: u64,
+    deadline_seconds: u64,
+) -> bool {
+    // We check this to avoid a u64 underflow, if the block timestamp is in the future, the
+    // deadline can't be expired
+    if timestamp_to_check > current_timestamp {
+        return false;
+    }
+    let difference = current_timestamp - timestamp_to_check;
+    difference > deadline_seconds
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::UNIX_EPOCH;

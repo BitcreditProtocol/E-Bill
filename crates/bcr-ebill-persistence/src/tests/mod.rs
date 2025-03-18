@@ -3,7 +3,10 @@
 pub mod tests {
     use bcr_ebill_core::{
         OptionalPostalAddress, PostalAddress,
-        bill::{BillKeys, BitcreditBill},
+        bill::{
+            BillAcceptanceStatus, BillData, BillKeys, BillParticipants, BillPaymentStatus,
+            BillRecourseStatus, BillSellStatus, BillStatus, BitcreditBill, BitcreditBillResult,
+        },
         contact::{ContactType, IdentityPublicData},
         identity::Identity,
     };
@@ -81,6 +84,67 @@ pub mod tests {
             country_of_payment: "".to_string(),
             language: "".to_string(),
             files: vec![],
+        }
+    }
+
+    pub fn cached_bill(id: String) -> BitcreditBillResult {
+        BitcreditBillResult {
+            id,
+            participants: BillParticipants {
+                drawee: identity_public_data_only_node_id("drawee".to_string()),
+                drawer: identity_public_data_only_node_id("drawer".to_string()),
+                payee: identity_public_data_only_node_id("payee".to_string()),
+                endorsee: None,
+                endorsements_count: 5,
+                all_participant_node_ids: vec![],
+            },
+            data: BillData {
+                language: "AT".to_string(),
+                time_of_drawing: 1731593928,
+                issue_date: "2024-05-01".to_string(),
+                time_of_maturity: 1731593928,
+                maturity_date: "2024-07-01".to_string(),
+                country_of_issuing: "AT".to_string(),
+                city_of_issuing: "Vienna".to_string(),
+                country_of_payment: "AT".to_string(),
+                city_of_payment: "Vienna".to_string(),
+                currency: "sat".to_string(),
+                sum: "15000".to_string(),
+                files: vec![],
+                active_notification: None,
+            },
+            status: BillStatus {
+                acceptance: BillAcceptanceStatus {
+                    time_of_request_to_accept: None,
+                    requested_to_accept: false,
+                    accepted: false,
+                    request_to_accept_timed_out: false,
+                    rejected_to_accept: false,
+                },
+                payment: BillPaymentStatus {
+                    time_of_request_to_pay: None,
+                    requested_to_pay: false,
+                    paid: false,
+                    request_to_pay_timed_out: false,
+                    rejected_to_pay: false,
+                },
+                sell: BillSellStatus {
+                    time_of_last_offer_to_sell: None,
+                    sold: false,
+                    offered_to_sell: false,
+                    offer_to_sell_timed_out: false,
+                    rejected_offer_to_sell: false,
+                },
+                recourse: BillRecourseStatus {
+                    time_of_last_request_to_recourse: None,
+                    recoursed: false,
+                    requested_to_recourse: false,
+                    request_to_recourse_timed_out: false,
+                    rejected_request_to_recourse: false,
+                },
+                redeemed_funds_available: false,
+            },
+            current_waiting_state: None,
         }
     }
 

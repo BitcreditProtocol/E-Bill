@@ -28,11 +28,11 @@ use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_core::constants::{
     ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS,
 };
+use bcr_ebill_core::contact::Contact;
 use bcr_ebill_core::notification::ActionType;
 use bcr_ebill_transport::NotificationServiceApi;
-use futures::future::try_join_all;
-use log::{error, info};
-use std::collections::HashSet;
+use log::{debug, error, info};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// The bill service is responsible for all bill-related logic and for syncing them with the
@@ -79,28 +79,58 @@ impl BillService {
         }
     }
 
+    /// Recalculates the full bill and updates it in the cache
+    pub(super) async fn recalculate_and_persist_bill(
+        &self,
+        bill_id: &str,
+        chain: &BillBlockchain,
+        bill_keys: &BillKeys,
+        local_identity: &Identity,
+        current_identity_node_id: &str,
+        current_timestamp: u64,
+    ) -> Result<()> {
+        let calculated_bill = self
+            .calculate_full_bill(
+                chain,
+                bill_keys,
+                local_identity,
+                current_identity_node_id,
+                current_timestamp,
+            )
+            .await?;
+        self.store
+            .save_bill_to_cache(bill_id, &calculated_bill)
+            .await?;
+        Ok(())
+    }
+
     /// If it's our identity, we take the fields from there, otherwise we check contacts,
     /// companies, or leave them empty
     pub(super) async fn extend_bill_chain_identity_data_from_contacts_or_identity(
         &self,
         chain_identity: BillIdentityBlockData,
         identity: &Identity,
+        contacts: &HashMap<String, Contact>,
     ) -> IdentityPublicData {
         let (email, nostr_relay) = match chain_identity.node_id {
             ref v if *v == identity.node_id => {
                 (Some(identity.email.clone()), identity.nostr_relay.clone())
             }
             ref other_node_id => {
-                if let Ok(Some(contact)) = self.contact_store.get(other_node_id).await {
+                if let Some(contact) = contacts.get(other_node_id) {
                     (
                         Some(contact.email.clone()),
                         contact.nostr_relays.first().cloned(),
                     )
-                } else if let Ok(company) = self.company_store.get(other_node_id).await {
-                    (
-                        Some(company.email.clone()),
-                        identity.nostr_relay.clone(), // if it's a local company, we take our relay
-                    )
+                } else if chain_identity.t == ContactType::Company {
+                    if let Ok(company) = self.company_store.get(other_node_id).await {
+                        (
+                            Some(company.email.clone()),
+                            identity.nostr_relay.clone(), // if it's a local company, we take our relay
+                        )
+                    } else {
+                        (None, None)
+                    }
                 } else {
                     (None, None)
                 }
@@ -120,6 +150,7 @@ impl BillService {
         let chain = self.blockchain_store.get_chain(bill_id).await?;
         let bill_keys = self.store.get_keys(bill_id).await?;
         let latest_ts = chain.get_latest_block().timestamp;
+        let contacts = self.contact_store.get_map().await?;
 
         if let Some(action) = match chain.get_latest_block().op_code {
             BillOpCode::RequestToPay | BillOpCode::OfferToSell
@@ -151,7 +182,7 @@ impl BillService {
                 let participants = chain.get_all_nodes_from_bill(&bill_keys)?;
                 let mut recipient_options = vec![current_identity];
                 let bill = self
-                    .get_last_version_bill(&chain, &bill_keys, &identity)
+                    .get_last_version_bill(&chain, &bill_keys, &identity, &contacts)
                     .await?;
 
                 for node_id in participants {
@@ -294,47 +325,63 @@ impl BillServiceApi for BillService {
         Ok(result)
     }
 
-    async fn get_bills_from_all_identities(&self) -> Result<Vec<BitcreditBillResult>> {
-        let bill_ids = self.store.get_ids().await?;
-        let identity = self.identity_store.get().await?;
-        let current_timestamp = util::date::now().timestamp() as u64;
-
-        let tasks = bill_ids.iter().map(|id| {
-            let identity_clone = identity.clone();
-            async move {
-                self.get_full_bill(
-                    id,
-                    &identity_clone,
-                    &identity_clone.node_id,
-                    current_timestamp,
-                )
-                .await
-            }
-        });
-        let bills = try_join_all(tasks).await?;
-
-        Ok(bills)
-    }
-
     async fn get_bills(&self, current_identity_node_id: &str) -> Result<Vec<BitcreditBillResult>> {
         let bill_ids = self.store.get_ids().await?;
         let identity = self.identity_store.get().await?;
         let current_timestamp = util::date::now().timestamp() as u64;
 
-        let tasks = bill_ids.iter().map(|id| {
-            let identity_clone = identity.clone();
-            async move {
-                self.get_full_bill(
-                    id,
-                    &identity_clone,
-                    current_identity_node_id,
-                    current_timestamp,
-                )
-                .await
-            }
-        });
-        let bills = try_join_all(tasks).await?;
+        // fetch contacts to get current contact data for participants
+        let contacts = self.contact_store.get_map().await?;
 
+        let mut bills = self.store.get_bills_from_cache(&bill_ids).await?;
+        // extend identities for cached bills
+        for bill in bills.iter_mut() {
+            self.extend_bill_identities_from_contacts_or_identity(bill, &identity, &contacts)
+                .await;
+
+            // check requests for being expired - if an active req to
+            // accept/pay/recourse/sell is expired, we need to recalculate the bill
+            if self.check_requests_for_expiration(bill, current_timestamp) {
+                debug!(
+                    "Bill cache hit, but needs to recalculate because of request deadline {} - recalculating",
+                    &bill.id
+                );
+                *bill = self
+                    .recalculate_and_cache_bill(
+                        &bill.id,
+                        &identity,
+                        current_identity_node_id,
+                        current_timestamp,
+                    )
+                    .await?;
+            }
+        }
+
+        for bill_id in bill_ids.iter() {
+            // if bill was not in cache - recalculate and cache it
+            if !bills.iter().any(|bill| *bill_id == bill.id) {
+                let calculated_bill = self
+                    .recalculate_and_cache_bill(
+                        bill_id,
+                        &identity,
+                        current_identity_node_id,
+                        current_timestamp,
+                    )
+                    .await?;
+                bills.push(calculated_bill);
+            }
+        }
+
+        // fetch active notifications for bills
+        let active_notifications = self
+            .notification_service
+            .get_active_bill_notifications(&bill_ids)
+            .await;
+        for bill in bills.iter_mut() {
+            bill.data.active_notification = active_notifications.get(&bill.id).cloned();
+        }
+
+        // only return bills where the current node id is a participant
         Ok(bills
             .into_iter()
             .filter(|b| {
@@ -380,9 +427,6 @@ impl BillServiceApi for BillService {
         current_identity_node_id: &str,
         current_timestamp: u64,
     ) -> Result<BitcreditBillResult> {
-        if !self.store.exists(bill_id).await {
-            return Err(Error::NotFound);
-        }
         let res = self
             .get_full_bill(
                 bill_id,
@@ -401,16 +445,6 @@ impl BillServiceApi for BillService {
             return Err(Error::NotFound);
         }
         Ok(res)
-    }
-
-    async fn get_bill(&self, bill_id: &str) -> Result<BitcreditBill> {
-        let chain = self.blockchain_store.get_chain(bill_id).await?;
-        let bill_keys = self.store.get_keys(bill_id).await?;
-        let identity = self.identity_store.get().await?;
-        let bill = self
-            .get_last_version_bill(&chain, &bill_keys, &identity)
-            .await?;
-        Ok(bill)
     }
 
     async fn get_bill_keys(&self, bill_id: &str) -> Result<BillKeys> {
@@ -504,10 +538,11 @@ impl BillServiceApi for BillService {
     ) -> Result<BillBlockchain> {
         // fetch data
         let identity = self.identity_store.get_full().await?;
+        let contacts = self.contact_store.get_map().await?;
         let mut blockchain = self.blockchain_store.get_chain(bill_id).await?;
         let bill_keys = self.store.get_keys(bill_id).await?;
         let bill = self
-            .get_last_version_bill(&blockchain, &bill_keys, &identity.identity)
+            .get_last_version_bill(&blockchain, &bill_keys, &identity.identity, &contacts)
             .await?;
 
         // validate
@@ -534,9 +569,26 @@ impl BillServiceApi for BillService {
         )
         .await?;
 
+        // Calculate bill and persist it to cache
+        self.recalculate_and_persist_bill(
+            bill_id,
+            &blockchain,
+            &bill_keys,
+            &identity.identity,
+            &signer_public_data.node_id,
+            timestamp,
+        )
+        .await?;
+
         // notify and propagate blocks
-        self.notify_for_block_action(&blockchain, &bill_keys, &bill_action, &identity.identity)
-            .await?;
+        self.notify_for_block_action(
+            &blockchain,
+            &bill_keys,
+            &bill_action,
+            &identity.identity,
+            &contacts,
+        )
+        .await?;
 
         Ok(blockchain)
     }

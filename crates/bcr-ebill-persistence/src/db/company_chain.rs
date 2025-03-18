@@ -68,7 +68,11 @@ impl CompanyChainStoreApi for SurrealCompanyChainStore {
             .query("SELECT * FROM type::table($table) WHERE company_id = $company_id ORDER BY block_id DESC LIMIT 1")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_COMPANY_ID, id.to_owned()))
-            .await?
+            .await
+            .map_err(|e| {
+                log::error!("Get Latest Company Block: {e}");
+                e
+            })?
             .take(0)?;
 
         match result.first() {
@@ -97,7 +101,10 @@ impl CompanyChainStoreApi for SurrealCompanyChainStore {
                     "#,
                         CREATE_BLOCK_QUERY
                     );
-                    self.create_block(&query, entity).await?;
+                    self.create_block(&query, entity).await.map_err(|e| {
+                        log::error!("Create Company Block: {e}");
+                        e
+                    })?;
                     Ok(())
                 } else {
                     return Err(Error::AddCompanyBlock(format!(
@@ -128,7 +135,10 @@ impl CompanyChainStoreApi for SurrealCompanyChainStore {
                 "#,
                     CREATE_BLOCK_QUERY
                 );
-                self.create_block(&query, entity).await?;
+                self.create_block(&query, entity).await.map_err(|e| {
+                    log::error!("Create Company Block: {e}");
+                    e
+                })?;
                 Ok(())
             }
             Err(e) => Err(e),
@@ -150,7 +160,11 @@ impl CompanyChainStoreApi for SurrealCompanyChainStore {
             .query("SELECT * FROM type::table($table) WHERE company_id = $company_id ORDER BY block_id ASC")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_COMPANY_ID, id.to_owned()))
-            .await?
+            .await
+            .map_err(|e| {
+                log::error!("Get Company Chain: {e}");
+                e
+            })?
             .take(0)?;
 
         let blocks: Vec<CompanyBlock> = result.into_iter().map(|b| b.into()).collect();

@@ -1,5 +1,7 @@
 # 0.3.1
 
+* Added a caching layer for bills, heavily improving performance
+* Added `error` logs for all errors returned from the API for the WASM version
 * Added `log_level` to Config, which defaults to `info`
 * Changed the API for uploading files to bill to use `file` instead of `files`.
 So files can only be uploaded individually, but for `issue()`, `file_upload_ids`
