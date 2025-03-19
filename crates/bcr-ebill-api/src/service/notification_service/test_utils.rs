@@ -10,12 +10,12 @@ use crate::{
     },
     util::BcrKeys,
 };
-use bcr_ebill_core::ServiceTraitBounds;
+use bcr_ebill_core::{ServiceTraitBounds, notification::BillEventType};
 use nostr_relay_builder::prelude::*;
 
-use super::{EventType, NostrConfig, nostr::NostrClient};
+use super::{NostrConfig, nostr::NostrClient};
 use bcr_ebill_transport::{
-    event::{Event, EventEnvelope},
+    event::{Event, EventEnvelope, EventType},
     handler::NotificationHandlerApi,
 };
 use serde::{Serialize, de::DeserializeOwned};
@@ -37,6 +37,7 @@ pub const NOSTR_NPUB2: &str = "npub1zax8v4hasewaxducdn89clqwmv4dp84r6vgpls5j5xg6
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct TestEventPayload {
+    pub event_type: BillEventType,
     pub foo: String,
     pub bar: u32,
 }
@@ -77,18 +78,19 @@ impl NotificationHandlerApi for TestEventHandler<TestEventPayload> {
     }
 }
 
-pub fn create_test_event_payload() -> TestEventPayload {
+pub fn create_test_event_payload(event_type: &BillEventType) -> TestEventPayload {
     TestEventPayload {
+        event_type: event_type.clone(),
         foo: "foo".to_string(),
         bar: 42,
     }
 }
 
-pub fn create_test_event(event_type: &EventType) -> Event<TestEventPayload> {
+pub fn create_test_event(event_type: &BillEventType) -> Event<TestEventPayload> {
     Event::new(
-        event_type.to_owned(),
+        EventType::Bill,
         "node_id",
-        create_test_event_payload(),
+        create_test_event_payload(event_type),
     )
 }
 

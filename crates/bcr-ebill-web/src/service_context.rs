@@ -100,7 +100,7 @@ pub async fn create_service_context(
     .await?;
 
     let bill_service = Arc::new(BillService::new(
-        db.bill_store,
+        db.bill_store.clone(),
         db.bill_blockchain_store.clone(),
         db.identity_store.clone(),
         db.file_upload_store.clone(),
@@ -135,6 +135,8 @@ pub async fn create_service_context(
         db.nostr_event_offset_store.clone(),
         db.notification_store.clone(),
         push_service.clone(),
+        db.bill_blockchain_store.clone(),
+        db.bill_store.clone(),
     )
     .await?;
 

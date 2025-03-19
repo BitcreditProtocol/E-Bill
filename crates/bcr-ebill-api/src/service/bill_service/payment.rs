@@ -2,16 +2,13 @@ use super::Result;
 use super::service::BillService;
 use crate::service::bill_service::{BillAction, BillServiceApi};
 use bcr_ebill_core::{
-    blockchain::{
-        Blockchain,
-        bill::{OfferToSellWaitingForPayment, RecourseWaitingForPayment},
-    },
+    blockchain::bill::{OfferToSellWaitingForPayment, RecourseWaitingForPayment},
     company::{Company, CompanyKeys},
     contact::IdentityPublicData,
     identity::{Identity, IdentityWithAll},
     util::BcrKeys,
 };
-use log::{error, info};
+use log::info;
 use std::collections::HashMap;
 
 impl BillService {
@@ -74,7 +71,7 @@ impl BillService {
                         if let Some(signer_identity) =
                             IdentityPublicData::new(identity.identity.clone())
                         {
-                            let chain = self
+                            let _ = self
                                 .execute_bill_action(
                                     bill_id,
                                     BillAction::Recourse(
@@ -88,23 +85,6 @@ impl BillService {
                                     now,
                                 )
                                 .await?;
-
-                            if let Err(e) = self
-                                .propagate_block(bill_id, chain.get_latest_block())
-                                .await
-                            {
-                                error!("Error propagating block: {e}");
-                            }
-
-                            if let Err(e) = self
-                                .propagate_bill_for_node_id(
-                                    bill_id,
-                                    &payment_info.recoursee.node_id,
-                                )
-                                .await
-                            {
-                                error!("Error propagating bill for node_id: {e}");
-                            }
                         }
                         return Ok(()); // return early
                     }
@@ -121,7 +101,7 @@ impl BillService {
                             .iter()
                             .any(|s| s == &identity.identity.node_id)
                         {
-                            let chain = self
+                            let _ = self
                                 .execute_bill_action(
                                     bill_id,
                                     BillAction::Recourse(self.extend_bill_chain_identity_data_from_contacts_or_identity(
@@ -136,23 +116,6 @@ impl BillService {
                                     now,
                                 )
                                 .await?;
-
-                            if let Err(e) = self
-                                .propagate_block(bill_id, chain.get_latest_block())
-                                .await
-                            {
-                                error!("Error propagating block: {e}");
-                            }
-
-                            if let Err(e) = self
-                                .propagate_bill_for_node_id(
-                                    bill_id,
-                                    &payment_info.recoursee.node_id,
-                                )
-                                .await
-                            {
-                                error!("Error propagating bill for node_id: {e}");
-                            }
                         }
                     }
                 }
@@ -185,7 +148,7 @@ impl BillService {
                         if let Some(signer_identity) =
                             IdentityPublicData::new(identity.identity.clone())
                         {
-                            let chain = self
+                            let _ = self
                                 .execute_bill_action(
                                     bill_id,
                                     BillAction::Sell(
@@ -202,20 +165,6 @@ impl BillService {
                                     now,
                                 )
                                 .await?;
-
-                            if let Err(e) = self
-                                .propagate_block(bill_id, chain.get_latest_block())
-                                .await
-                            {
-                                error!("Error propagating block: {e}");
-                            }
-
-                            if let Err(e) = self
-                                .propagate_bill_for_node_id(bill_id, &payment_info.buyer.node_id)
-                                .await
-                            {
-                                error!("Error propagating bill for node_id: {e}");
-                            }
                         }
                         return Ok(()); // return early
                     }
@@ -231,7 +180,7 @@ impl BillService {
                             .iter()
                             .any(|s| s == &identity.identity.node_id)
                         {
-                            let chain = self
+                            let _ = self
                                 .execute_bill_action(
                                     bill_id,
                                     BillAction::Sell(
@@ -250,20 +199,6 @@ impl BillService {
                                     now,
                                 )
                                 .await?;
-
-                            if let Err(e) = self
-                                .propagate_block(bill_id, chain.get_latest_block())
-                                .await
-                            {
-                                error!("Error propagating block: {e}");
-                            }
-
-                            if let Err(e) = self
-                                .propagate_bill_for_node_id(bill_id, &payment_info.buyer.node_id)
-                                .await
-                            {
-                                error!("Error propagating bill for node_id: {e}");
-                            }
                         }
                     }
                 }

@@ -2173,7 +2173,7 @@ pub mod tests {
         // Request to sell event should be sent
         ctx.notification_service
             .expect_send_offer_to_sell_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service
@@ -2258,7 +2258,7 @@ pub mod tests {
         // Request to sell event should be sent
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -2318,7 +2318,7 @@ pub mod tests {
         // Sold event should be sent
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -2351,7 +2351,7 @@ pub mod tests {
         // Request to sell event should be sent
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service
@@ -2579,7 +2579,7 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -2625,7 +2625,7 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_bill_is_sold_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service.check_bills_offer_to_sell_payment().await;
@@ -3227,8 +3227,8 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_request_to_action_rejected_event()
-            .with(eq("1234"), always(), eq(ActionType::AcceptBill), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(ActionType::AcceptBill))
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
         let res = service
@@ -3271,8 +3271,8 @@ pub mod tests {
 
         ctx.notification_service
             .expect_send_request_to_action_rejected_event()
-            .with(eq("1234"), always(), eq(ActionType::BuyBill), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(ActionType::BuyBill))
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service
@@ -3328,8 +3328,8 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_request_to_action_rejected_event()
-            .with(eq("1234"), always(), eq(ActionType::PayBill), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(ActionType::PayBill))
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service
@@ -3388,8 +3388,8 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_request_to_action_rejected_event()
-            .with(eq("1234"), always(), eq(ActionType::RecourseBill), always())
-            .returning(|_, _, _, _| Ok(()));
+            .with(always(), eq(ActionType::RecourseBill))
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -3449,7 +3449,7 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_bill_recourse_paid_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -3513,7 +3513,7 @@ pub mod tests {
             });
         ctx.notification_service
             .expect_send_bill_recourse_paid_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service.check_bills_in_recourse_payment().await;
@@ -3588,7 +3588,7 @@ pub mod tests {
         // Request to recourse event should be sent
         ctx.notification_service
             .expect_send_recourse_action_event()
-            .returning(|_, _, _, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service
@@ -3675,7 +3675,7 @@ pub mod tests {
         // Request to recourse event should be sent
         ctx.notification_service
             .expect_send_recourse_action_event()
-            .returning(|_, _, _, _| Ok(()));
+            .returning(|_, _, _| Ok(()));
         let service = get_service(ctx);
 
         let res = service
@@ -3737,7 +3737,7 @@ pub mod tests {
         // Recourse paid event should be sent
         ctx.notification_service
             .expect_send_bill_recourse_paid_event()
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 

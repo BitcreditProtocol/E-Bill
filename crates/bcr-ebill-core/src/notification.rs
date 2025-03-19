@@ -52,7 +52,7 @@ impl Notification {
 }
 
 /// The type/topic of a notification we show to the user
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum NotificationType {
     General,
     Bill,
@@ -79,9 +79,9 @@ pub enum ActionType {
 /// For now we only have Bill events and this needs some clippy
 /// exceptions here. As soon as we have other event topics, we can
 /// add new types here and remove the clippy exceptions.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 #[allow(clippy::enum_variant_names, dead_code)]
-pub enum EventType {
+pub enum BillEventType {
     BillSigned,
     BillAccepted,
     BillAcceptanceRequested,
@@ -103,10 +103,11 @@ pub enum EventType {
     BillMintingRequested,
     BillNewQuote,
     BillQuoteApproved,
+    #[default]
     BillBlock,
 }
 
-impl EventType {
+impl BillEventType {
     pub fn all() -> Vec<Self> {
         vec![
             Self::BillSigned,
@@ -142,33 +143,33 @@ impl EventType {
 impl ActionType {
     /// Return a corresponding rejected event type for the action type
     /// if the action has a rejected event type. If not, return None.
-    pub fn get_rejected_event_type(&self) -> Option<EventType> {
+    pub fn get_rejected_event_type(&self) -> Option<BillEventType> {
         match self {
-            Self::AcceptBill => Some(EventType::BillAcceptanceRejected),
-            Self::PayBill => Some(EventType::BillPaymentRejected),
-            Self::BuyBill => Some(EventType::BillBuyingRejected),
-            Self::RecourseBill => Some(EventType::BillRecourseRejected),
+            Self::AcceptBill => Some(BillEventType::BillAcceptanceRejected),
+            Self::PayBill => Some(BillEventType::BillPaymentRejected),
+            Self::BuyBill => Some(BillEventType::BillBuyingRejected),
+            Self::RecourseBill => Some(BillEventType::BillRecourseRejected),
             _ => None,
         }
     }
 
     /// Return a corresponding timeout event type for the action type
     /// if the action has a timeout event type. If not, return None.
-    pub fn get_timeout_event_type(&self) -> Option<EventType> {
+    pub fn get_timeout_event_type(&self) -> Option<BillEventType> {
         match self {
-            Self::AcceptBill => Some(EventType::BillAcceptanceTimeout),
-            Self::PayBill => Some(EventType::BillPaymentTimeout),
-            Self::RecourseBill => Some(EventType::BillRecourseTimeout),
+            Self::AcceptBill => Some(BillEventType::BillAcceptanceTimeout),
+            Self::PayBill => Some(BillEventType::BillPaymentTimeout),
+            Self::RecourseBill => Some(BillEventType::BillRecourseTimeout),
             _ => None,
         }
     }
 
     // Return a corresponding recourse event type for the action type
     // if the action has a recourse event type. If not, return None.
-    pub fn get_recourse_event_type(&self) -> Option<EventType> {
+    pub fn get_recourse_event_type(&self) -> Option<BillEventType> {
         match self {
-            Self::AcceptBill => Some(EventType::BillAcceptanceRecourse),
-            Self::PayBill => Some(EventType::BillPaymentRecourse),
+            Self::AcceptBill => Some(BillEventType::BillAcceptanceRecourse),
+            Self::PayBill => Some(BillEventType::BillPaymentRecourse),
             _ => None,
         }
     }

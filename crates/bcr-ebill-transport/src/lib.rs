@@ -25,7 +25,7 @@ pub enum Error {
 
     /// Errors that are related to a blockchain
     #[error("BlockChain error: {0}")]
-    BlockChain(String),
+    Blockchain(String),
 
     /// Errors that are related to crypto (keys, encryption, etc.)
     #[error("Crypto error: {0}")]
@@ -41,9 +41,9 @@ impl From<serde_json::Error> for Error {
     }
 }
 
-pub use event::bill_events::{BillActionEventPayload, BillChainEventPayload};
+pub use event::bill_events::BillChainEventPayload;
 pub use event::chain_event::BillChainEvent;
-pub use event::{Event, EventEnvelope};
+pub use event::{Event, EventEnvelope, EventType};
 pub use notification_service::NotificationServiceApi;
 pub use push_notification::{PushApi, PushService};
 pub use transport::NotificationJsonTransportApi;

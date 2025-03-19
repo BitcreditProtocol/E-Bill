@@ -178,24 +178,13 @@ impl BillService {
             }
         }
 
-        // send notification to all required recipients
-        self.notification_service
-            .send_bill_is_signed_event(&BillChainEvent::new(&bill, &chain, &bill_keys)?)
-            .await?;
-
-        // propagate the bill
-        let bill_clone = bill.clone();
-        let self_clone = self.clone();
-        if let Err(e) = self_clone
-            .propagate_bill_and_subscribe(
-                &bill_clone.id,
-                &bill_clone.drawer.node_id,
-                &bill_clone.drawee.node_id,
-                &bill_clone.payee.node_id,
-            )
+        // send notification and blocks to all required recipients
+        if let Err(e) = self
+            .notification_service
+            .send_bill_is_signed_event(&BillChainEvent::new(&bill, &chain, &bill_keys, true)?)
             .await
         {
-            error!("Error propagating and subscribing to bill: {e}");
+            error!("Error propagating bill via Nostr {e}");
         }
 
         // If we're the drawee, we immediately accept the bill with timestamp increased by 1 sec
