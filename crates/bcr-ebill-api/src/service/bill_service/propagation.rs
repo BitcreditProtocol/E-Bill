@@ -1,7 +1,7 @@
 use super::{BillAction, Result, service::BillService};
 use bcr_ebill_core::{
     bill::{BillKeys, RecourseReason},
-    blockchain::bill::{BillBlock, BillBlockchain},
+    blockchain::bill::BillBlockchain,
     identity::Identity,
     notification::ActionType,
 };
@@ -92,33 +92,6 @@ impl BillService {
                     .await?;
             }
         };
-        Ok(())
-    }
-
-    pub(super) async fn propagate_block(&self, _bill_id: &str, _block: &BillBlock) -> Result<()> {
-        // TODO NOSTR: propagate new block to bill topic
-        Ok(())
-    }
-
-    pub(super) async fn propagate_bill_for_node_id(
-        &self,
-        _bill_id: &str,
-        _node_id: &str,
-    ) -> Result<()> {
-        // TODO NOSTR: propagate bill to given node
-        Ok(())
-    }
-
-    pub(super) async fn propagate_bill_and_subscribe(
-        &self,
-        _bill_id: &str,
-        _drawer_node_id: &str,
-        _drawee_node_id: &str,
-        _payee_node_id: &str,
-    ) -> Result<()> {
-        // TODO NOSTR: propagate bill to participants
-        // TODO NOSTR: subscribe to bill topic
-        // TODO NOSTR: propagate data and uploaded files metadata
         Ok(())
     }
 }

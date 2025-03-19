@@ -113,11 +113,10 @@ impl BillChainEventHandler {
     async fn add_bill_blocks(&self, bill_id: &str, blocks: Vec<BillBlock>) -> Result<()> {
         if let Ok(mut chain) = self.bill_blockchain_store.get_chain(bill_id).await {
             for block in blocks {
-                chain.try_add_block(block.clone());
-                if !chain.is_chain_valid() {
-                    error!("Received block is not valid for bill {bill_id}");
-                    return Err(Error::BlockChain(
-                        "Received bill block is not valid".to_string(),
+                if !chain.try_add_block(block.clone()) {
+                    error!("Received invalid block for bill {bill_id}");
+                    return Err(Error::Blockchain(
+                        "Received invalid block for bill".to_string(),
                     ));
                 }
                 self.save_block(bill_id, &block).await?
@@ -125,7 +124,7 @@ impl BillChainEventHandler {
             Ok(())
         } else {
             error!("Failed to get chain for received bill block {bill_id}");
-            Err(Error::BlockChain(
+            Err(Error::Blockchain(
                 "Failed to get chain for bill".to_string(),
             ))
         }
@@ -160,7 +159,7 @@ impl BillChainEventHandler {
             },
             _ => {
                 error!("Newly received chain is not valid");
-                Err(Error::BlockChain(
+                Err(Error::Blockchain(
                     "Newly received chain is not valid".to_string(),
                 ))
             }
@@ -224,27 +223,27 @@ impl NotificationHandlerApi for BillChainEventHandler {
 // generates a human readable description for an event
 fn event_description(event_type: &BillEventType) -> String {
     match event_type {
-        BillEventType::BillSigned => "Bill has been signed".to_string(),
-        BillEventType::BillAccepted => "Bill has been accepted".to_string(),
-        BillEventType::BillAcceptanceRequested => "Bill should be accepted".to_string(),
-        BillEventType::BillAcceptanceRejected => "Bill acceptance has been rejected".to_string(),
-        BillEventType::BillAcceptanceTimeout => "Bill acceptance has taken too long".to_string(),
-        BillEventType::BillAcceptanceRecourse => "Bill in recourse should be accepted".to_string(),
-        BillEventType::BillPaymentRequested => "Bill should be paid".to_string(),
-        BillEventType::BillPaymentRejected => "Bill payment has been rejected".to_string(),
-        BillEventType::BillPaymentTimeout => "Bill payment has taken too long".to_string(),
-        BillEventType::BillPaymentRecourse => "Bill in recourse should be paid".to_string(),
-        BillEventType::BillRecourseRejected => "Bill recourse has been rejected".to_string(),
-        BillEventType::BillRecourseTimeout => "Bill recourse has taken too long".to_string(),
-        BillEventType::BillSellOffered => "Bill should be sold".to_string(),
-        BillEventType::BillBuyingRejected => "Bill buying has been rejected".to_string(),
-        BillEventType::BillPaid => "Bill has been paid".to_string(),
-        BillEventType::BillRecoursePaid => "Bill recourse has been paid".to_string(),
-        BillEventType::BillEndorsed => "Bill has been endorsed".to_string(),
-        BillEventType::BillSold => "Bill has been sold".to_string(),
-        BillEventType::BillMintingRequested => "Bill should be minted".to_string(),
-        BillEventType::BillNewQuote => "New quote has been added".to_string(),
-        BillEventType::BillQuoteApproved => "Quote has been approved".to_string(),
+        BillEventType::BillSigned => "bill_signed".to_string(),
+        BillEventType::BillAccepted => "bill_accepted".to_string(),
+        BillEventType::BillAcceptanceRequested => "bill_should_be_accepted".to_string(),
+        BillEventType::BillAcceptanceRejected => "bill_acceptance_rejected".to_string(),
+        BillEventType::BillAcceptanceTimeout => "bill_acceptance_timed_out".to_string(),
+        BillEventType::BillAcceptanceRecourse => "bill_recourse_acceptance_required".to_string(),
+        BillEventType::BillPaymentRequested => "bill_payment_required".to_string(),
+        BillEventType::BillPaymentRejected => "bill_payment_rejected".to_string(),
+        BillEventType::BillPaymentTimeout => "bill_payment_timed_out".to_string(),
+        BillEventType::BillPaymentRecourse => "bill_recourse_payment_required".to_string(),
+        BillEventType::BillRecourseRejected => "Bill_recourse_rejected".to_string(),
+        BillEventType::BillRecourseTimeout => "Bill_recourse_timed_out".to_string(),
+        BillEventType::BillSellOffered => "bill_request_to_buy".to_string(),
+        BillEventType::BillBuyingRejected => "bill_buying_rejected".to_string(),
+        BillEventType::BillPaid => "bill_paid".to_string(),
+        BillEventType::BillRecoursePaid => "bill_recourse_paid".to_string(),
+        BillEventType::BillEndorsed => "bill_endorsed".to_string(),
+        BillEventType::BillSold => "bill_sold".to_string(),
+        BillEventType::BillMintingRequested => "bill_minted".to_string(),
+        BillEventType::BillNewQuote => "new_quote".to_string(),
+        BillEventType::BillQuoteApproved => "quote_approved".to_string(),
         BillEventType::BillBlock => "".to_string(),
     }
 }

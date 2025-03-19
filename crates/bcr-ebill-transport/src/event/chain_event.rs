@@ -23,7 +23,9 @@ pub struct BillChainEvent {
 }
 
 impl BillChainEvent {
-    /// Create a new BillChainEvent instance.
+    /// Create a new BillChainEvent instance. New blocks indicate whether the given chain contains
+    /// new blocks for the bill. If new_blocks is false events will be populated without a block
+    /// and keys.
     pub fn new(
         bill: &BitcreditBill,
         chain: &BillBlockchain,
@@ -34,7 +36,7 @@ impl BillChainEvent {
             .get_all_nodes_with_added_block_height(bill_keys)
             .map_err(|e| {
                 error!("Failed to get participants from blockchain: {}", e);
-                Error::BlockChain(
+                Error::Blockchain(
                     "Failed to get participants from blockchain when creating a new chain event"
                         .to_string(),
                 )

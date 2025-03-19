@@ -25,7 +25,7 @@ pub enum Error {
 
     /// Errors that are related to a blockchain
     #[error("BlockChain error: {0}")]
-    BlockChain(String),
+    Blockchain(String),
 
     /// Errors that are related to crypto (keys, encryption, etc.)
     #[error("Crypto error: {0}")]

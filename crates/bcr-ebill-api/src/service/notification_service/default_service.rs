@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bcr_ebill_transport::{BillChainEvent, BillChainEventPayload, Error, Event};
-use log::error;
+use log::{error, warn};
 
 use super::NotificationJsonTransportApi;
 use super::{NotificationServiceApi, Result};
@@ -37,6 +37,11 @@ impl DefaultNotificationService {
                 self.notification_transport
                     .send(&identity, event_to_process.try_into()?)
                     .await?;
+            } else {
+                warn!(
+                    "Failed to find recipient in contacts for node_id: {}",
+                    event_to_process.node_id
+                );
             }
         }
         Ok(())
@@ -754,11 +759,6 @@ mod tests {
             .withf(|_, e| check_chain_payload(e, BillEventType::BillBlock))
             .returning(|_, _| Ok(()))
             .times(2);
-
-        // mock.expect_send()
-        //     .withf(|_, e| check_chain_payload(e, BillEventType::BillBlock))
-        //     .returning(|_, _| Ok(()))
-        //     .times(1);
 
         let service = DefaultNotificationService {
             notification_transport: Box::new(mock),

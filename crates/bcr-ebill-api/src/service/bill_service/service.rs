@@ -534,56 +534,9 @@ impl BillServiceApi for BillService {
         )
         .await?;
 
-        // notify
+        // notify and propagate blocks
         self.notify_for_block_action(&blockchain, &bill_keys, &bill_action, &identity.identity)
             .await?;
-
-        // propagate
-        let self_clone = self.clone();
-        let latest_block = blockchain.get_latest_block().clone();
-        let bill_id_clone = bill_id.to_owned();
-        if let Err(e) = self_clone
-            .propagate_block(&bill_id_clone, &latest_block)
-            .await
-        {
-            error!("Error propagating block: {e}");
-        }
-
-        match bill_action {
-            BillAction::Endorse(endorsee) => {
-                if let Err(e) = self_clone
-                    .propagate_bill_for_node_id(&bill_id_clone, &endorsee.node_id)
-                    .await
-                {
-                    error!("Error propagating bill for node_id: {e}");
-                }
-            }
-            BillAction::Sell(buyer, _, _, _) => {
-                if let Err(e) = self_clone
-                    .propagate_bill_for_node_id(&bill_id_clone, &buyer.node_id)
-                    .await
-                {
-                    error!("Error propagating bill for node_id: {e}");
-                }
-            }
-            BillAction::Mint(mint, _, _) => {
-                if let Err(e) = self_clone
-                    .propagate_bill_for_node_id(&bill_id_clone, &mint.node_id)
-                    .await
-                {
-                    error!("Error propagating bill for node_id: {e}");
-                }
-            }
-            BillAction::Recourse(recoursee, _, _) => {
-                if let Err(e) = self_clone
-                    .propagate_bill_for_node_id(&bill_id_clone, &recoursee.node_id)
-                    .await
-                {
-                    error!("Error propagating bill for node_id: {e}");
-                }
-            }
-            _ => (),
-        };
 
         Ok(blockchain)
     }
