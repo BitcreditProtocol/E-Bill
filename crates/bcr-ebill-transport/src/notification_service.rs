@@ -150,4 +150,7 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
         block_height: i32,
         action: ActionType,
     ) -> Result<()>;
+
+    /// Retry sending a queued message to the given node id
+    async fn send_retry_messages(&self) -> Result<()>;
 }

@@ -291,6 +291,7 @@ pub mod tests {
                 block_height: i32,
                 action: ActionType,
             ) -> bcr_ebill_transport::Result<()>;
+            async fn send_retry_messages(&self) -> bcr_ebill_transport::Result<()>;
         }
     }
 

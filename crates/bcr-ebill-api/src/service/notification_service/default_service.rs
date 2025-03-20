@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bcr_ebill_persistence::nostr::{NostrQueuedMessage, NostrQueuedMessageStoreApi};
-use bcr_ebill_transport::{BillChainEvent, BillChainEventPayload, Error, Event};
+use bcr_ebill_transport::{BillChainEvent, BillChainEventPayload, Error, Event, EventEnvelope};
 use log::{error, warn};
 
 use super::NotificationJsonTransportApi;
@@ -83,6 +83,13 @@ impl DefaultNotificationService {
                     event_to_process.node_id
                 );
             }
+        }
+        Ok(())
+    }
+
+    async fn send_retry_message(&self, node_id: &str, message: EventEnvelope) -> Result<()> {
+        if let Ok(Some(identity)) = self.contact_service.get_identity_by_node_id(node_id).await {
+            self.notification_transport.send(&identity, message).await?;
         }
         Ok(())
     }
@@ -390,6 +397,41 @@ impl NotificationServiceApi for DefaultNotificationService {
                 error!("Failed to mark bill notification as sent: {}", e);
                 Error::Persistence("Failed to mark bill notification as sent".to_string())
             })?;
+        Ok(())
+    }
+
+    async fn send_retry_messages(&self) -> Result<()> {
+        let mut failed_ids = vec![];
+        while let Ok(Some(queued_message)) = self
+            .queued_message_store
+            .get_retry_messages(1)
+            .await
+            .map(|r| r.first().cloned())
+        {
+            if let Ok(message) = serde_json::from_value::<EventEnvelope>(queued_message.payload) {
+                if let Err(e) = self
+                    .send_retry_message(&message.node_id, message.clone())
+                    .await
+                {
+                    error!("Failed to send retry message: {}", e);
+                    failed_ids.push(queued_message.id.clone());
+                } else {
+                    if let Err(e) = self
+                        .queued_message_store
+                        .succeed_retry(&queued_message.id)
+                        .await
+                    {
+                        error!("Failed to mark retry message as sent: {}", e);
+                    }
+                }
+            }
+        }
+
+        for failed in failed_ids {
+            if let Err(e) = self.queued_message_store.fail_retry(&failed).await {
+                error!("Failed to store failed retry attemt: {}", e);
+            }
+        }
         Ok(())
     }
 }
