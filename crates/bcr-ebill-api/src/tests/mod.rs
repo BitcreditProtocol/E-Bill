@@ -24,6 +24,7 @@ pub mod tests {
         company::{CompanyChainStoreApi, CompanyStoreApi},
         file_upload::FileUploadStoreApi,
         identity::{IdentityChainStoreApi, IdentityStoreApi},
+        nostr::{NostrQueuedMessage, NostrQueuedMessageStoreApi},
         notification::NotificationFilter,
     };
     use bcr_ebill_transport::{BillChainEvent, NotificationServiceApi};
@@ -152,6 +153,18 @@ pub mod tests {
             async fn current_offset(&self) -> Result<u64>;
             async fn is_processed(&self, event_id: &str) -> Result<bool>;
             async fn add_event(&self, data: NostrEventOffset) -> Result<()>;
+        }
+    }
+
+    mockall::mock! {
+        pub NostrQueuedMessageStore {}
+
+        #[async_trait]
+        impl NostrQueuedMessageStoreApi for NostrQueuedMessageStore {
+            async fn add_message(&self, message: NostrQueuedMessage, max_retries: i32) -> Result<()>;
+            async fn get_retry_messages(&self, limit: u64) -> Result<Vec<NostrQueuedMessage>>;
+            async fn fail_retry(&self, id: &str) -> Result<()>;
+            async fn succeed_retry(&self, id: &str) -> Result<()>;
         }
     }
 

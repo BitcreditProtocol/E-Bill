@@ -5,6 +5,7 @@ use crate::persistence::identity::IdentityStoreApi;
 use crate::persistence::nostr::NostrEventOffsetStoreApi;
 use crate::persistence::notification::NotificationStoreApi;
 use bcr_ebill_persistence::bill::{BillChainStoreApi, BillStoreApi};
+use bcr_ebill_persistence::nostr::NostrQueuedMessageStoreApi;
 use bcr_ebill_transport::handler::{
     BillChainEventHandler, LoggingEventHandler, NotificationHandlerApi,
 };
@@ -49,12 +50,14 @@ pub async fn create_notification_service(
     client: NostrClient,
     notification_store: Arc<dyn NotificationStoreApi>,
     contact_service: Arc<dyn ContactServiceApi>,
+    message_queue_store: Arc<dyn NostrQueuedMessageStoreApi>,
 ) -> Result<Arc<dyn NotificationServiceApi>> {
     #[allow(clippy::arc_with_non_send_sync)]
     Ok(Arc::new(DefaultNotificationService::new(
         Box::new(client),
         notification_store,
         contact_service,
+        message_queue_store,
     )))
 }
 

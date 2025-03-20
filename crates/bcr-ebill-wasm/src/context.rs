@@ -52,6 +52,7 @@ impl Context {
             nostr_client.clone(),
             db.notification_store.clone(),
             contact_service.clone(),
+            db.queued_message_store.clone(),
         )
         .await?;
 
