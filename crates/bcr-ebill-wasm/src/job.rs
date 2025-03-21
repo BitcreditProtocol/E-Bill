@@ -8,7 +8,8 @@ pub fn run_jobs() {
         futures::join!(
             run_check_bill_payment_job(),
             run_check_bill_offer_to_sell_payment_job(),
-            run_check_bill_recourse_payment_job()
+            run_check_bill_recourse_payment_job(),
+            run_process_nostr_message_queue_job(),
         );
         run_check_bill_timeouts().await;
     });
@@ -58,4 +59,12 @@ async fn run_check_bill_timeouts() {
     }
 
     info!("Finished running Check Bill Timeouts Job");
+}
+
+async fn run_process_nostr_message_queue_job() {
+    info!("Running process Nostr message queue Job");
+    if let Err(e) = get_ctx().notification_service.send_retry_messages().await {
+        error!("Error while running process Nostr message queue Job: {e}");
+    }
+    info!("Finished running process Nostr message queue Job");
 }

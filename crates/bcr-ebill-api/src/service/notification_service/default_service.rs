@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bcr_ebill_transport::{BillChainEvent, BillChainEventPayload, Error, Event};
+use bcr_ebill_persistence::nostr::{NostrQueuedMessage, NostrQueuedMessageStoreApi};
+use bcr_ebill_transport::{BillChainEvent, BillChainEventPayload, Error, Event, EventEnvelope};
 use log::{error, warn};
 
 use super::NotificationJsonTransportApi;
@@ -24,9 +25,29 @@ pub struct DefaultNotificationService {
     notification_transport: Box<dyn NotificationJsonTransportApi>,
     notification_store: Arc<dyn NotificationStoreApi>,
     contact_service: Arc<dyn ContactServiceApi>,
+    queued_message_store: Arc<dyn NostrQueuedMessageStoreApi>,
 }
 
+impl ServiceTraitBounds for DefaultNotificationService {}
+
 impl DefaultNotificationService {
+    // the number of times we want to retry sending a block message
+    const NOSTR_MAX_RETRIES: i32 = 10;
+
+    pub fn new(
+        notification_transport: Box<dyn NotificationJsonTransportApi>,
+        notification_store: Arc<dyn NotificationStoreApi>,
+        contact_service: Arc<dyn ContactServiceApi>,
+        queued_message_store: Arc<dyn NostrQueuedMessageStoreApi>,
+    ) -> Self {
+        Self {
+            notification_transport,
+            notification_store,
+            contact_service,
+            queued_message_store,
+        }
+    }
+
     async fn send_all_events(&self, events: Vec<Event<BillChainEventPayload>>) -> Result<()> {
         for event_to_process in events.into_iter() {
             if let Ok(Some(identity)) = self
@@ -34,9 +55,28 @@ impl DefaultNotificationService {
                 .get_identity_by_node_id(&event_to_process.node_id)
                 .await
             {
-                self.notification_transport
-                    .send(&identity, event_to_process.try_into()?)
-                    .await?;
+                if let Err(e) = self
+                    .notification_transport
+                    .send(&identity, event_to_process.clone().try_into()?)
+                    .await
+                {
+                    error!(
+                        "Failed to send block notification, will add it to retry queue: {}",
+                        e
+                    );
+                    let queue_message = NostrQueuedMessage {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        node_id: event_to_process.node_id.clone(),
+                        payload: serde_json::to_value(event_to_process)?,
+                    };
+                    if let Err(e) = self
+                        .queued_message_store
+                        .add_message(queue_message, Self::NOSTR_MAX_RETRIES)
+                        .await
+                    {
+                        error!("Failed to add block notification to retry queue: {}", e);
+                    }
+                }
             } else {
                 warn!(
                     "Failed to find recipient in contacts for node_id: {}",
@@ -46,21 +86,12 @@ impl DefaultNotificationService {
         }
         Ok(())
     }
-}
 
-impl ServiceTraitBounds for DefaultNotificationService {}
-
-impl DefaultNotificationService {
-    pub fn new(
-        notification_transport: Box<dyn NotificationJsonTransportApi>,
-        notification_store: Arc<dyn NotificationStoreApi>,
-        contact_service: Arc<dyn ContactServiceApi>,
-    ) -> Self {
-        Self {
-            notification_transport,
-            notification_store,
-            contact_service,
+    async fn send_retry_message(&self, node_id: &str, message: EventEnvelope) -> Result<()> {
+        if let Ok(Some(identity)) = self.contact_service.get_identity_by_node_id(node_id).await {
+            self.notification_transport.send(&identity, message).await?;
         }
+        Ok(())
     }
 }
 
@@ -368,6 +399,39 @@ impl NotificationServiceApi for DefaultNotificationService {
             })?;
         Ok(())
     }
+
+    async fn send_retry_messages(&self) -> Result<()> {
+        let mut failed_ids = vec![];
+        while let Ok(Some(queued_message)) = self
+            .queued_message_store
+            .get_retry_messages(1)
+            .await
+            .map(|r| r.first().cloned())
+        {
+            if let Ok(message) = serde_json::from_value::<EventEnvelope>(queued_message.payload) {
+                if let Err(e) = self
+                    .send_retry_message(&message.node_id, message.clone())
+                    .await
+                {
+                    error!("Failed to send retry message: {}", e);
+                    failed_ids.push(queued_message.id.clone());
+                } else if let Err(e) = self
+                    .queued_message_store
+                    .succeed_retry(&queued_message.id)
+                    .await
+                {
+                    error!("Failed to mark retry message as sent: {}", e);
+                }
+            }
+        }
+
+        for failed in failed_ids {
+            if let Err(e) = self.queued_message_store.fail_retry(&failed).await {
+                error!("Failed to store failed retry attemt: {}", e);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -417,7 +481,8 @@ mod tests {
     use super::*;
     use crate::tests::tests::{
         MockBillChainStoreApiMock, MockBillStoreApiMock, MockNostrEventOffsetStoreApiMock,
-        MockNotificationStoreApiMock, TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP,
+        MockNostrQueuedMessageStore, MockNotificationStoreApiMock, TEST_PRIVATE_KEY_SECP,
+        TEST_PUB_KEY_SECP,
     };
 
     fn check_chain_payload(event: &EventEnvelope, bill_event_type: BillEventType) -> bool {
@@ -514,6 +579,7 @@ mod tests {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
         };
 
         service
@@ -595,6 +661,7 @@ mod tests {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
         };
 
         service
@@ -629,6 +696,7 @@ mod tests {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
+            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
         };
 
         service
@@ -669,6 +737,7 @@ mod tests {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
+            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
         };
 
         service
@@ -764,6 +833,7 @@ mod tests {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
         };
 
         service
@@ -835,10 +905,65 @@ mod tests {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
+            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
         };
 
         service
             .send_recourse_action_event(&event, ActionType::CheckBill, &payer)
+            .await
+            .expect("failed to send event");
+    }
+
+    #[tokio::test]
+    async fn test_failed_to_send_is_added_to_retry_queue() {
+        // given a payer and payee with a new bill
+        let payer = get_identity_public_data("drawee", "drawee@example.com", None);
+        let payee = get_identity_public_data("payee", "payee@example.com", None);
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let chain = get_genesis_chain(Some(bill.clone()));
+
+        let mut mock_contact_service = MockContactServiceApi::new();
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq(payer.node_id.clone()))
+            .returning(move |_| Ok(Some(payer.clone())));
+
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq(payee.node_id.clone()))
+            .returning(move |_| Ok(Some(payee.clone())));
+
+        let mut mock = MockNotificationJsonTransport::new();
+        mock.expect_send().returning(|_, _| Ok(())).once();
+        mock.expect_send()
+            .returning(|_, _| Err(Error::Network("Failed to send".to_string())));
+
+        let mut queue_mock = MockNostrQueuedMessageStore::new();
+        queue_mock
+            .expect_add_message()
+            .returning(|_, _| Ok(()))
+            .once();
+
+        let service = DefaultNotificationService {
+            notification_transport: Box::new(mock),
+            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(queue_mock),
+        };
+
+        let event = BillChainEvent::new(
+            &bill,
+            &chain,
+            &BillKeys {
+                private_key: TEST_PRIVATE_KEY_SECP.to_owned(),
+                public_key: TEST_PUB_KEY_SECP.to_owned(),
+            },
+            true,
+        )
+        .unwrap();
+
+        service
+            .send_bill_is_signed_event(&event)
             .await
             .expect("failed to send event");
     }
@@ -874,6 +999,7 @@ mod tests {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
         };
 
         (
@@ -1301,6 +1427,7 @@ mod tests {
             Box::new(MockNotificationJsonTransport::new()),
             Arc::new(mock_store),
             Arc::new(MockContactServiceApi::new()),
+            Arc::new(MockNostrQueuedMessageStore::new()),
         );
 
         let res = service
@@ -1323,6 +1450,7 @@ mod tests {
             Box::new(MockNotificationJsonTransport::new()),
             Arc::new(mock_store),
             Arc::new(MockContactServiceApi::new()),
+            Arc::new(MockNostrQueuedMessageStore::new()),
         );
 
         service
@@ -1351,6 +1479,7 @@ mod tests {
             notification_transport: Box::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
+            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
         }
     }
 
@@ -1391,5 +1520,401 @@ mod tests {
             bill_store,
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn test_send_retry_messages_success() {
+        let node_id = "test_node_id";
+        let message_id = "test_message_id";
+        let payload = serde_json::to_value(EventEnvelope {
+            node_id: node_id.to_string(),
+            version: "1.0".to_string(),
+            event_type: EventType::Bill,
+            data: serde_json::Value::Null,
+        })
+        .unwrap();
+
+        let queued_message = NostrQueuedMessage {
+            id: message_id.to_string(),
+            node_id: node_id.to_string(),
+            payload: payload.clone(),
+        };
+
+        let identity = get_identity_public_data(node_id, "test@example.com", None);
+
+        // Set up mocks
+        let mut mock_contact_service = MockContactServiceApi::new();
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq(node_id))
+            .returning(move |_| Ok(Some(identity.clone())));
+
+        let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport.expect_send().returning(|_, _| Ok(()));
+
+        let mut mock_queue = MockNostrQueuedMessageStore::new();
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(move |_| Ok(vec![queued_message.clone()]))
+            .once();
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(|_| Ok(vec![]));
+        mock_queue
+            .expect_succeed_retry()
+            .with(eq(message_id))
+            .returning(|_| Ok(()));
+
+        let service = DefaultNotificationService {
+            notification_transport: Box::new(mock_transport),
+            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(mock_queue),
+        };
+
+        let result = service.send_retry_messages().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_send_retry_messages_with_send_failure() {
+        let node_id = "test_node_id";
+        let message_id = "test_message_id";
+        let payload = serde_json::to_value(EventEnvelope {
+            node_id: node_id.to_string(),
+            version: "1.0".to_string(),
+            event_type: EventType::Bill,
+            data: serde_json::Value::Null,
+        })
+        .unwrap();
+
+        let queued_message = NostrQueuedMessage {
+            id: message_id.to_string(),
+            node_id: node_id.to_string(),
+            payload: payload.clone(),
+        };
+
+        let identity = get_identity_public_data(node_id, "test@example.com", None);
+
+        // Set up mocks
+        let mut mock_contact_service = MockContactServiceApi::new();
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq(node_id))
+            .returning(move |_| Ok(Some(identity.clone())));
+
+        let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_send()
+            .returning(|_, _| Err(Error::Network("Failed to send".to_string())));
+
+        let mut mock_queue = MockNostrQueuedMessageStore::new();
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(move |_| Ok(vec![queued_message.clone()]))
+            .once();
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(|_| Ok(vec![]));
+        mock_queue
+            .expect_fail_retry()
+            .with(eq(message_id))
+            .returning(|_| Ok(()));
+
+        let service = DefaultNotificationService {
+            notification_transport: Box::new(mock_transport),
+            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(mock_queue),
+        };
+
+        let result = service.send_retry_messages().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_send_retry_messages_with_multiple_messages() {
+        let node_id1 = "test_node_id_1";
+        let node_id2 = "test_node_id_2";
+        let message_id1 = "test_message_id_1";
+        let message_id2 = "test_message_id_2";
+
+        let payload1 = serde_json::to_value(EventEnvelope {
+            node_id: node_id1.to_string(),
+            version: "1.0".to_string(),
+            event_type: EventType::Bill,
+            data: serde_json::Value::Null,
+        })
+        .unwrap();
+
+        let payload2 = serde_json::to_value(EventEnvelope {
+            node_id: node_id2.to_string(),
+            version: "1.0".to_string(),
+            event_type: EventType::Bill,
+            data: serde_json::Value::Null,
+        })
+        .unwrap();
+
+        let queued_message1 = NostrQueuedMessage {
+            id: message_id1.to_string(),
+            node_id: node_id1.to_string(),
+            payload: payload1.clone(),
+        };
+
+        let queued_message2 = NostrQueuedMessage {
+            id: message_id2.to_string(),
+            node_id: node_id2.to_string(),
+            payload: payload2.clone(),
+        };
+
+        let identity1 = get_identity_public_data(node_id1, "test1@example.com", None);
+        let identity2 = get_identity_public_data(node_id2, "test2@example.com", None);
+
+        // Set up mocks
+        let mut mock_contact_service = MockContactServiceApi::new();
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq(node_id1))
+            .returning(move |_| Ok(Some(identity1.clone())));
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq(node_id2))
+            .returning(move |_| Ok(Some(identity2.clone())));
+
+        let mut mock_transport = MockNotificationJsonTransport::new();
+        // First message succeeds, second fails
+        mock_transport
+            .expect_send()
+            .returning(|_, _| Ok(()))
+            .times(1);
+        mock_transport
+            .expect_send()
+            .returning(|_, _| Err(Error::Network("Failed to send".to_string())))
+            .times(1);
+
+        let mut mock_queue = MockNostrQueuedMessageStore::new();
+        // Return first message, then second message
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(move |_| Ok(vec![queued_message1.clone()]))
+            .times(1);
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(move |_| Ok(vec![queued_message2.clone()]))
+            .times(1);
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(|_| Ok(vec![]))
+            .times(1);
+
+        mock_queue
+            .expect_succeed_retry()
+            .with(eq(message_id1))
+            .returning(|_| Ok(()));
+        mock_queue
+            .expect_fail_retry()
+            .with(eq(message_id2))
+            .returning(|_| Ok(()));
+
+        let service = DefaultNotificationService {
+            notification_transport: Box::new(mock_transport),
+            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(mock_queue),
+        };
+
+        let result = service.send_retry_messages().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_send_retry_messages_with_invalid_payload() {
+        let node_id = "test_node_id";
+        let message_id = "test_message_id";
+        // Invalid payload that can't be deserialized to EventEnvelope
+        let invalid_payload = serde_json::json!({ "invalid": "data" });
+
+        let queued_message = NostrQueuedMessage {
+            id: message_id.to_string(),
+            node_id: node_id.to_string(),
+            payload: invalid_payload,
+        };
+
+        let mut mock_queue = MockNostrQueuedMessageStore::new();
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(move |_| Ok(vec![queued_message.clone()]))
+            .times(1);
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(|_| Ok(vec![]))
+            .times(1);
+
+        // Neither succeed nor fail should be called since payload can't be parsed
+
+        let service = DefaultNotificationService {
+            notification_transport: Box::new(MockNotificationJsonTransport::new()),
+            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(MockContactServiceApi::new()),
+            queued_message_store: Arc::new(mock_queue),
+        };
+
+        let result = service.send_retry_messages().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_send_retry_messages_with_fail_retry_error() {
+        let node_id = "test_node_id";
+        let message_id = "test_message_id";
+        let payload = serde_json::to_value(EventEnvelope {
+            node_id: node_id.to_string(),
+            version: "1.0".to_string(),
+            event_type: EventType::Bill,
+            data: serde_json::Value::Null,
+        })
+        .unwrap();
+
+        let queued_message = NostrQueuedMessage {
+            id: message_id.to_string(),
+            node_id: node_id.to_string(),
+            payload: payload.clone(),
+        };
+
+        let identity = get_identity_public_data(node_id, "test@example.com", None);
+
+        // Set up mocks
+        let mut mock_contact_service = MockContactServiceApi::new();
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq(node_id))
+            .returning(move |_| Ok(Some(identity.clone())));
+
+        let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_send()
+            .returning(|_, _| Err(Error::Network("Failed to send".to_string())));
+
+        let mut mock_queue = MockNostrQueuedMessageStore::new();
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(move |_| Ok(vec![queued_message.clone()]))
+            .times(1);
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(|_| Ok(vec![]))
+            .times(1);
+
+        mock_queue
+            .expect_fail_retry()
+            .with(eq(message_id))
+            .returning(|_| {
+                Err(bcr_ebill_persistence::Error::InsertFailed(
+                    "Failed to update retry status".to_string(),
+                ))
+            });
+
+        let service = DefaultNotificationService {
+            notification_transport: Box::new(mock_transport),
+            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(mock_queue),
+        };
+
+        let result = service.send_retry_messages().await;
+        assert!(result.is_ok()); // Should still return Ok despite the internal error
+    }
+
+    #[tokio::test]
+    async fn test_send_retry_messages_with_succeed_retry_error() {
+        let node_id = "test_node_id";
+        let message_id = "test_message_id";
+        let payload = serde_json::to_value(EventEnvelope {
+            node_id: node_id.to_string(),
+            version: "1.0".to_string(),
+            event_type: EventType::Bill,
+            data: serde_json::Value::Null,
+        })
+        .unwrap();
+
+        let queued_message = NostrQueuedMessage {
+            id: message_id.to_string(),
+            node_id: node_id.to_string(),
+            payload: payload.clone(),
+        };
+
+        let identity = get_identity_public_data(node_id, "test@example.com", None);
+
+        // Set up mocks
+        let mut mock_contact_service = MockContactServiceApi::new();
+        mock_contact_service
+            .expect_get_identity_by_node_id()
+            .with(eq(node_id))
+            .returning(move |_| Ok(Some(identity.clone())));
+
+        let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport.expect_send().returning(|_, _| Ok(()));
+
+        let mut mock_queue = MockNostrQueuedMessageStore::new();
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(move |_| Ok(vec![queued_message.clone()]))
+            .times(1);
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(|_| Ok(vec![]))
+            .times(1);
+
+        mock_queue
+            .expect_succeed_retry()
+            .with(eq(message_id))
+            .returning(|_| {
+                Err(bcr_ebill_persistence::Error::InsertFailed(
+                    "Failed to update retry status".to_string(),
+                ))
+            });
+
+        let service = DefaultNotificationService {
+            notification_transport: Box::new(mock_transport),
+            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(mock_contact_service),
+            queued_message_store: Arc::new(mock_queue),
+        };
+
+        let result = service.send_retry_messages().await;
+        assert!(result.is_ok()); // Should still return Ok despite the internal error
+    }
+
+    #[tokio::test]
+    async fn test_send_retry_messages_with_no_messages() {
+        let mut mock_queue = MockNostrQueuedMessageStore::new();
+        mock_queue
+            .expect_get_retry_messages()
+            .with(eq(1))
+            .returning(|_| Ok(vec![]))
+            .times(1);
+
+        let service = DefaultNotificationService {
+            notification_transport: Box::new(MockNotificationJsonTransport::new()),
+            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
+            contact_service: Arc::new(MockContactServiceApi::new()),
+            queued_message_store: Arc::new(mock_queue),
+        };
+
+        let result = service.send_retry_messages().await;
+        assert!(result.is_ok());
     }
 }
