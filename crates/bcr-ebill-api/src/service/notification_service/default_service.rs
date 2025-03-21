@@ -408,7 +408,6 @@ impl NotificationServiceApi for DefaultNotificationService {
             .await
             .map(|r| r.first().cloned())
         {
-            println!("got next retry message {q}", q = queued_message.id);
             if let Ok(message) = serde_json::from_value::<EventEnvelope>(queued_message.payload) {
                 if let Err(e) = self
                     .send_retry_message(&message.node_id, message.clone())
@@ -416,14 +415,12 @@ impl NotificationServiceApi for DefaultNotificationService {
                 {
                     error!("Failed to send retry message: {}", e);
                     failed_ids.push(queued_message.id.clone());
-                } else {
-                    if let Err(e) = self
-                        .queued_message_store
-                        .succeed_retry(&queued_message.id)
-                        .await
-                    {
-                        error!("Failed to mark retry message as sent: {}", e);
-                    }
+                } else if let Err(e) = self
+                    .queued_message_store
+                    .succeed_retry(&queued_message.id)
+                    .await
+                {
+                    error!("Failed to mark retry message as sent: {}", e);
                 }
             }
         }
