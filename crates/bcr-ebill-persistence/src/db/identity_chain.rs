@@ -63,7 +63,11 @@ impl IdentityChainStoreApi for SurrealIdentityChainStore {
             .db
             .query("SELECT * FROM type::table($table) ORDER BY block_id DESC LIMIT 1")
             .bind((DB_TABLE, Self::TABLE))
-            .await?
+            .await
+            .map_err(|e| {
+                log::error!("Get Identity Block: {e}");
+                e
+            })?
             .take(0)?;
 
         match result.first() {
@@ -92,7 +96,10 @@ impl IdentityChainStoreApi for SurrealIdentityChainStore {
                     "#,
                         CREATE_BLOCK_QUERY
                     );
-                    self.create_block(&query, entity).await?;
+                    self.create_block(&query, entity).await.map_err(|e| {
+                        log::error!("Create Identity Block: {e}");
+                        e
+                    })?;
                     Ok(())
                 } else {
                     return Err(Error::AddIdentityBlock(format!(
@@ -123,7 +130,10 @@ impl IdentityChainStoreApi for SurrealIdentityChainStore {
                 "#,
                     CREATE_BLOCK_QUERY
                 );
-                self.create_block(&query, entity).await?;
+                self.create_block(&query, entity).await.map_err(|e| {
+                    log::error!("Create Identity Block: {e}");
+                    e
+                })?;
                 Ok(())
             }
             Err(e) => Err(e),

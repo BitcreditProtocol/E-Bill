@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use super::Result;
 use async_trait::async_trait;
 use bcr_ebill_core::{
-    bill::BillKeys,
+    bill::{BillKeys, BitcreditBillResult},
     blockchain::bill::{BillBlock, BillBlockchain, BillOpCode},
 };
 
@@ -11,6 +11,14 @@ use borsh::{from_slice, to_vec};
 
 #[async_trait]
 pub trait BillStoreApi: Send + Sync {
+    /// Gets the bills from cache
+    async fn get_bills_from_cache(&self, ids: &[String]) -> Result<Vec<BitcreditBillResult>>;
+    /// Gets the bill from cache
+    async fn get_bill_from_cache(&self, id: &str) -> Result<Option<BitcreditBillResult>>;
+    /// Saves the bill to cache
+    async fn save_bill_to_cache(&self, id: &str, bill: &BitcreditBillResult) -> Result<()>;
+    /// Invalidates the cached bill
+    async fn invalidate_bill_in_cache(&self, id: &str) -> Result<()>;
     /// Checks if the given bill exists
     async fn exists(&self, id: &str) -> bool;
     /// Gets all bill ids

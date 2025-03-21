@@ -15,22 +15,28 @@ use crate::{
     },
     util,
 };
-use bcr_ebill_core::blockchain::{
-    Blockchain,
+use bcr_ebill_core::{
     bill::{
-        BillBlock,
-        block::{
-            BillAcceptBlockData, BillIssueBlockData, BillOfferToSellBlockData,
-            BillRecourseBlockData, BillRejectBlockData, BillRequestRecourseBlockData,
-            BillRequestToAcceptBlockData, BillRequestToPayBlockData, BillSellBlockData,
-        },
+        BillAcceptanceStatus, BillData, BillParticipants, BillPaymentStatus, BillRecourseStatus,
+        BillSellStatus, BillStatus,
     },
-    identity::IdentityBlockchain,
+    blockchain::{
+        Blockchain,
+        bill::{
+            BillBlock,
+            block::{
+                BillAcceptBlockData, BillIssueBlockData, BillOfferToSellBlockData,
+                BillRecourseBlockData, BillRejectBlockData, BillRequestRecourseBlockData,
+                BillRequestToAcceptBlockData, BillRequestToPayBlockData, BillSellBlockData,
+            },
+        },
+        identity::IdentityBlockchain,
+    },
 };
 use core::str;
 use external::bitcoin::MockBitcoinClientApi;
 use service::BillService;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use util::crypto::BcrKeys;
 
 pub struct MockBillContext {
@@ -56,6 +62,71 @@ pub fn get_baseline_identity() -> IdentityWithAll {
     IdentityWithAll {
         identity,
         key_pair: keys,
+    }
+}
+
+pub fn get_baseline_cached_bill(id: String) -> BitcreditBillResult {
+    BitcreditBillResult {
+        id,
+        participants: BillParticipants {
+            drawee: identity_public_data_only_node_id("drawee".to_string()),
+            drawer: identity_public_data_only_node_id("drawer".to_string()),
+            payee: identity_public_data_only_node_id("payee".to_string()),
+            endorsee: None,
+            endorsements_count: 5,
+            all_participant_node_ids: vec![
+                "drawee".to_string(),
+                "drawer".to_string(),
+                "payee".to_string(),
+            ],
+        },
+        data: BillData {
+            language: "AT".to_string(),
+            time_of_drawing: 1731593928,
+            issue_date: "2024-05-01".to_string(),
+            time_of_maturity: 1731593928,
+            maturity_date: "2024-07-01".to_string(),
+            country_of_issuing: "AT".to_string(),
+            city_of_issuing: "Vienna".to_string(),
+            country_of_payment: "AT".to_string(),
+            city_of_payment: "Vienna".to_string(),
+            currency: "sat".to_string(),
+            sum: "15000".to_string(),
+            files: vec![],
+            active_notification: None,
+        },
+        status: BillStatus {
+            acceptance: BillAcceptanceStatus {
+                time_of_request_to_accept: None,
+                requested_to_accept: false,
+                accepted: false,
+                request_to_accept_timed_out: false,
+                rejected_to_accept: false,
+            },
+            payment: BillPaymentStatus {
+                time_of_request_to_pay: None,
+                requested_to_pay: false,
+                paid: false,
+                request_to_pay_timed_out: false,
+                rejected_to_pay: false,
+            },
+            sell: BillSellStatus {
+                time_of_last_offer_to_sell: None,
+                sold: false,
+                offered_to_sell: false,
+                offer_to_sell_timed_out: false,
+                rejected_offer_to_sell: false,
+            },
+            recourse: BillRecourseStatus {
+                time_of_last_request_to_recourse: None,
+                recoursed: false,
+                requested_to_recourse: false,
+                request_to_recourse_timed_out: false,
+                rejected_request_to_recourse: false,
+            },
+            redeemed_funds_available: false,
+        },
+        current_waiting_state: None,
     }
 }
 
@@ -106,6 +177,9 @@ pub fn get_service(mut ctx: MockBillContext) -> BillService {
     ctx.contact_store
         .expect_get()
         .returning(|_| Ok(Some(get_baseline_contact())));
+    ctx.contact_store
+        .expect_get_map()
+        .returning(|| Ok(HashMap::new()));
     ctx.identity_chain_store
         .expect_get_latest_block()
         .returning(|| {
@@ -135,6 +209,21 @@ pub fn get_service(mut ctx: MockBillContext) -> BillService {
             public_key: TEST_PUB_KEY_SECP.to_owned(),
         })
     });
+    ctx.bill_store
+        .expect_get_bill_from_cache()
+        .returning(|_| Ok(None));
+    ctx.bill_store
+        .expect_get_bills_from_cache()
+        .returning(|_| Ok(vec![]));
+    ctx.bill_store
+        .expect_invalidate_bill_in_cache()
+        .returning(|_| Ok(()));
+    ctx.notification_service
+        .expect_get_active_bill_notifications()
+        .returning(|_| HashMap::new());
+    ctx.bill_store
+        .expect_save_bill_to_cache()
+        .returning(|_, _| Ok(()));
     ctx.identity_store
         .expect_get()
         .returning(|| Ok(get_baseline_identity().identity));

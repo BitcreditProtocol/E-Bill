@@ -188,24 +188,26 @@ impl Bill {
         Ok(res)
     }
 
-    #[wasm_bindgen(unchecked_return_type = "BillsResponse")]
-    pub async fn list_all(&self) -> Result<JsValue> {
-        let bills = get_ctx()
-            .bill_service
-            .get_bills_from_all_identities()
-            .await?;
-        let res = serde_wasm_bindgen::to_value(&BillsResponse {
-            bills: bills.into_iter().map(|b| b.into_web()).collect(),
-        })?;
-        Ok(res)
-    }
-
     #[wasm_bindgen(unchecked_return_type = "BillNumbersToWordsForSum")]
     pub async fn numbers_to_words_for_sum(&self, id: &str) -> Result<JsValue> {
-        let bill = get_ctx().bill_service.get_bill(id).await?;
-        let sum = bill.sum;
-        let sum_as_words = util::numbers_to_words::encode(&sum);
-        let res = serde_wasm_bindgen::to_value(&BillNumbersToWordsForSum { sum, sum_as_words })?;
+        let current_timestamp = util::date::now().timestamp() as u64;
+        let identity = get_ctx().identity_service.get_identity().await?;
+        let bill = get_ctx()
+            .bill_service
+            .get_detail(
+                id,
+                &identity,
+                &get_current_identity_node_id(),
+                current_timestamp,
+            )
+            .await?;
+        let sum = bill.data.sum;
+        let parsed_sum = util::currency::parse_sum(&sum)?;
+        let sum_as_words = util::numbers_to_words::encode(&parsed_sum);
+        let res = serde_wasm_bindgen::to_value(&BillNumbersToWordsForSum {
+            sum: parsed_sum,
+            sum_as_words,
+        })?;
         Ok(res)
     }
 
