@@ -150,7 +150,7 @@ pub mod tests {
 
         #[async_trait]
         impl NostrEventOffsetStoreApi for NostrEventOffsetStoreApiMock {
-            async fn current_offset(&self) -> Result<u64>;
+            async fn current_offset(&self, node_id: &str) -> Result<u64>;
             async fn is_processed(&self, event_id: &str) -> Result<bool>;
             async fn add_event(&self, data: NostrEventOffset) -> Result<()>;
         }

@@ -86,6 +86,11 @@ pub async fn create_nostr_consumer(
             bill_store,
         )),
     ];
-    let consumer = NostrConsumer::new(client, contact_service, handlers, nostr_event_offset_store);
+    let consumer = NostrConsumer::new(
+        vec![Arc::new(client)],
+        contact_service,
+        handlers,
+        nostr_event_offset_store,
+    );
     Ok(consumer)
 }

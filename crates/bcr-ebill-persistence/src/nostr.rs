@@ -14,7 +14,7 @@ pub trait NostrEventOffsetStoreApi: Send + Sync {
     /// older than the current offset just because they were not processed
     /// or the faked timestamp on the GiftWrap event was higher than the
     /// current offset.
-    async fn current_offset(&self) -> Result<u64>;
+    async fn current_offset(&self, node_id: &str) -> Result<u64>;
 
     /// Returns whether the given event id has been processed already. This
     /// will return true if we never tried to process the event independent
@@ -35,6 +35,8 @@ pub struct NostrEventOffset {
     pub time: u64,
     /// Whether the event has been processed successfully on our side
     pub success: bool,
+    /// The node id for which this event was processed
+    pub node_id: String,
 }
 
 /// A dumb retry queue for Nostr messages that failed to be sent.
