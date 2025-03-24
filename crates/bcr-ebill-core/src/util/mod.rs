@@ -3,7 +3,8 @@ pub mod date;
 
 pub use crypto::BcrKeys;
 
-use sha2::{Digest, Sha256};
+use bitcoin::hashes::sha256;
+use bitcoin::hashes::Hash;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -12,10 +13,8 @@ pub fn get_uuid_v4() -> Uuid {
 }
 
 pub fn sha256_hash(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let hash = hasher.finalize();
-    base58_encode(&hash)
+    let hash = sha256::Hash::hash(bytes).to_byte_array();
+    base58_encode(hash.as_slice())
 }
 
 #[derive(Debug, Error)]
