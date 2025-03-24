@@ -13,7 +13,7 @@ pub mod tests {
         },
         company::{Company, CompanyKeys},
         contact::{Contact, ContactType, IdentityPublicData},
-        identity::{Identity, IdentityWithAll},
+        identity::{ActiveIdentityState, Identity, IdentityWithAll},
         notification::{ActionType, Notification, NotificationType},
         util::crypto::BcrKeys,
     };
@@ -136,6 +136,8 @@ pub mod tests {
             async fn get_key_pair(&self) -> Result<BcrKeys>;
             async fn get_or_create_key_pair(&self) -> Result<BcrKeys>;
             async fn get_seedphrase(&self) -> Result<String>;
+            async fn get_current_identity(&self) -> Result<ActiveIdentityState>;
+            async fn set_current_identity(&self, identity_state: &ActiveIdentityState) -> Result<()>;
         }
     }
 

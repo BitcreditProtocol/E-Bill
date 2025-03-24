@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use super::{FileDb, PostalAddressDb, Result};
 use crate::constants::{DB_BILL_ID, DB_IDS, DB_OP_CODE, DB_TABLE, DB_TIMESTAMP};
 use crate::{Error, bill::BillStoreApi};
@@ -17,6 +19,7 @@ use surrealdb::{Surreal, engine::any::Any, sql::Thing};
 
 #[derive(Clone)]
 pub struct SurrealBillStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -29,6 +32,16 @@ impl SurrealBillStore {
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
 }
 
 #[async_trait]
@@ -40,7 +53,8 @@ impl BillStoreApi for SurrealBillStore {
             .collect();
 
         let results: Vec<BitcreditBillResultDb> = self
-            .db
+            .db()
+            .await?
             .query("SELECT * FROM type::table($table) WHERE id IN $ids")
             .bind((DB_TABLE, Self::CACHE_TABLE))
             .bind((DB_IDS, db_ids))
@@ -50,7 +64,8 @@ impl BillStoreApi for SurrealBillStore {
     }
 
     async fn get_bill_from_cache(&self, id: &str) -> Result<Option<BitcreditBillResult>> {
-        let result: Option<BitcreditBillResultDb> = self.db.select((Self::CACHE_TABLE, id)).await?;
+        let result: Option<BitcreditBillResultDb> =
+            self.db().await?.select((Self::CACHE_TABLE, id)).await?;
         match result {
             None => Ok(None),
             Some(c) => Ok(Some(c.into())),
@@ -61,7 +76,8 @@ impl BillStoreApi for SurrealBillStore {
         let id = id.to_owned();
         let entity: BitcreditBillResultDb = bill.into();
         let _: Option<BitcreditBillResultDb> = self
-            .db
+            .db()
+            .await?
             .upsert((Self::CACHE_TABLE, id))
             .content(entity)
             .await?;
@@ -69,13 +85,17 @@ impl BillStoreApi for SurrealBillStore {
     }
 
     async fn invalidate_bill_in_cache(&self, id: &str) -> Result<()> {
-        let _: Option<BitcreditBillResultDb> = self.db.delete((Self::CACHE_TABLE, id)).await?;
+        let _: Option<BitcreditBillResultDb> =
+            self.db().await?.delete((Self::CACHE_TABLE, id)).await?;
         Ok(())
     }
 
     async fn exists(&self, id: &str) -> bool {
-        match self
-            .db
+        let db_con = match self.db().await {
+            Ok(con) => con,
+            Err(_) => return false,
+        };
+        match db_con
             .query(
                 "SELECT bill_id FROM type::table($table) WHERE bill_id = $bill_id GROUP BY bill_id",
             )
@@ -95,7 +115,8 @@ impl BillStoreApi for SurrealBillStore {
 
     async fn get_ids(&self) -> Result<Vec<String>> {
         let ids: Vec<BillIdDb> = self
-            .db
+            .db()
+            .await?
             .query("SELECT bill_id FROM type::table($table) GROUP BY bill_id")
             .bind((DB_TABLE, Self::CHAIN_TABLE))
             .await?
@@ -106,7 +127,8 @@ impl BillStoreApi for SurrealBillStore {
     async fn save_keys(&self, id: &str, key_pair: &BillKeys) -> Result<()> {
         let entity: BillKeysDb = key_pair.into();
         let _: Option<BillKeysDb> = self
-            .db
+            .db()
+            .await?
             .create((Self::KEYS_TABLE, id))
             .content(entity)
             .await?;
@@ -114,7 +136,7 @@ impl BillStoreApi for SurrealBillStore {
     }
 
     async fn get_keys(&self, id: &str) -> Result<BillKeys> {
-        let result: Option<BillKeysDb> = self.db.select((Self::KEYS_TABLE, id)).await?;
+        let result: Option<BillKeysDb> = self.db().await?.select((Self::KEYS_TABLE, id)).await?;
         match result {
             None => Err(Error::NoSuchEntity("bill".to_string(), id.to_owned())),
             Some(c) => Ok(c.into()),
@@ -122,7 +144,7 @@ impl BillStoreApi for SurrealBillStore {
     }
 
     async fn is_paid(&self, id: &str) -> Result<bool> {
-        let result: Option<BillPaidDb> = self.db.select((Self::PAID_TABLE, id)).await?;
+        let result: Option<BillPaidDb> = self.db().await?.select((Self::PAID_TABLE, id)).await?;
         Ok(result.is_some())
     }
 
@@ -132,7 +154,8 @@ impl BillStoreApi for SurrealBillStore {
             payment_address: payment_address.to_string(),
         };
         let _: Option<BillPaidDb> = self
-            .db
+            .db()
+            .await?
             .upsert((Self::PAID_TABLE, id))
             .content(entity)
             .await?;
@@ -140,9 +163,10 @@ impl BillStoreApi for SurrealBillStore {
     }
 
     async fn get_bill_ids_waiting_for_payment(&self) -> Result<Vec<String>> {
-        let bill_ids_paid: Vec<BillPaidDb> = self.db.select(Self::PAID_TABLE).await?;
+        let bill_ids_paid: Vec<BillPaidDb> = self.db().await?.select(Self::PAID_TABLE).await?;
         let with_req_to_pay_bill_ids: Vec<BillIdDb> = self
-            .db
+            .db()
+            .await?
             .query(
                 "SELECT bill_id FROM type::table($table) WHERE op_code = $op_code GROUP BY bill_id",
             )
@@ -176,7 +200,8 @@ impl BillStoreApi for SurrealBillStore {
             })
             .flatten() WHERE timestamp > $timestamp AND op_code = $op_code"#;
         let result: Vec<BillIdDb> = self
-            .db
+            .db()
+            .await?
             .query(query)
             .bind((DB_TABLE, Self::CHAIN_TABLE))
             .bind((DB_TIMESTAMP, timestamp_now_minus_payment_deadline))
@@ -196,7 +221,8 @@ impl BillStoreApi for SurrealBillStore {
             })
             .flatten() WHERE timestamp > $timestamp AND op_code = $op_code"#;
         let result: Vec<BillIdDb> = self
-            .db
+            .db()
+            .await?
             .query(query)
             .bind((DB_TABLE, Self::CHAIN_TABLE))
             .bind((DB_TIMESTAMP, timestamp_now_minus_payment_deadline))
@@ -213,7 +239,7 @@ impl BillStoreApi for SurrealBillStore {
     ) -> Result<Vec<String>> {
         let codes = op_codes.into_iter().collect::<Vec<BillOpCode>>();
         let result: Vec<BillIdDb> = self
-            .db
+            .db().await?
             .query("SELECT bill_id FROM type::table($table) WHERE op_code IN $op_code AND timestamp >= $timestamp GROUP BY bill_id")
             .bind((DB_TABLE, Self::CHAIN_TABLE))
             .bind((DB_OP_CODE, codes))

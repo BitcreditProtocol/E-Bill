@@ -1,3 +1,5 @@
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use std::collections::{HashMap, hash_map::Entry};
 
 use super::super::{Error, Result};
@@ -16,6 +18,7 @@ use bcr_ebill_core::notification::{Notification, NotificationType};
 
 #[derive(Clone)]
 pub struct SurrealNotificationStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -26,6 +29,16 @@ impl SurrealNotificationStore {
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
 }
 
 #[async_trait]
@@ -35,7 +48,8 @@ impl NotificationStoreApi for SurrealNotificationStore {
         let id = notification.id.to_owned();
         let entity: NotificationDb = notification.into();
         let result: Option<NotificationDb> = self
-            .db
+            .db()
+            .await?
             .insert((Self::TABLE, id.to_string()))
             .content(entity)
             .await?;
@@ -52,9 +66,8 @@ impl NotificationStoreApi for SurrealNotificationStore {
     /// Returns all currently active notifications from the database
     async fn list(&self, filter: NotificationFilter) -> Result<Vec<Notification>> {
         let filters = filter.filters();
-        let mut query = self
-            .db
-            .query(format!(
+        let db = self.db().await?;
+        let mut query = db.query(format!(
                 "SELECT * FROM type::table($table) {} ORDER BY datetime DESC LIMIT $limit START $offset",
                 filters
             ))
@@ -81,7 +94,7 @@ impl NotificationStoreApi for SurrealNotificationStore {
         notification_type: NotificationType,
     ) -> Result<HashMap<String, Notification>> {
         let result: Vec<NotificationDb> = self
-            .db
+            .db().await?
             .query(
                 "SELECT * FROM type::table($table) WHERE active = $active AND notification_type = $notification_type AND reference_id IN $ids",
             )
@@ -144,7 +157,8 @@ impl NotificationStoreApi for SurrealNotificationStore {
     /// Marks an active notification as done
     async fn mark_as_done(&self, notification_id: &str) -> Result<()> {
         let thing: Thing = (Self::TABLE, notification_id).into();
-        self.db
+        self.db()
+            .await?
             .query("UPDATE $id SET active = false")
             .bind(("id", thing))
             .await?;
@@ -152,7 +166,11 @@ impl NotificationStoreApi for SurrealNotificationStore {
     }
     /// deletes a notification from the database
     async fn delete(&self, notification_id: &str) -> Result<()> {
-        let _: Option<NotificationDb> = self.db.delete((Self::TABLE, notification_id)).await?;
+        let _: Option<NotificationDb> = self
+            .db()
+            .await?
+            .delete((Self::TABLE, notification_id))
+            .await?;
         Ok(())
     }
 
@@ -169,7 +187,12 @@ impl NotificationStoreApi for SurrealNotificationStore {
             action_type,
             datetime: now(),
         };
-        let _: Vec<SentBlockNotificationDb> = self.db.insert(Self::SENT_TABLE).content(db).await?;
+        let _: Vec<SentBlockNotificationDb> = self
+            .db()
+            .await?
+            .insert(Self::SENT_TABLE)
+            .content(db)
+            .await?;
         Ok(())
     }
 
@@ -179,7 +202,7 @@ impl NotificationStoreApi for SurrealNotificationStore {
         block_height: i32,
         action_type: ActionType,
     ) -> Result<bool> {
-        let res: Option<SentBlockNotificationDb> = self.db
+        let res: Option<SentBlockNotificationDb> = self.db().await?
             .query("SELECT * FROM type::table($table) WHERE notification_type = $notification_type AND reference_id = $reference_id AND block_height = $block_height AND action_type = $action_type limit 1")
             .bind(("table", Self::SENT_TABLE))
             .bind(("notification_type", NotificationType::Bill))

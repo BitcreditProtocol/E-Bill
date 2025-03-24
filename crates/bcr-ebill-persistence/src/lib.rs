@@ -81,6 +81,9 @@ pub enum Error {
 
     #[error("No seed phrase available")]
     NoSeedPhrase,
+
+    #[error("Error with encoding, or decoding")]
+    EncodingError,
 }
 
 impl From<surrealdb::Error> for Error {

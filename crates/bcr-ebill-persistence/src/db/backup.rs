@@ -1,5 +1,7 @@
 use std::path::Path;
 
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use crate::backup::BackupStoreApi;
 
 use super::Result;
@@ -8,6 +10,7 @@ use futures::StreamExt;
 use surrealdb::{Surreal, engine::any::Any};
 
 pub struct SurrealBackupStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -15,13 +18,23 @@ impl SurrealBackupStore {
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
 }
 
 #[async_trait]
 impl BackupStoreApi for SurrealBackupStore {
     /// returns the whole database as a byte vector backup ready for encryption
     async fn backup(&self) -> Result<Vec<u8>> {
-        let mut stream = self.db.export(()).await?;
+        let mut stream = self.db().await?.export(()).await?;
         let mut buffer = Vec::new();
         while let Some(Ok(chunk)) = stream.next().await {
             buffer.extend_from_slice(&chunk);
@@ -30,12 +43,16 @@ impl BackupStoreApi for SurrealBackupStore {
     }
 
     async fn restore(&self, file_path: &Path) -> Result<()> {
-        self.db.import(file_path).await?;
+        self.db().await?.import(file_path).await?;
         Ok(())
     }
 
     async fn drop_db(&self, name: &str) -> Result<()> {
-        let _ = self.db.query(format!("REMOVE DATABASE {}", name)).await?;
+        let _ = self
+            .db()
+            .await?
+            .query(format!("REMOVE DATABASE {}", name))
+            .await?;
         Ok(())
     }
 }
