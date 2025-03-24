@@ -22,14 +22,13 @@ pub fn sha256_hash(bytes: &[u8]) -> String {
 pub enum Error {
     /// Errors stemming base58 decoding
     #[error("Decode base58 error: {0}")]
-    Base58(#[from] bs58::decode::Error),
+    Base58(bitcoin::base58::InvalidCharacterError),
 }
 
 pub fn base58_encode(bytes: &[u8]) -> String {
-    bs58::encode(bytes).into_string()
+    bitcoin::base58::encode(bytes)
 }
 
 pub fn base58_decode(input: &str) -> std::result::Result<Vec<u8>, Error> {
-    let result = bs58::decode(input).into_vec()?;
-    Ok(result)
+    bitcoin::base58::decode(input).map_err(Error::Base58)
 }

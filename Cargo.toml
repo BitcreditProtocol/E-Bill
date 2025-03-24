@@ -4,7 +4,6 @@ members = [ "crates/bcr-ebill-web", "crates/bcr-ebill-core", "crates/bcr-ebill-a
 
 
 [workspace.dependencies]
-bs58 = "0.5"
 sha2 = { version = "0.10", default-features = false }
 borsh = "1.5"
 borsh-derive = "1.5"
