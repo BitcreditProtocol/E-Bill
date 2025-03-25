@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use crate::company::CompanyKeys;
+
 use super::{base58_decode, base58_encode};
 use bip39::Mnemonic;
 use bitcoin::{
@@ -119,19 +121,27 @@ impl BcrKeys {
     }
 
     /// Returns the nostr public key as a bech32 string
-    pub fn get_nostr_npub(&self) -> Result<String> {
-        Ok(self.get_nostr_keys().public_key().to_bech32()?)
+    pub fn get_nostr_npub(&self) -> String {
+        self.get_nostr_keys().public_key().to_bech32().unwrap()
     }
 
     /// Returns the nostr private key as a bech32 string
-    pub fn get_nostr_npriv(&self) -> Result<String> {
-        Ok(self.get_nostr_keys().secret_key().to_bech32()?)
+    pub fn get_nostr_npriv(&self) -> String {
+        self.get_nostr_keys().secret_key().to_bech32().unwrap()
     }
 }
 
 impl Default for BcrKeys {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl TryFrom<CompanyKeys> for BcrKeys {
+    type Error = Error;
+
+    fn try_from(keys: CompanyKeys) -> Result<Self> {
+        BcrKeys::from_private_key(&keys.private_key)
     }
 }
 
@@ -581,7 +591,7 @@ mod tests {
                 .is_empty()
         );
         assert!(keypair.get_nostr_keys().public_key().to_bech32().is_ok());
-        assert!(keypair.get_nostr_npriv().is_ok());
+        assert!(!keypair.get_nostr_npriv().is_empty());
     }
 
     #[test]
@@ -598,14 +608,8 @@ mod tests {
             keypair2.get_bitcoin_private_key(Network::Bitcoin)
         );
         assert_eq!(keypair.get_nostr_keys(), keypair2.get_nostr_keys());
-        assert_eq!(
-            keypair.get_nostr_npub().unwrap(),
-            keypair2.get_nostr_npub().unwrap()
-        );
-        assert_eq!(
-            keypair.get_nostr_npriv().unwrap(),
-            keypair2.get_nostr_npriv().unwrap()
-        );
+        assert_eq!(keypair.get_nostr_npub(), keypair2.get_nostr_npub());
+        assert_eq!(keypair.get_nostr_npriv(), keypair2.get_nostr_npriv());
     }
 
     #[test]

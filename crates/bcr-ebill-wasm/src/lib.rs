@@ -61,7 +61,7 @@ pub async fn initialize_api(
     let keys = db.identity_store.get_or_create_key_pair().await?;
 
     info!("Local node id: {:?}", keys.get_public_key());
-    info!("Local npub: {:?}", keys.get_nostr_npub()?);
+    info!("Local npub: {:?}", keys.get_nostr_npub());
     info!("Local npub as hex: {:?}", keys.get_nostr_npub_as_hex());
     info!("Config: {api_config:?}");
 

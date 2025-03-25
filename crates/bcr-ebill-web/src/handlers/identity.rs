@@ -82,7 +82,7 @@ pub async fn return_identity(state: &State<ServiceContext>) -> Result<Json<Ident
         return Err(Error::NotFound.into());
     } else {
         let full_identity = state.identity_service.get_full_identity().await?;
-        IdentityWeb::from(full_identity.identity, full_identity.key_pair)?
+        IdentityWeb::from(full_identity.identity, full_identity.key_pair)
     };
     Ok(Json(my_identity))
 }

@@ -10,7 +10,7 @@ use bcr_ebill_api::{
         file_upload_service::{FileUploadService, FileUploadServiceApi},
         identity_service::{IdentityService, IdentityServiceApi},
         notification_service::{
-            NostrConsumer, create_nostr_client, create_nostr_consumer, create_notification_service,
+            NostrConsumer, create_nostr_clients, create_nostr_consumer, create_notification_service,
         },
         search_service::{SearchService, SearchServiceApi},
     },
@@ -47,9 +47,10 @@ impl Context {
         ));
         let bitcoin_client = Arc::new(BitcoinClient::new());
 
-        let nostr_client = create_nostr_client(&cfg, db.identity_store.clone()).await?;
+        let nostr_clients =
+            create_nostr_clients(&cfg, db.identity_store.clone(), db.company_store.clone()).await?;
         let notification_service = create_notification_service(
-            nostr_client.clone(),
+            nostr_clients.first().unwrap().clone(),
             db.notification_store.clone(),
             contact_service.clone(),
             db.queued_message_store.clone(),
@@ -87,7 +88,7 @@ impl Context {
         let push_service = Arc::new(PushService::new());
 
         let nostr_consumer = create_nostr_consumer(
-            nostr_client,
+            nostr_clients.clone(),
             contact_service.clone(),
             db.nostr_event_offset_store.clone(),
             db.notification_store.clone(),

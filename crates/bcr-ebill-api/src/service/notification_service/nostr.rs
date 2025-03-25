@@ -18,6 +18,17 @@ use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_persistence::{NostrEventOffset, NostrEventOffsetStoreApi};
 use bcr_ebill_transport::{Error, NotificationJsonTransportApi, Result};
 
+use tokio::task::spawn;
+#[cfg(all(
+    target_arch = "wasm32",
+    target_vendor = "unknown",
+    target_os = "unknown"
+))]
+use tokio_with_wasm as tokio;
+
+#[cfg(not(target_arch = "wasm32"))]
+use tokio;
+
 #[derive(Clone, Debug)]
 pub struct NostrConfig {
     keys: BcrKeys,
@@ -31,11 +42,8 @@ impl NostrConfig {
     }
 
     #[allow(dead_code)]
-    pub fn get_npub(&self) -> bcr_ebill_transport::Result<String> {
-        self.keys.get_nostr_npub().map_err(|e| {
-            error!("Failed to get Nostr npub: {e}");
-            Error::Crypto("Failed to get Nostr npub".to_string())
-        })
+    pub fn get_npub(&self) -> String {
+        self.keys.get_nostr_npub()
     }
 }
 
@@ -211,7 +219,7 @@ impl NostrConsumer {
             let client_id = node_id.clone();
             
             // Spawn a task for each client
-            let task = tokio::spawn(async move {
+            let task = spawn(async move {
                 // continue where we left off
                 let offset_ts = get_offset(&offset_store, &node_id).await;
                 let public_key = current_client.keys.get_nostr_keys().public_key();
@@ -242,15 +250,14 @@ impl NostrConsumer {
                                 client.unwrap_envelope(note).await
                             {
                                 if !offset_store.is_processed(&event_id.to_hex()).await? {
-                                    if let Ok(sender_npub) = sender.to_bech32() {
-                                        let sender_node_id = sender.to_hex();
-                                        trace!("Received event: {envelope:?} from {sender_npub:?} (hex: {sender_node_id}) on client {client_id}");
-                                        // We use hex here, so we can compare it with our node_ids
-                                        // TODO: re-enable after presentation: if contact_service.is_known_npub(&sender_node_id).await? {
-                                            trace!("Processing event: {envelope:?}");
-                                            handle_event(envelope, &node_id, &event_handlers).await?;
-                                        // }
-                                    }
+                                    let sender_npub = sender.to_bech32();
+                                    let sender_node_id = sender.to_hex();
+                                    trace!("Received event: {envelope:?} from {sender_npub:?} (hex: {sender_node_id}) on client {client_id}");
+                                    // We use hex here, so we can compare it with our node_ids
+                                    // TODO: re-enable after presentation: if contact_service.is_known_npub(&sender_node_id).await? {
+                                        trace!("Processing event: {envelope:?}");
+                                        handle_event(envelope, &node_id, &event_handlers).await?;
+                                    // }
 
                                     // store the new event offset
                                     add_offset(&offset_store, event_id, time, true, &node_id).await;

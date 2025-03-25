@@ -88,7 +88,7 @@ impl IdentityWeb {
             name: identity.name,
             email: identity.email,
             bitcoin_public_key: identity.node_id.clone(),
-            npub: keys.get_nostr_npub()?,
+            npub: keys.get_nostr_npub(),
             postal_address: identity.postal_address.into_web(),
             date_of_birth: identity.date_of_birth,
             country_of_birth: identity.country_of_birth,

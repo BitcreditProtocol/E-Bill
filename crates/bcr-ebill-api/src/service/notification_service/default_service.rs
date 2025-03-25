@@ -22,7 +22,7 @@ use bcr_ebill_core::notification::{ActionType, BillEventType};
 /// send events via json and email transports.
 #[allow(dead_code)]
 pub struct DefaultNotificationService {
-    notification_transport: Box<dyn NotificationJsonTransportApi>,
+    notification_transport: Arc<dyn NotificationJsonTransportApi>,
     notification_store: Arc<dyn NotificationStoreApi>,
     contact_service: Arc<dyn ContactServiceApi>,
     queued_message_store: Arc<dyn NostrQueuedMessageStoreApi>,
@@ -35,7 +35,7 @@ impl DefaultNotificationService {
     const NOSTR_MAX_RETRIES: i32 = 10;
 
     pub fn new(
-        notification_transport: Box<dyn NotificationJsonTransportApi>,
+        notification_transport: Arc<dyn NotificationJsonTransportApi>,
         notification_store: Arc<dyn NotificationStoreApi>,
         contact_service: Arc<dyn ContactServiceApi>,
         queued_message_store: Arc<dyn NostrQueuedMessageStoreApi>,
@@ -576,7 +576,7 @@ mod tests {
             .times(3);
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
+            notification_transport: Arc::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
@@ -658,7 +658,7 @@ mod tests {
         mock.expect_send().never();
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
+            notification_transport: Arc::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
@@ -693,7 +693,7 @@ mod tests {
             .times(3);
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
+            notification_transport: Arc::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
             queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
@@ -734,7 +734,7 @@ mod tests {
         mock.expect_send().never();
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
+            notification_transport: Arc::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
             queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
@@ -830,7 +830,7 @@ mod tests {
             .times(2);
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
+            notification_transport: Arc::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
@@ -902,7 +902,7 @@ mod tests {
         mock.expect_send().never();
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
+            notification_transport: Arc::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
             queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
@@ -945,7 +945,7 @@ mod tests {
             .once();
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
+            notification_transport: Arc::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(queue_mock),
@@ -996,7 +996,7 @@ mod tests {
         }
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
+            notification_transport: Arc::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
@@ -1424,7 +1424,7 @@ mod tests {
             .returning(move |_| Ok(vec![returning.clone()]));
 
         let service = DefaultNotificationService::new(
-            Box::new(MockNotificationJsonTransport::new()),
+            Arc::new(MockNotificationJsonTransport::new()),
             Arc::new(mock_store),
             Arc::new(MockContactServiceApi::new()),
             Arc::new(MockNostrQueuedMessageStore::new()),
@@ -1447,7 +1447,7 @@ mod tests {
             .returning(|_| Ok(()));
 
         let service = DefaultNotificationService::new(
-            Box::new(MockNotificationJsonTransport::new()),
+            Arc::new(MockNotificationJsonTransport::new()),
             Arc::new(mock_store),
             Arc::new(MockContactServiceApi::new()),
             Arc::new(MockNostrQueuedMessageStore::new()),
@@ -1476,7 +1476,7 @@ mod tests {
             })
             .returning(|_, _| Ok(()));
         DefaultNotificationService {
-            notification_transport: Box::new(mock),
+            notification_transport: Arc::new(mock),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
             queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
@@ -1503,7 +1503,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_nostr_consumer() {
-        let client = get_mock_nostr_client().await;
+        let clients = vec![Arc::new(get_mock_nostr_client().await)];
         let contact_service = Arc::new(MockContactServiceApi::new());
         let store = Arc::new(MockNostrEventOffsetStoreApiMock::new());
         let notification_store = Arc::new(MockNotificationStoreApiMock::new());
@@ -1511,7 +1511,7 @@ mod tests {
         let bill_store = Arc::new(MockBillStoreApiMock::new());
         let bill_blockchain_store = Arc::new(MockBillChainStoreApiMock::new());
         let _ = create_nostr_consumer(
-            client,
+            clients,
             contact_service,
             store,
             notification_store,
@@ -1568,7 +1568,7 @@ mod tests {
             .returning(|_| Ok(()));
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
+            notification_transport: Arc::new(mock_transport),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(mock_queue),
@@ -1626,7 +1626,7 @@ mod tests {
             .returning(|_| Ok(()));
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
+            notification_transport: Arc::new(mock_transport),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(mock_queue),
@@ -1724,7 +1724,7 @@ mod tests {
             .returning(|_| Ok(()));
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
+            notification_transport: Arc::new(mock_transport),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(mock_queue),
@@ -1762,7 +1762,7 @@ mod tests {
         // Neither succeed nor fail should be called since payload can't be parsed
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(MockNotificationJsonTransport::new()),
+            notification_transport: Arc::new(MockNotificationJsonTransport::new()),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
             queued_message_store: Arc::new(mock_queue),
@@ -1826,7 +1826,7 @@ mod tests {
             });
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
+            notification_transport: Arc::new(mock_transport),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(mock_queue),
@@ -1888,7 +1888,7 @@ mod tests {
             });
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
+            notification_transport: Arc::new(mock_transport),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(mock_contact_service),
             queued_message_store: Arc::new(mock_queue),
@@ -1908,7 +1908,7 @@ mod tests {
             .times(1);
 
         let service = DefaultNotificationService {
-            notification_transport: Box::new(MockNotificationJsonTransport::new()),
+            notification_transport: Arc::new(MockNotificationJsonTransport::new()),
             notification_store: Arc::new(MockNotificationStoreApiMock::new()),
             contact_service: Arc::new(MockContactServiceApi::new()),
             queued_message_store: Arc::new(mock_queue),
