@@ -181,7 +181,13 @@ impl BillService {
         // send notification and blocks to all required recipients
         if let Err(e) = self
             .notification_service
-            .send_bill_is_signed_event(&BillChainEvent::new(&bill, &chain, &bill_keys, true)?)
+            .send_bill_is_signed_event(&BillChainEvent::new(
+                &bill,
+                &chain,
+                &bill_keys,
+                true,
+                &identity.identity.node_id,
+            )?)
             .await
         {
             error!("Error propagating bill via Nostr {e}");

@@ -38,12 +38,17 @@ pub struct NostrConfig {
 
 impl NostrConfig {
     pub fn new(keys: BcrKeys, relays: Vec<String>, name: String) -> Self {
+        assert!(!relays.is_empty());
         Self { keys, relays, name }
     }
 
     #[allow(dead_code)]
     pub fn get_npub(&self) -> String {
         self.keys.get_nostr_npub()
+    }
+
+    pub fn get_relay(&self) -> String {
+        self.relays[0].clone()
     }
 }
 
@@ -95,7 +100,7 @@ impl NostrClient {
     }
 
     pub fn get_node_id(&self) -> String {
-        self.keys.get_nostr_keys().public_key().to_hex()
+        self.keys.get_public_key()
     }
 
     /// Subscribe to some nostr events with a filter
@@ -137,6 +142,9 @@ impl ServiceTraitBounds for NostrClient {}
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationJsonTransportApi for NostrClient {
+    fn get_sender_key(&self) -> String {
+        self.get_node_id()
+    }
     async fn send(
         &self,
         recipient: &IdentityPublicData,

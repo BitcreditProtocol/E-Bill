@@ -47,9 +47,7 @@ impl NotificationHandlerApi for LoggingEventHandler {
     }
 
     async fn handle_event(&self, event: EventEnvelope, identity: &str) -> Result<()> {
-        info!("########### EVENT RECEIVED #############");
         info!("Received event: {event:?} for identity: {identity}");
-        info!("########################################");
         Ok(())
     }
 }

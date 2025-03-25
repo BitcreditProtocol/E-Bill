@@ -167,6 +167,7 @@ impl BillService {
 
                 self.notification_service
                     .send_request_to_action_timed_out_event(
+                        &identity.node_id,
                         bill_id,
                         Some(bill.sum),
                         action.to_owned(),

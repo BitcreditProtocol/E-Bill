@@ -2084,7 +2084,7 @@ pub mod tests {
         // Asset request to mint event is sent
         ctx.notification_service
             .expect_send_request_to_mint_event()
-            .returning(|_| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -2118,7 +2118,7 @@ pub mod tests {
         // Asset request to mint event is sent
         ctx.notification_service
             .expect_send_request_to_mint_event()
-            .returning(|_| Ok(()));
+            .returning(|_, _| Ok(()));
 
         let service = get_service(ctx);
 
@@ -2782,23 +2782,25 @@ pub mod tests {
         ctx.notification_service
             .expect_send_request_to_action_timed_out_event()
             .with(
+                always(),
                 eq("1234"),
                 always(),
                 eq(ActionType::AcceptBill),
                 recipient_check.clone(),
             )
-            .returning(|_, _, _, _| Ok(()));
+            .returning(|_, _, _, _, _| Ok(()));
 
         // send pay timeout notification
         ctx.notification_service
             .expect_send_request_to_action_timed_out_event()
             .with(
+                always(),
                 eq("4321"),
                 always(),
                 eq(ActionType::PayBill),
                 recipient_check,
             )
-            .returning(|_, _, _, _| Ok(()));
+            .returning(|_, _, _, _, _| Ok(()));
 
         // marks accept bill timeout as sent
         ctx.notification_service

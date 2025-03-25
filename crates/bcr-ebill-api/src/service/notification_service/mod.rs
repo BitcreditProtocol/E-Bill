@@ -82,17 +82,22 @@ pub async fn create_nostr_clients(
 
 /// Creates a new notification service that will send events via the given Nostr json transport.
 pub async fn create_notification_service(
-    client: Arc<NostrClient>,
+    clients: Vec<Arc<NostrClient>>,
     notification_store: Arc<dyn NotificationStoreApi>,
     contact_service: Arc<dyn ContactServiceApi>,
     queued_message_store: Arc<dyn NostrQueuedMessageStoreApi>,
+    nostr_relay: &str,
 ) -> Result<Arc<dyn NotificationServiceApi>> {
     #[allow(clippy::arc_with_non_send_sync)]
     Ok(Arc::new(DefaultNotificationService::new(
-        client,
+        clients
+            .iter()
+            .map(|c| c.clone() as Arc<dyn NotificationJsonTransportApi>)
+            .collect(),
         notification_store,
         contact_service,
         queued_message_store,
+        nostr_relay,
     )))
 }
 

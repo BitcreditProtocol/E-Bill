@@ -20,6 +20,7 @@ pub struct BillChainEvent {
     participants: HashMap<String, usize>,
     bill_keys: BillKeys,
     new_blocks: bool,
+    sender_node_id: String,
 }
 
 impl BillChainEvent {
@@ -31,6 +32,7 @@ impl BillChainEvent {
         chain: &BillBlockchain,
         bill_keys: &BillKeys,
         new_blocks: bool,
+        sender_node_id: &str,
     ) -> Result<Self> {
         let participants = chain
             .get_all_nodes_with_added_block_height(bill_keys)
@@ -47,7 +49,12 @@ impl BillChainEvent {
             participants,
             bill_keys: bill_keys.clone(),
             new_blocks,
+            sender_node_id: sender_node_id.to_owned(),
         })
+    }
+
+    pub fn sender(&self) -> String {
+        self.sender_node_id.clone()
     }
 
     // Returns the latest block in the chain.

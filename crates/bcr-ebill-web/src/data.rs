@@ -17,7 +17,7 @@ use bcr_ebill_api::data::{
     identity::{Identity, IdentityType},
     notification::{Notification, NotificationType},
 };
-use bcr_ebill_api::service::{Error, Result};
+use bcr_ebill_api::service::Error;
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
 use bcr_ebill_api::util::{BcrKeys, date::DateTimeUtc};
 use rocket::FromForm;

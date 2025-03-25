@@ -259,6 +259,7 @@ pub mod tests {
             ) -> bcr_ebill_transport::Result<()>;
             async fn send_request_to_action_timed_out_event(
                 &self,
+                sender_node_id: &str,
                 bill_id: &str,
                 sum: Option<u64>,
                 timed_out_action: ActionType,
@@ -270,7 +271,7 @@ pub mod tests {
                 action: ActionType,
                 recoursee: &IdentityPublicData,
             ) -> bcr_ebill_transport::Result<()>;
-            async fn send_request_to_mint_event(&self, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
+            async fn send_request_to_mint_event(&self, sender_node_id: &str, bill: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
             async fn send_new_quote_event(&self, quote: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
             async fn send_quote_is_approved_event(&self, quote: &BitcreditBill) -> bcr_ebill_transport::Result<()>;
             async fn get_client_notifications(

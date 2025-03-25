@@ -56,6 +56,7 @@ pub trait NostrQueuedMessageStoreApi: Send + Sync {
 #[derive(Clone, Debug)]
 pub struct NostrQueuedMessage {
     pub id: String,
+    pub sender_id: String,
     pub node_id: String,
     pub payload: Value,
 }

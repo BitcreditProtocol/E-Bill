@@ -19,7 +19,13 @@ impl BillService {
             .get_last_version_bill(blockchain, bill_keys, identity)
             .await?;
 
-        let chain_event = BillChainEvent::new(&last_version_bill, blockchain, bill_keys, true)?;
+        let chain_event = BillChainEvent::new(
+            &last_version_bill,
+            blockchain,
+            bill_keys,
+            true,
+            &identity.node_id,
+        )?;
 
         match bill_action {
             BillAction::Accept => {
@@ -53,7 +59,7 @@ impl BillService {
             }
             BillAction::Mint(_, _, _) => {
                 self.notification_service
-                    .send_request_to_mint_event(&last_version_bill)
+                    .send_request_to_mint_event(&identity.node_id, &last_version_bill)
                     .await?;
             }
             BillAction::OfferToSell(buyer, _, _) => {

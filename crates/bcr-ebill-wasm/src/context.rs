@@ -50,10 +50,11 @@ impl Context {
         let nostr_clients =
             create_nostr_clients(&cfg, db.identity_store.clone(), db.company_store.clone()).await?;
         let notification_service = create_notification_service(
-            nostr_clients.first().unwrap().clone(),
+            nostr_clients.clone(),
             db.notification_store.clone(),
             contact_service.clone(),
             db.queued_message_store.clone(),
+            &cfg.nostr_relay,
         )
         .await?;
 
