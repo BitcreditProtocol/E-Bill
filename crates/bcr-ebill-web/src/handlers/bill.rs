@@ -247,35 +247,30 @@ pub async fn list(
     }))
 }
 
-#[utoipa::path(
-    tag = "All Bills from all identities",
-    path = "/bill/list_all",
-    description = "Get all local bills regardless of the selected identity",
-    responses(
-        (status = 200, description = "List of all local bills", body = BillsResponse<BitcreditBillWeb>)
-    )
-)]
-#[get("/list_all")]
-pub async fn all_bills_from_all_identities(
-    _identity: IdentityCheck,
-    state: &State<ServiceContext>,
-) -> Result<Json<BillsResponse<BitcreditBillWeb>>> {
-    let bills = state.bill_service.get_bills_from_all_identities().await?;
-    Ok(Json(BillsResponse {
-        bills: bills.into_iter().map(|b| b.into_web()).collect(),
-    }))
-}
-
 #[get("/numbers_to_words_for_sum/<id>")]
 pub async fn numbers_to_words_for_sum(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     id: &str,
 ) -> Result<Json<BillNumbersToWordsForSum>> {
-    let bill = state.bill_service.get_bill(id).await?;
-    let sum = bill.sum;
-    let sum_as_words = util::numbers_to_words::encode(&sum);
-    Ok(Json(BillNumbersToWordsForSum { sum, sum_as_words }))
+    let current_timestamp = util::date::now().timestamp() as u64;
+    let identity = state.identity_service.get_identity().await?;
+    let bill = state
+        .bill_service
+        .get_detail(
+            id,
+            &identity,
+            &get_current_identity_node_id(state).await,
+            current_timestamp,
+        )
+        .await?;
+    let sum = bill.data.sum;
+    let parsed_sum = util::currency::parse_sum(&sum)?;
+    let sum_as_words = util::numbers_to_words::encode(&parsed_sum);
+    Ok(Json(BillNumbersToWordsForSum {
+        sum: parsed_sum,
+        sum_as_words,
+    }))
 }
 
 #[utoipa::path(

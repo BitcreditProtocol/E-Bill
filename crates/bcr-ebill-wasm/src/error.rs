@@ -2,6 +2,7 @@ use bcr_ebill_api::service::Error as ServiceError;
 use bcr_ebill_api::service::bill_service::Error as BillServiceError;
 use bcr_ebill_api::util;
 use bcr_ebill_transport::Error as NotificationServiceError;
+use log::error;
 use serde::Serialize;
 use thiserror::Error;
 use tsify::Tsify;
@@ -41,6 +42,7 @@ struct JsErrorData {
 
 impl From<WasmError> for JsValue {
     fn from(error: WasmError) -> JsValue {
+        error!("{error}");
         let js_error_data = match error {
             WasmError::Service(e) => match e {
                 ServiceError::NoFileForFileUploadId => JsErrorData {

@@ -112,6 +112,7 @@ impl BillChainEventHandler {
 
     async fn add_bill_blocks(&self, bill_id: &str, blocks: Vec<BillBlock>) -> Result<()> {
         if let Ok(mut chain) = self.bill_blockchain_store.get_chain(bill_id).await {
+            let mut block_added = false;
             for block in blocks {
                 if !chain.try_add_block(block.clone()) {
                     error!("Received invalid block for bill {bill_id}");
@@ -119,7 +120,12 @@ impl BillChainEventHandler {
                         "Received invalid block for bill".to_string(),
                     ));
                 }
-                self.save_block(bill_id, &block).await?
+                self.save_block(bill_id, &block).await?;
+                block_added = true;
+            }
+            // if the bill was changed, we invalidate the cache
+            if block_added {
+                self.invalidate_cache_for_bill(bill_id).await?;
             }
             Ok(())
         } else {
@@ -171,6 +177,16 @@ impl BillChainEventHandler {
             error!("Failed to add block to blockchain store: {}", e);
             return Err(Error::Persistence(
                 "Failed to add block to blockchain store".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn invalidate_cache_for_bill(&self, bill_id: &str) -> Result<()> {
+        if let Err(e) = self.bill_store.invalidate_bill_in_cache(bill_id).await {
+            error!("Failed to invalidate cache for bill {bill_id}: {}", e);
+            return Err(Error::Persistence(
+                "Failed to invalidate cache for bill".to_string(),
             ));
         }
         Ok(())
@@ -353,9 +369,13 @@ mod tests {
         )
         .unwrap();
 
-        let (notification_store, push_service, mut bill_chain_store, bill_store) = create_mocks();
+        let (notification_store, push_service, mut bill_chain_store, mut bill_store) =
+            create_mocks();
 
         let chain_clone = chain.clone();
+        bill_store
+            .expect_invalidate_bill_in_cache()
+            .returning(|_| Ok(()));
         bill_chain_store
             .expect_get_chain()
             .with(eq("bill"))

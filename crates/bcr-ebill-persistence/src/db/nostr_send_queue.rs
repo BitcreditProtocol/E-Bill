@@ -1,6 +1,6 @@
 use super::Result;
 use crate::{
-    constants::DB_TABLE,
+    constants::{DB_IDS, DB_LIMIT, DB_TABLE},
     util::date::{self, DateTimeUtc},
 };
 use async_trait::async_trait;
@@ -27,7 +27,7 @@ impl SurrealNostrEventQueueStore {
         self.db
             .query("UPDATE type::table($table) SET processing = true WHERE id IN $ids")
             .bind((DB_TABLE, Self::TABLE))
-            .bind(("ids", ids))
+            .bind((DB_IDS, ids))
             .await?;
         Ok(())
     }
@@ -52,7 +52,7 @@ impl NostrQueuedMessageStoreApi for SurrealNostrEventQueueStore {
             .db
             .query("SELECT * FROM type::table($table) WHERE completed = false AND processing = false ORDER BY last_try ASC LIMIT $limit")
             .bind((DB_TABLE, Self::TABLE))
-            .bind(("limit", limit))
+            .bind((DB_LIMIT, limit))
             .await?
             .take(0)?;
         let ids = items.iter().map(|i| i.id.to_owned()).collect();

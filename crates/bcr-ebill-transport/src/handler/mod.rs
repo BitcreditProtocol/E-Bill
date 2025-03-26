@@ -156,7 +156,7 @@ mod tests {
 mod test_utils {
     use async_trait::async_trait;
     use bcr_ebill_core::{
-        bill::BillKeys,
+        bill::{BillKeys, BitcreditBillResult},
         blockchain::bill::{BillBlock, BillBlockchain, BillOpCode},
         notification::{ActionType, Notification, NotificationType},
     };
@@ -166,6 +166,7 @@ mod test_utils {
         notification::NotificationFilter,
     };
     use mockall::mock;
+    use std::collections::HashMap;
 
     use crate::PushApi;
 
@@ -176,6 +177,11 @@ mod test_utils {
         impl NotificationStoreApi for NotificationStore {
             async fn add(&self, notification: Notification) -> Result<Notification>;
             async fn list(&self, filter: NotificationFilter) -> Result<Vec<Notification>>;
+            async fn get_latest_by_references(
+                &self,
+                reference: &[String],
+                notification_type: NotificationType,
+            ) -> Result<HashMap<String, Notification>>;
             async fn get_latest_by_reference(
                 &self,
                 reference: &str,
@@ -226,6 +232,10 @@ mod test_utils {
 
         #[async_trait]
         impl BillStoreApi for BillStore {
+            async fn get_bills_from_cache(&self, ids: &[String]) -> Result<Vec<BitcreditBillResult>>;
+            async fn get_bill_from_cache(&self, id: &str) -> Result<Option<BitcreditBillResult>>;
+            async fn save_bill_to_cache(&self, id: &str, bill: &BitcreditBillResult) -> Result<()>;
+            async fn invalidate_bill_in_cache(&self, id: &str) -> Result<()>;
             async fn exists(&self, id: &str) -> bool;
             async fn get_ids(&self) -> Result<Vec<String>>;
             async fn save_keys(&self, id: &str, keys: &BillKeys) -> Result<()>;

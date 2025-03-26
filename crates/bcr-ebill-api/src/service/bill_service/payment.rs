@@ -20,8 +20,9 @@ impl BillService {
         info!("Checking bill payment for {bill_id}");
         let chain = self.blockchain_store.get_chain(bill_id).await?;
         let bill_keys = self.store.get_keys(bill_id).await?;
+        let contacts = self.contact_store.get_map().await?;
         let bill = self
-            .get_last_version_bill(&chain, &bill_keys, identity)
+            .get_last_version_bill(&chain, &bill_keys, identity, &contacts)
             .await?;
 
         let holder_public_key = match bill.endorsee {
@@ -38,6 +39,8 @@ impl BillService {
         {
             if paid && sum > 0 {
                 self.store.set_to_paid(bill_id, &address_to_pay).await?;
+                // invalidate bill cache, so payment state is updated on next fetch
+                self.store.invalidate_bill_in_cache(bill_id).await?;
             }
         }
         Ok(())
@@ -52,6 +55,7 @@ impl BillService {
         info!("Checking bill recourse payment for {bill_id}");
         let bill_keys = self.store.get_keys(bill_id).await?;
         let chain = self.blockchain_store.get_chain(bill_id).await?;
+        let contacts = self.contact_store.get_map().await?;
         if let Ok(RecourseWaitingForPayment::Yes(payment_info)) =
             chain.is_last_request_to_recourse_block_waiting_for_payment(&bill_keys, now)
         {
@@ -78,6 +82,7 @@ impl BillService {
                                         self.extend_bill_chain_identity_data_from_contacts_or_identity(
                                             payment_info.recoursee.clone(),
                                             &identity.identity,
+                                            &contacts
                                         )
                                         .await, payment_info.sum, payment_info.currency),
                                     &signer_identity,
@@ -107,6 +112,7 @@ impl BillService {
                                     BillAction::Recourse(self.extend_bill_chain_identity_data_from_contacts_or_identity(
                                         payment_info.recoursee.clone(),
                                         &identity.identity,
+                                        &contacts
                                     )
                                     .await, payment_info.sum, payment_info.currency),
                                     // signer identity (company)
@@ -133,6 +139,7 @@ impl BillService {
         info!("Checking bill offer to sell payment for {bill_id}");
         let bill_keys = self.store.get_keys(bill_id).await?;
         let chain = self.blockchain_store.get_chain(bill_id).await?;
+        let contacts = self.contact_store.get_map().await?;
         if let Ok(OfferToSellWaitingForPayment::Yes(payment_info)) =
             chain.is_last_offer_to_sell_block_waiting_for_payment(&bill_keys, now)
         {
@@ -155,6 +162,7 @@ impl BillService {
                                     self.extend_bill_chain_identity_data_from_contacts_or_identity(
                                         payment_info.buyer.clone(),
                                         &identity.identity,
+                                        &contacts
                                     )
                                     .await,
                                     payment_info.sum,
@@ -187,6 +195,7 @@ impl BillService {
                                     self.extend_bill_chain_identity_data_from_contacts_or_identity(
                                         payment_info.buyer.clone(),
                                         &identity.identity,
+                                        &contacts
                                     )
                                     .await,
                                     payment_info.sum,

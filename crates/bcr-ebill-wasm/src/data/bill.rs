@@ -423,6 +423,7 @@ impl IntoWeb<BillStatusWeb> for BillStatus {
 #[derive(Tsify, Debug, Serialize, Clone)]
 #[tsify(into_wasm_abi)]
 pub struct BillAcceptanceStatusWeb {
+    pub time_of_request_to_accept: Option<u64>,
     pub requested_to_accept: bool,
     pub accepted: bool,
     pub request_to_accept_timed_out: bool,
@@ -432,6 +433,7 @@ pub struct BillAcceptanceStatusWeb {
 impl IntoWeb<BillAcceptanceStatusWeb> for BillAcceptanceStatus {
     fn into_web(self) -> BillAcceptanceStatusWeb {
         BillAcceptanceStatusWeb {
+            time_of_request_to_accept: self.time_of_request_to_accept,
             requested_to_accept: self.requested_to_accept,
             accepted: self.accepted,
             request_to_accept_timed_out: self.request_to_accept_timed_out,
@@ -443,6 +445,7 @@ impl IntoWeb<BillAcceptanceStatusWeb> for BillAcceptanceStatus {
 #[derive(Tsify, Debug, Serialize, Clone)]
 #[tsify(into_wasm_abi)]
 pub struct BillPaymentStatusWeb {
+    pub time_of_request_to_pay: Option<u64>,
     pub requested_to_pay: bool,
     pub paid: bool,
     pub request_to_pay_timed_out: bool,
@@ -451,6 +454,7 @@ pub struct BillPaymentStatusWeb {
 impl IntoWeb<BillPaymentStatusWeb> for BillPaymentStatus {
     fn into_web(self) -> BillPaymentStatusWeb {
         BillPaymentStatusWeb {
+            time_of_request_to_pay: self.time_of_request_to_pay,
             requested_to_pay: self.requested_to_pay,
             paid: self.paid,
             request_to_pay_timed_out: self.request_to_pay_timed_out,
@@ -462,6 +466,8 @@ impl IntoWeb<BillPaymentStatusWeb> for BillPaymentStatus {
 #[derive(Tsify, Debug, Serialize, Clone)]
 #[tsify(into_wasm_abi)]
 pub struct BillSellStatusWeb {
+    pub time_of_last_offer_to_sell: Option<u64>,
+    pub sold: bool,
     pub offered_to_sell: bool,
     pub offer_to_sell_timed_out: bool,
     pub rejected_offer_to_sell: bool,
@@ -469,6 +475,8 @@ pub struct BillSellStatusWeb {
 impl IntoWeb<BillSellStatusWeb> for BillSellStatus {
     fn into_web(self) -> BillSellStatusWeb {
         BillSellStatusWeb {
+            time_of_last_offer_to_sell: self.time_of_last_offer_to_sell,
+            sold: self.sold,
             offered_to_sell: self.offered_to_sell,
             offer_to_sell_timed_out: self.offer_to_sell_timed_out,
             rejected_offer_to_sell: self.rejected_offer_to_sell,
@@ -479,6 +487,8 @@ impl IntoWeb<BillSellStatusWeb> for BillSellStatus {
 #[derive(Tsify, Debug, Serialize, Clone)]
 #[tsify(into_wasm_abi)]
 pub struct BillRecourseStatusWeb {
+    pub time_of_last_request_to_recourse: Option<u64>,
+    pub recoursed: bool,
     pub requested_to_recourse: bool,
     pub request_to_recourse_timed_out: bool,
     pub rejected_request_to_recourse: bool,
@@ -487,6 +497,8 @@ pub struct BillRecourseStatusWeb {
 impl IntoWeb<BillRecourseStatusWeb> for BillRecourseStatus {
     fn into_web(self) -> BillRecourseStatusWeb {
         BillRecourseStatusWeb {
+            time_of_last_request_to_recourse: self.time_of_last_request_to_recourse,
+            recoursed: self.recoursed,
             requested_to_recourse: self.requested_to_recourse,
             request_to_recourse_timed_out: self.request_to_recourse_timed_out,
             rejected_request_to_recourse: self.rejected_request_to_recourse,

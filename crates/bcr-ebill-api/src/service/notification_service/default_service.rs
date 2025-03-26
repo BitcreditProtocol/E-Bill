@@ -417,6 +417,16 @@ impl NotificationServiceApi for DefaultNotificationService {
             .unwrap_or_default()
     }
 
+    async fn get_active_bill_notifications(
+        &self,
+        bill_ids: &[String],
+    ) -> HashMap<String, Notification> {
+        self.notification_store
+            .get_latest_by_references(bill_ids, NotificationType::Bill)
+            .await
+            .unwrap_or_default()
+    }
+
     async fn check_bill_notification_sent(
         &self,
         bill_id: &str,

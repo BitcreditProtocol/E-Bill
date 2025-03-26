@@ -14,36 +14,60 @@
         <div>
             File Upload Id: <input type="text" id="file_upload_id"/>
             <button type="button" id="fetch_temp">fetch file by id and display</button>
+            <br />
             <img id="uploaded_file"/>
         </div>
         <div>
             Contact node id: <input type="text" id="contact_id"/>
             File name: <input type="text" id="contact_file_name"/>
             <button type="button" id="fetch_contact_file">fetch file by node id and file name</button>
+            <br />
             <img id="attached_file"/>
         </div>
     </div>
     <div>
         <h2>Notification Testing</h2>
         <div>
-        </div>
-        <div>
-            <input type="text" id="node_id"/>
             <button type="button" id="notif">trigger local push notif</button>
         </div>
     </div>
     <div>
+        <h2>Identity Testing</h2>
+        <div>Personal identity: <span id="identity"></span></div>
+        <div>Active identity: <span id="current_identity"></span></div>
+        <input type="text" id="node_id_identity"/>
+        <button type="button" id="switch_identity">Switch to identity</button>
+    </div>
+    <div>
+        <h2>Company Testing</h2>
+        <div>Company Id: <span id="companies"></span></div>
+    </div>
+    <div>
         <h2>Bill Testing</h2>
         <div>
-            <input type="text" id="node_id_bill"/>
+            Contact Id: <input type="text" id="node_id_bill"/>
             <button type="button" id="contact_test">Create Contact for node id</button>
             <button type="button" id="bill_test">Create bill with contact for node id</button>
+            <br />
+            <br />
+            Bill Id: <input type="text" id="endorse_bill_id"/>
+            Endorsee Id: <input type="text" id="endorsee_id"/>
+            <button type="button" id="endorse_bill">Endorse bill to Endorsee</button>
         </div>
+        <h2>Bill Performance</h2>
         <div>
-          <input type="text" id="bill_id"/>
-          <button type="button" id="fetch_bill">fetch bill by id</button>
+            Bill Id: <input type="text" id="bill_id"/><br /><br />
+            <button type="button" id="bill_fetch_detail">Fetch Detail</button>
+            <button type="button" id="bill_fetch_endorsements">Fetch Endorsements</button>
+            <button type="button" id="bill_fetch_past_endorsees">Fetch Past Endorsees</button>
+            <button type="button" id="bill_fetch_bills">Fetch Bills</button>
+            <button type="button" id="bill_balances">Fetch Balances</button>
+            <button type="button" id="bill_search">Search Bills</button>
+            <div>Execution Time: <span id="bill_execution_time"></div>
+            <div>Results: <span id="bill_results"></div>
         </div>
     </div>
     <script type="module" src="/main.js"></script>
 </body>
 </html>
+

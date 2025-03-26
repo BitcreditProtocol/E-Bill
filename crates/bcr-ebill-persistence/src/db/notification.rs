@@ -1,3 +1,5 @@
+use std::collections::{HashMap, hash_map::Entry};
+
 use super::super::{Error, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -5,6 +7,7 @@ use serde_json::Value;
 use surrealdb::{Surreal, engine::any::Any, sql::Thing};
 
 use crate::{
+    constants::{DB_ACTIVE, DB_IDS, DB_NOTIFICATION_TYPE, DB_TABLE},
     notification::{NotificationFilter, NotificationStoreApi},
     util::date::{DateTimeUtc, now},
 };
@@ -70,6 +73,45 @@ impl NotificationStoreApi for SurrealNotificationStore {
         }
         let result: Vec<NotificationDb> = query.await?.take(0)?;
         Ok(result.into_iter().map(|n| n.into()).collect())
+    }
+    /// Returns the latest active notifications for the given reference and notification type
+    async fn get_latest_by_references(
+        &self,
+        references: &[String],
+        notification_type: NotificationType,
+    ) -> Result<HashMap<String, Notification>> {
+        let result: Vec<NotificationDb> = self
+            .db
+            .query(
+                "SELECT * FROM type::table($table) WHERE active = $active AND notification_type = $notification_type AND reference_id IN $ids",
+            )
+            .bind((DB_TABLE, Self::TABLE))
+            .bind((DB_ACTIVE, true))
+            .bind((DB_NOTIFICATION_TYPE, notification_type.to_owned()))
+            .bind((DB_IDS, references.to_owned()))
+            .await?
+            .take(0)?;
+        let mut latest_map: HashMap<String, Notification> = HashMap::new();
+
+        for notification in result {
+            if let Some(ref_id) = &notification.reference_id {
+                let entry = latest_map.entry(ref_id.clone());
+
+                match entry {
+                    Entry::Vacant(e) => {
+                        e.insert(notification.into());
+                    }
+                    Entry::Occupied(mut e) => {
+                        // only keep the latest one
+                        if notification.datetime > e.get().datetime {
+                            e.insert(notification.into());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(latest_map)
     }
     /// Returns the latest active notification for the given reference and notification type
     async fn get_latest_by_reference(
@@ -335,6 +377,71 @@ mod tests {
             .await
             .expect("could not list notifications");
         assert!(all.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_marks_done_and_no_longer_returns_by_references() {
+        let store = get_store().await;
+        let notification = test_notification("bill_id", Some(test_payload()));
+        let notification2 = test_notification("bill_id2", Some(test_payload()));
+        let r = store
+            .add(notification.clone())
+            .await
+            .expect("could not create notification");
+        store
+            .add(notification2.clone())
+            .await
+            .expect("could not create notification");
+
+        let references = store
+            .get_latest_by_references(
+                &["bill_id".to_string(), "bill_id2".to_string()],
+                NotificationType::Bill,
+            )
+            .await
+            .expect("could not list notifications");
+        assert_eq!(references.len(), 2);
+        assert_eq!(
+            references
+                .get("bill_id")
+                .unwrap()
+                .reference_id
+                .as_ref()
+                .unwrap(),
+            &"bill_id".to_string()
+        );
+        assert_eq!(
+            references
+                .get("bill_id2")
+                .unwrap()
+                .reference_id
+                .as_ref()
+                .unwrap(),
+            &"bill_id2".to_string()
+        );
+
+        store
+            .mark_as_done(&r.id)
+            .await
+            .expect("could not mark notification as done");
+
+        let references = store
+            .get_latest_by_references(
+                &["bill_id".to_string(), "bill_id2".to_string()],
+                NotificationType::Bill,
+            )
+            .await
+            .expect("could not list notifications");
+        assert_eq!(references.len(), 1);
+        assert_eq!(
+            references
+                .get("bill_id2")
+                .unwrap()
+                .reference_id
+                .as_ref()
+                .unwrap(),
+            &"bill_id2".to_string()
+        );
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ pub mod tests {
     use async_trait::async_trait;
     use bcr_ebill_core::{
         OptionalPostalAddress, PostalAddress, ServiceTraitBounds,
-        bill::BitcreditBill,
+        bill::{BitcreditBill, BitcreditBillResult},
         blockchain::{
             bill::{BillBlock, BillBlockchain, BillOpCode},
             company::{CompanyBlock, CompanyBlockchain},
@@ -62,6 +62,10 @@ pub mod tests {
 
         #[async_trait]
         impl BillStoreApi for BillStoreApiMock {
+            async fn get_bills_from_cache(&self, ids: &[String]) -> Result<Vec<BitcreditBillResult>>;
+            async fn get_bill_from_cache(&self, id: &str) -> Result<Option<BitcreditBillResult>>;
+            async fn save_bill_to_cache(&self, id: &str, bill: &BitcreditBillResult) -> Result<()>;
+            async fn invalidate_bill_in_cache(&self, id: &str) -> Result<()>;
             async fn exists(&self, id: &str) -> bool;
             async fn get_ids(&self) -> Result<Vec<String>>;
             async fn save_keys(&self, id: &str, keys: &BillKeys) -> Result<()>;
@@ -175,6 +179,11 @@ pub mod tests {
         impl NotificationStoreApi for NotificationStoreApiMock {
             async fn add(&self, notification: Notification) -> Result<Notification>;
             async fn list(&self, filter: NotificationFilter) -> Result<Vec<Notification>>;
+            async fn get_latest_by_references(
+                &self,
+                reference: &[String],
+                notification_type: NotificationType,
+            ) -> Result<HashMap<String, Notification>>;
             async fn get_latest_by_reference(
                 &self,
                 reference: &str,
@@ -280,6 +289,7 @@ pub mod tests {
             ) -> bcr_ebill_transport::Result<Vec<Notification>>;
             async fn mark_notification_as_done(&self, notification_id: &str) -> bcr_ebill_transport::Result<()>;
             async fn get_active_bill_notification(&self, bill_id: &str) -> Option<Notification>;
+            async fn get_active_bill_notifications(&self, bill_ids: &[String]) -> HashMap<String, Notification>;
             async fn check_bill_notification_sent(
                 &self,
                 bill_id: &str,

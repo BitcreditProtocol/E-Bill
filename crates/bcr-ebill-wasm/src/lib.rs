@@ -47,7 +47,6 @@ pub async fn initialize_api(
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
     console_log::init_with_level(config.log_level.unwrap_or(log::Level::Info))
         .expect("can initialize logging");
-    log::debug!("hi");
     let api_config = ApiConfig {
         bitcoin_network: config.bitcoin_network,
         nostr_relay: config.nostr_relay,

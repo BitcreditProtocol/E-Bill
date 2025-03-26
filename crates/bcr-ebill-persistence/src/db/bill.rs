@@ -1,10 +1,16 @@
 use std::collections::HashSet;
 
-use super::Result;
-use crate::constants::{DB_BILL_ID, DB_OP_CODE, DB_TABLE, DB_TIMESTAMP};
+use super::{FileDb, PostalAddressDb, Result};
+use crate::constants::{DB_BILL_ID, DB_IDS, DB_OP_CODE, DB_TABLE, DB_TIMESTAMP};
 use crate::{Error, bill::BillStoreApi};
 use async_trait::async_trait;
+use bcr_ebill_core::bill::{
+    BillAcceptanceStatus, BillCurrentWaitingState, BillData, BillParticipants, BillPaymentStatus,
+    BillRecourseStatus, BillSellStatus, BillStatus, BillWaitingForPaymentState,
+    BillWaitingForRecourseState, BillWaitingForSellState, BitcreditBillResult,
+};
 use bcr_ebill_core::constants::{PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS};
+use bcr_ebill_core::contact::{ContactType, IdentityPublicData};
 use bcr_ebill_core::{bill::BillKeys, blockchain::bill::BillOpCode, util};
 use serde::{Deserialize, Serialize};
 use surrealdb::{Surreal, engine::any::Any, sql::Thing};
@@ -18,6 +24,7 @@ impl SurrealBillStore {
     const CHAIN_TABLE: &'static str = "bill_chain";
     const KEYS_TABLE: &'static str = "bill_keys";
     const PAID_TABLE: &'static str = "bill_paid";
+    const CACHE_TABLE: &'static str = "bill_cache";
 
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }
@@ -26,6 +33,46 @@ impl SurrealBillStore {
 
 #[async_trait]
 impl BillStoreApi for SurrealBillStore {
+    async fn get_bills_from_cache(&self, ids: &[String]) -> Result<Vec<BitcreditBillResult>> {
+        let db_ids: Vec<Thing> = ids
+            .iter()
+            .map(|id| (SurrealBillStore::CACHE_TABLE.to_owned(), id.to_string()).into())
+            .collect();
+
+        let results: Vec<BitcreditBillResultDb> = self
+            .db
+            .query("SELECT * FROM type::table($table) WHERE id IN $ids")
+            .bind((DB_TABLE, Self::CACHE_TABLE))
+            .bind((DB_IDS, db_ids))
+            .await?
+            .take(0)?;
+        Ok(results.into_iter().map(|bill| bill.into()).collect())
+    }
+
+    async fn get_bill_from_cache(&self, id: &str) -> Result<Option<BitcreditBillResult>> {
+        let result: Option<BitcreditBillResultDb> = self.db.select((Self::CACHE_TABLE, id)).await?;
+        match result {
+            None => Ok(None),
+            Some(c) => Ok(Some(c.into())),
+        }
+    }
+
+    async fn save_bill_to_cache(&self, id: &str, bill: &BitcreditBillResult) -> Result<()> {
+        let id = id.to_owned();
+        let entity: BitcreditBillResultDb = bill.into();
+        let _: Option<BitcreditBillResultDb> = self
+            .db
+            .upsert((Self::CACHE_TABLE, id))
+            .content(entity)
+            .await?;
+        Ok(())
+    }
+
+    async fn invalidate_bill_in_cache(&self, id: &str) -> Result<()> {
+        let _: Option<BitcreditBillResultDb> = self.db.delete((Self::CACHE_TABLE, id)).await?;
+        Ok(())
+    }
+
     async fn exists(&self, id: &str) -> bool {
         match self
             .db
@@ -177,6 +224,488 @@ impl BillStoreApi for SurrealBillStore {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BitcreditBillResultDb {
+    pub id: Thing,
+    pub participants: BillParticipantsDb,
+    pub data: BillDataDb,
+    pub status: BillStatusDb,
+    pub current_waiting_state: Option<BillCurrentWaitingStateDb>,
+}
+
+impl From<BitcreditBillResultDb> for BitcreditBillResult {
+    fn from(value: BitcreditBillResultDb) -> Self {
+        Self {
+            id: value.id.id.to_raw(),
+            participants: value.participants.into(),
+            data: value.data.into(),
+            status: value.status.into(),
+            current_waiting_state: value.current_waiting_state.map(|cws| cws.into()),
+        }
+    }
+}
+
+impl From<&BitcreditBillResult> for BitcreditBillResultDb {
+    fn from(value: &BitcreditBillResult) -> Self {
+        Self {
+            id: (SurrealBillStore::CACHE_TABLE.to_owned(), value.id.clone()).into(),
+            participants: (&value.participants).into(),
+            data: (&value.data).into(),
+            status: (&value.status).into(),
+            current_waiting_state: value.current_waiting_state.as_ref().map(|cws| cws.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BillCurrentWaitingStateDb {
+    Sell(BillWaitingForSellStateDb),
+    Payment(BillWaitingForPaymentStateDb),
+    Recourse(BillWaitingForRecourseStateDb),
+}
+
+impl From<BillCurrentWaitingStateDb> for BillCurrentWaitingState {
+    fn from(value: BillCurrentWaitingStateDb) -> Self {
+        match value {
+            BillCurrentWaitingStateDb::Sell(state) => BillCurrentWaitingState::Sell(state.into()),
+            BillCurrentWaitingStateDb::Payment(state) => {
+                BillCurrentWaitingState::Payment(state.into())
+            }
+            BillCurrentWaitingStateDb::Recourse(state) => {
+                BillCurrentWaitingState::Recourse(state.into())
+            }
+        }
+    }
+}
+
+impl From<&BillCurrentWaitingState> for BillCurrentWaitingStateDb {
+    fn from(value: &BillCurrentWaitingState) -> Self {
+        match value {
+            BillCurrentWaitingState::Sell(state) => BillCurrentWaitingStateDb::Sell(state.into()),
+            BillCurrentWaitingState::Payment(state) => {
+                BillCurrentWaitingStateDb::Payment(state.into())
+            }
+            BillCurrentWaitingState::Recourse(state) => {
+                BillCurrentWaitingStateDb::Recourse(state.into())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillWaitingForSellStateDb {
+    pub time_of_request: u64,
+    pub buyer: IdentityDataDb,
+    pub seller: IdentityDataDb,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub mempool_link_for_address_to_pay: String,
+}
+
+impl From<BillWaitingForSellStateDb> for BillWaitingForSellState {
+    fn from(value: BillWaitingForSellStateDb) -> Self {
+        Self {
+            time_of_request: value.time_of_request,
+            buyer: value.buyer.into(),
+            seller: value.seller.into(),
+            currency: value.currency,
+            sum: value.sum,
+            link_to_pay: value.link_to_pay,
+            address_to_pay: value.address_to_pay,
+            mempool_link_for_address_to_pay: value.mempool_link_for_address_to_pay,
+        }
+    }
+}
+
+impl From<&BillWaitingForSellState> for BillWaitingForSellStateDb {
+    fn from(value: &BillWaitingForSellState) -> Self {
+        Self {
+            time_of_request: value.time_of_request,
+            buyer: (&value.buyer).into(),
+            seller: (&value.seller).into(),
+            currency: value.currency.clone(),
+            sum: value.sum.clone(),
+            link_to_pay: value.link_to_pay.clone(),
+            address_to_pay: value.address_to_pay.clone(),
+            mempool_link_for_address_to_pay: value.mempool_link_for_address_to_pay.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillWaitingForPaymentStateDb {
+    pub time_of_request: u64,
+    pub payer: IdentityDataDb,
+    pub payee: IdentityDataDb,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub mempool_link_for_address_to_pay: String,
+}
+
+impl From<BillWaitingForPaymentStateDb> for BillWaitingForPaymentState {
+    fn from(value: BillWaitingForPaymentStateDb) -> Self {
+        Self {
+            time_of_request: value.time_of_request,
+            payer: value.payer.into(),
+            payee: value.payee.into(),
+            currency: value.currency,
+            sum: value.sum,
+            link_to_pay: value.link_to_pay,
+            address_to_pay: value.address_to_pay,
+            mempool_link_for_address_to_pay: value.mempool_link_for_address_to_pay,
+        }
+    }
+}
+
+impl From<&BillWaitingForPaymentState> for BillWaitingForPaymentStateDb {
+    fn from(value: &BillWaitingForPaymentState) -> Self {
+        Self {
+            time_of_request: value.time_of_request,
+            payer: (&value.payer).into(),
+            payee: (&value.payee).into(),
+            currency: value.currency.clone(),
+            sum: value.sum.clone(),
+            link_to_pay: value.link_to_pay.clone(),
+            address_to_pay: value.address_to_pay.clone(),
+            mempool_link_for_address_to_pay: value.mempool_link_for_address_to_pay.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillWaitingForRecourseStateDb {
+    pub time_of_request: u64,
+    pub recourser: IdentityDataDb,
+    pub recoursee: IdentityDataDb,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub mempool_link_for_address_to_pay: String,
+}
+
+impl From<BillWaitingForRecourseStateDb> for BillWaitingForRecourseState {
+    fn from(value: BillWaitingForRecourseStateDb) -> Self {
+        Self {
+            time_of_request: value.time_of_request,
+            recourser: value.recourser.into(),
+            recoursee: value.recoursee.into(),
+            currency: value.currency,
+            sum: value.sum,
+            link_to_pay: value.link_to_pay,
+            address_to_pay: value.address_to_pay,
+            mempool_link_for_address_to_pay: value.mempool_link_for_address_to_pay,
+        }
+    }
+}
+
+impl From<&BillWaitingForRecourseState> for BillWaitingForRecourseStateDb {
+    fn from(value: &BillWaitingForRecourseState) -> Self {
+        Self {
+            time_of_request: value.time_of_request,
+            recourser: (&value.recourser).into(),
+            recoursee: (&value.recoursee).into(),
+            currency: value.currency.clone(),
+            sum: value.sum.clone(),
+            link_to_pay: value.link_to_pay.clone(),
+            address_to_pay: value.address_to_pay.clone(),
+            mempool_link_for_address_to_pay: value.mempool_link_for_address_to_pay.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillStatusDb {
+    pub acceptance: BillAcceptanceStatusDb,
+    pub payment: BillPaymentStatusDb,
+    pub sell: BillSellStatusDb,
+    pub recourse: BillRecourseStatusDb,
+    pub redeemed_funds_available: bool,
+}
+
+impl From<BillStatusDb> for BillStatus {
+    fn from(value: BillStatusDb) -> Self {
+        Self {
+            acceptance: value.acceptance.into(),
+            payment: value.payment.into(),
+            sell: value.sell.into(),
+            recourse: value.recourse.into(),
+            redeemed_funds_available: value.redeemed_funds_available,
+        }
+    }
+}
+
+impl From<&BillStatus> for BillStatusDb {
+    fn from(value: &BillStatus) -> Self {
+        Self {
+            acceptance: (&value.acceptance).into(),
+            payment: (&value.payment).into(),
+            sell: (&value.sell).into(),
+            recourse: (&value.recourse).into(),
+            redeemed_funds_available: value.redeemed_funds_available,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillAcceptanceStatusDb {
+    pub time_of_request_to_accept: Option<u64>,
+    pub requested_to_accept: bool,
+    pub accepted: bool,
+    pub request_to_accept_timed_out: bool,
+    pub rejected_to_accept: bool,
+}
+
+impl From<BillAcceptanceStatusDb> for BillAcceptanceStatus {
+    fn from(value: BillAcceptanceStatusDb) -> Self {
+        Self {
+            time_of_request_to_accept: value.time_of_request_to_accept,
+            requested_to_accept: value.requested_to_accept,
+            accepted: value.accepted,
+            request_to_accept_timed_out: value.request_to_accept_timed_out,
+            rejected_to_accept: value.rejected_to_accept,
+        }
+    }
+}
+
+impl From<&BillAcceptanceStatus> for BillAcceptanceStatusDb {
+    fn from(value: &BillAcceptanceStatus) -> Self {
+        Self {
+            time_of_request_to_accept: value.time_of_request_to_accept,
+            requested_to_accept: value.requested_to_accept,
+            accepted: value.accepted,
+            request_to_accept_timed_out: value.request_to_accept_timed_out,
+            rejected_to_accept: value.rejected_to_accept,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillPaymentStatusDb {
+    pub time_of_request_to_pay: Option<u64>,
+    pub requested_to_pay: bool,
+    pub paid: bool,
+    pub request_to_pay_timed_out: bool,
+    pub rejected_to_pay: bool,
+}
+
+impl From<BillPaymentStatusDb> for BillPaymentStatus {
+    fn from(value: BillPaymentStatusDb) -> Self {
+        Self {
+            time_of_request_to_pay: value.time_of_request_to_pay,
+            requested_to_pay: value.requested_to_pay,
+            paid: value.paid,
+            request_to_pay_timed_out: value.request_to_pay_timed_out,
+            rejected_to_pay: value.rejected_to_pay,
+        }
+    }
+}
+
+impl From<&BillPaymentStatus> for BillPaymentStatusDb {
+    fn from(value: &BillPaymentStatus) -> Self {
+        Self {
+            time_of_request_to_pay: value.time_of_request_to_pay,
+            requested_to_pay: value.requested_to_pay,
+            paid: value.paid,
+            request_to_pay_timed_out: value.request_to_pay_timed_out,
+            rejected_to_pay: value.rejected_to_pay,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillSellStatusDb {
+    pub time_of_last_offer_to_sell: Option<u64>,
+    pub sold: bool,
+    pub offered_to_sell: bool,
+    pub offer_to_sell_timed_out: bool,
+    pub rejected_offer_to_sell: bool,
+}
+
+impl From<BillSellStatusDb> for BillSellStatus {
+    fn from(value: BillSellStatusDb) -> Self {
+        Self {
+            time_of_last_offer_to_sell: value.time_of_last_offer_to_sell,
+            sold: value.sold,
+            offered_to_sell: value.offered_to_sell,
+            offer_to_sell_timed_out: value.offer_to_sell_timed_out,
+            rejected_offer_to_sell: value.rejected_offer_to_sell,
+        }
+    }
+}
+
+impl From<&BillSellStatus> for BillSellStatusDb {
+    fn from(value: &BillSellStatus) -> Self {
+        Self {
+            time_of_last_offer_to_sell: value.time_of_last_offer_to_sell,
+            sold: value.sold,
+            offered_to_sell: value.offered_to_sell,
+            offer_to_sell_timed_out: value.offer_to_sell_timed_out,
+            rejected_offer_to_sell: value.rejected_offer_to_sell,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillRecourseStatusDb {
+    pub time_of_last_request_to_recourse: Option<u64>,
+    pub recoursed: bool,
+    pub requested_to_recourse: bool,
+    pub request_to_recourse_timed_out: bool,
+    pub rejected_request_to_recourse: bool,
+}
+
+impl From<BillRecourseStatusDb> for BillRecourseStatus {
+    fn from(value: BillRecourseStatusDb) -> Self {
+        Self {
+            time_of_last_request_to_recourse: value.time_of_last_request_to_recourse,
+            recoursed: value.recoursed,
+            requested_to_recourse: value.requested_to_recourse,
+            request_to_recourse_timed_out: value.request_to_recourse_timed_out,
+            rejected_request_to_recourse: value.rejected_request_to_recourse,
+        }
+    }
+}
+
+impl From<&BillRecourseStatus> for BillRecourseStatusDb {
+    fn from(value: &BillRecourseStatus) -> Self {
+        Self {
+            time_of_last_request_to_recourse: value.time_of_last_request_to_recourse,
+            recoursed: value.recoursed,
+            requested_to_recourse: value.requested_to_recourse,
+            request_to_recourse_timed_out: value.request_to_recourse_timed_out,
+            rejected_request_to_recourse: value.rejected_request_to_recourse,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillDataDb {
+    pub language: String,
+    pub time_of_drawing: u64,
+    pub issue_date: String,
+    pub time_of_maturity: u64,
+    pub maturity_date: String,
+    pub country_of_issuing: String,
+    pub city_of_issuing: String,
+    pub country_of_payment: String,
+    pub city_of_payment: String,
+    pub currency: String,
+    pub sum: String,
+    pub files: Vec<FileDb>,
+}
+
+impl From<BillDataDb> for BillData {
+    fn from(value: BillDataDb) -> Self {
+        Self {
+            language: value.language,
+            time_of_drawing: value.time_of_drawing,
+            issue_date: value.issue_date,
+            time_of_maturity: value.time_of_maturity,
+            maturity_date: value.maturity_date,
+            country_of_issuing: value.country_of_issuing,
+            city_of_issuing: value.city_of_issuing,
+            country_of_payment: value.country_of_payment,
+            city_of_payment: value.city_of_payment,
+            currency: value.currency,
+            sum: value.sum,
+            files: value.files.iter().map(|f| f.to_owned().into()).collect(),
+            active_notification: None,
+        }
+    }
+}
+
+impl From<&BillData> for BillDataDb {
+    fn from(value: &BillData) -> Self {
+        Self {
+            language: value.language.clone(),
+            time_of_drawing: value.time_of_drawing,
+            issue_date: value.issue_date.clone(),
+            time_of_maturity: value.time_of_maturity,
+            maturity_date: value.maturity_date.clone(),
+            country_of_issuing: value.country_of_issuing.clone(),
+            city_of_issuing: value.city_of_issuing.clone(),
+            country_of_payment: value.country_of_payment.clone(),
+            city_of_payment: value.city_of_payment.clone(),
+            currency: value.currency.clone(),
+            sum: value.sum.clone(),
+            files: value.files.iter().map(|f| f.clone().into()).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BillParticipantsDb {
+    pub drawee: IdentityDataDb,
+    pub drawer: IdentityDataDb,
+    pub payee: IdentityDataDb,
+    pub endorsee: Option<IdentityDataDb>,
+    pub endorsements_count: u64,
+    pub all_participant_node_ids: Vec<String>,
+}
+
+impl From<BillParticipantsDb> for BillParticipants {
+    fn from(value: BillParticipantsDb) -> Self {
+        Self {
+            drawee: value.drawee.into(),
+            drawer: value.drawer.into(),
+            payee: value.payee.into(),
+            endorsee: value.endorsee.map(|e| e.into()),
+            endorsements_count: value.endorsements_count,
+            all_participant_node_ids: value.all_participant_node_ids,
+        }
+    }
+}
+
+impl From<&BillParticipants> for BillParticipantsDb {
+    fn from(value: &BillParticipants) -> Self {
+        Self {
+            drawee: (&value.drawee).into(),
+            drawer: (&value.drawer).into(),
+            payee: (&value.payee).into(),
+            endorsee: value.endorsee.as_ref().map(|e| e.into()),
+            endorsements_count: value.endorsements_count,
+            all_participant_node_ids: value.all_participant_node_ids.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IdentityDataDb {
+    pub t: ContactType,
+    pub node_id: String,
+    pub name: String,
+    pub postal_address: PostalAddressDb,
+}
+
+impl From<IdentityDataDb> for IdentityPublicData {
+    fn from(value: IdentityDataDb) -> Self {
+        Self {
+            t: value.t,
+            node_id: value.node_id,
+            name: value.name,
+            postal_address: value.postal_address.into(),
+            email: None,
+            nostr_relay: None,
+        }
+    }
+}
+
+impl From<&IdentityPublicData> for IdentityDataDb {
+    fn from(value: &IdentityPublicData) -> Self {
+        Self {
+            t: value.t.clone(),
+            node_id: value.node_id.clone(),
+            name: value.name.clone(),
+            postal_address: value.postal_address.clone().into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BillPaidDb {
     pub id: Thing,
     pub payment_address: String,
@@ -220,15 +749,13 @@ pub mod tests {
 
     use super::SurrealBillStore;
     use crate::{
+        bill::{BillChainStoreApi, BillStoreApi},
+        db::{bill_chain::SurrealBillChainStore, get_memory_db},
         tests::tests::{
-            TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP, empty_address, empty_bitcredit_bill,
-            get_bill_keys, identity_public_data_only_node_id,
+            TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP, cached_bill, empty_address,
+            empty_bitcredit_bill, get_bill_keys, identity_public_data_only_node_id,
         },
         util::{self, BcrKeys},
-        {
-            bill::{BillChainStoreApi, BillStoreApi},
-            db::{bill_chain::SurrealBillChainStore, get_memory_db},
-        },
     };
     use bcr_ebill_core::{
         bill::BillKeys,
@@ -249,6 +776,7 @@ pub mod tests {
             .await
             .expect("could not create memory db")
     }
+
     async fn get_store(mem_db: Surreal<Any>) -> SurrealBillStore {
         SurrealBillStore::new(mem_db)
     }
@@ -788,5 +1316,58 @@ pub mod tests {
         let res = store.get_bill_ids_waiting_for_recourse_payment().await;
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn bill_caching() {
+        let db = get_db().await;
+        let store = get_store(db.clone()).await;
+        let bill = cached_bill("1234".to_string());
+        let bill2 = cached_bill("4321".to_string());
+
+        // save bills to cache
+        store
+            .save_bill_to_cache("1234", &bill)
+            .await
+            .expect("could not save bill to cache");
+
+        store
+            .save_bill_to_cache("4321", &bill2)
+            .await
+            .expect("could not save bill to cache");
+
+        // get bill from cache
+        let cached_bill = store
+            .get_bill_from_cache("1234")
+            .await
+            .expect("could not fetch from cache");
+        assert_eq!(cached_bill.as_ref().unwrap().id, "1234".to_string());
+
+        // get bills from cache
+        let cached_bills = store
+            .get_bills_from_cache(&["1234".to_string(), "4321".to_string()])
+            .await
+            .expect("could not fetch from cache");
+        assert_eq!(cached_bills.len(), 2);
+
+        // invalidate bill in cache
+        store
+            .invalidate_bill_in_cache("1234")
+            .await
+            .expect("could not invalidate cache");
+
+        // bill is not cached anymore
+        let cached_bill_gone = store
+            .get_bill_from_cache("1234")
+            .await
+            .expect("could not fetch from cache");
+        assert!(cached_bill_gone.is_none());
+
+        // bill is not cached anymore
+        let cached_bills_after_invalidate = store
+            .get_bills_from_cache(&["4321".to_string()])
+            .await
+            .expect("could not fetch from cache");
+        assert_eq!(cached_bills_after_invalidate.len(), 1);
     }
 }
