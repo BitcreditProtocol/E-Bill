@@ -1,5 +1,14 @@
 # 0.3.1
 
+
+* Persist active Identity to DB for WASM
+* Change indexed-db name to "data"
+* Use a different indexed-db collection for files, named "files"
+* Create a new indexeddb database connection for each query to avoid transaction overlapping
+* Removed timezone db api
+* Persist base64 string instead of bytes for images, for more efficiency
+* Added Retry-sending for Nostr block events
+* Added block propagation via Nostr
 * Added a caching layer for bills, heavily improving performance
 * Added `error` logs for all errors returned from the API for the WASM version
 * Added `log_level` to Config, which defaults to `info`

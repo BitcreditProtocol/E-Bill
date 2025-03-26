@@ -21,3 +21,17 @@ pub const DB_SEARCH_TERM: &str = "search_term";
 
 pub const DB_ENTITY_ID: &str = "entity_id";
 pub const DB_FILE_NAME: &str = "file_name";
+
+#[cfg(target_arch = "wasm32")]
+pub const SURREAL_DB_CON_INDXDB_DATA: &str = "indxdb://data";
+#[cfg(target_arch = "wasm32")]
+pub const SURREAL_DB_INDXDB_DB_DATA: &str = "data";
+#[cfg(target_arch = "wasm32")]
+pub const SURREAL_DB_INDXDB_NS_DATA: &str = "";
+
+#[cfg(target_arch = "wasm32")]
+pub const SURREAL_DB_CON_INDXDB_FILES: &str = "indxdb://files";
+#[cfg(target_arch = "wasm32")]
+pub const SURREAL_DB_INDXDB_DB_FILES: &str = "files";
+#[cfg(target_arch = "wasm32")]
+pub const SURREAL_DB_INDXDB_NS_FILES: &str = "";

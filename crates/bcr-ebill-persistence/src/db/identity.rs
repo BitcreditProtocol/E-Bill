@@ -1,28 +1,46 @@
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use super::{FileDb, OptionalPostalAddressDb, Result};
 use crate::{Error, identity::IdentityStoreApi, util::BcrKeys};
 use async_trait::async_trait;
-use bcr_ebill_core::identity::{Identity, IdentityWithAll};
+use bcr_ebill_core::identity::{ActiveIdentityState, Identity, IdentityWithAll};
 use serde::{Deserialize, Serialize};
 use surrealdb::{Surreal, engine::any::Any};
 
 #[derive(Clone)]
 pub struct SurrealIdentityStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
 impl SurrealIdentityStore {
     const IDENTITY_TABLE: &'static str = "identity";
+    const ACTIVE_IDENTITY_TABLE: &'static str = "active_identity";
     const KEY_TABLE: &'static str = "identity_key";
     const UNIQUE_ID: &'static str = "unique_record";
 
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
 }
 
 impl SurrealIdentityStore {
     async fn get_db_keys(&self) -> Result<Option<KeyDb>> {
-        Ok(self.db.select((Self::KEY_TABLE, Self::UNIQUE_ID)).await?)
+        Ok(self
+            .db()
+            .await?
+            .select((Self::KEY_TABLE, Self::UNIQUE_ID))
+            .await?)
     }
 }
 
@@ -35,7 +53,8 @@ impl IdentityStoreApi for SurrealIdentityStore {
     async fn save(&self, identity: &Identity) -> Result<()> {
         let entity: IdentityDb = identity.into();
         let _: Option<IdentityDb> = self
-            .db
+            .db()
+            .await?
             .upsert((Self::IDENTITY_TABLE, Self::UNIQUE_ID))
             .content(entity)
             .await?;
@@ -44,7 +63,8 @@ impl IdentityStoreApi for SurrealIdentityStore {
 
     async fn get(&self) -> Result<Identity> {
         let result: Option<IdentityDb> = self
-            .db
+            .db()
+            .await?
             .select((Self::IDENTITY_TABLE, Self::UNIQUE_ID))
             .await?;
         match result {
@@ -63,7 +83,8 @@ impl IdentityStoreApi for SurrealIdentityStore {
     async fn save_key_pair(&self, key_pair: &BcrKeys, seed: &str) -> Result<()> {
         let entity: KeyDb = KeyDb::from_generated_keys(key_pair, seed);
         let _: Option<KeyDb> = self
-            .db
+            .db()
+            .await?
             .upsert((Self::KEY_TABLE, Self::UNIQUE_ID))
             .content(entity)
             .await?;
@@ -95,6 +116,58 @@ impl IdentityStoreApi for SurrealIdentityStore {
         match result {
             Some(key_db) => Ok(key_db.seed_phrase),
             None => Err(Error::NoSeedPhrase),
+        }
+    }
+
+    async fn get_current_identity(&self) -> Result<ActiveIdentityState> {
+        let result: Option<ActiveIdentityDb> = self
+            .db()
+            .await?
+            .select((Self::ACTIVE_IDENTITY_TABLE, Self::UNIQUE_ID))
+            .await?;
+        match result {
+            None => {
+                let identity = self.get().await?;
+                Ok(ActiveIdentityState {
+                    personal: identity.node_id,
+                    company: None,
+                })
+            }
+            Some(i) => Ok(i.into()),
+        }
+    }
+
+    async fn set_current_identity(&self, identity_state: &ActiveIdentityState) -> Result<()> {
+        let entity: ActiveIdentityDb = identity_state.into();
+        let _: Option<ActiveIdentityDb> = self
+            .db()
+            .await?
+            .upsert((Self::ACTIVE_IDENTITY_TABLE, Self::UNIQUE_ID))
+            .content(entity)
+            .await?;
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveIdentityDb {
+    pub personal: String,
+    pub company: Option<String>,
+}
+
+impl From<ActiveIdentityDb> for ActiveIdentityState {
+    fn from(active_identity: ActiveIdentityDb) -> Self {
+        Self {
+            personal: active_identity.personal,
+            company: active_identity.company,
+        }
+    }
+}
+
+impl From<&ActiveIdentityState> for ActiveIdentityDb {
+    fn from(active_identity: &ActiveIdentityState) -> Self {
+        Self {
+            personal: active_identity.personal.clone(),
+            company: active_identity.company.clone(),
         }
     }
 }

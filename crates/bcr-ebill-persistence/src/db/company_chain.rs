@@ -1,4 +1,6 @@
 use super::super::{Error, Result};
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use crate::{
     company::CompanyChainStoreApi,
     constants::{
@@ -29,6 +31,7 @@ const CREATE_BLOCK_QUERY: &str = r#"CREATE type::table($table) CONTENT {
 
 #[derive(Clone)]
 pub struct SurrealCompanyChainStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -39,9 +42,20 @@ impl SurrealCompanyChainStore {
         Self { db }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
+
     async fn create_block(&self, query: &str, entity: CompanyBlockDb) -> Result<()> {
         let _ = self
-            .db
+            .db()
+            .await?
             .query(query)
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_COMPANY_ID, entity.company_id))
@@ -64,7 +78,7 @@ impl SurrealCompanyChainStore {
 impl CompanyChainStoreApi for SurrealCompanyChainStore {
     async fn get_latest_block(&self, id: &str) -> Result<CompanyBlock> {
         let result: Vec<CompanyBlockDb> = self
-            .db
+            .db().await?
             .query("SELECT * FROM type::table($table) WHERE company_id = $company_id ORDER BY block_id DESC LIMIT 1")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_COMPANY_ID, id.to_owned()))
@@ -146,7 +160,8 @@ impl CompanyChainStoreApi for SurrealCompanyChainStore {
     }
 
     async fn remove(&self, id: &str) -> Result<()> {
-        self.db
+        self.db()
+            .await?
             .query("DELETE FROM type::table($table) WHERE company_id = $company_id")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_COMPANY_ID, id.to_owned()))
@@ -156,7 +171,7 @@ impl CompanyChainStoreApi for SurrealCompanyChainStore {
 
     async fn get_chain(&self, id: &str) -> Result<CompanyBlockchain> {
         let result: Vec<CompanyBlockDb> = self
-            .db
+            .db().await?
             .query("SELECT * FROM type::table($table) WHERE company_id = $company_id ORDER BY block_id ASC")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_COMPANY_ID, id.to_owned()))

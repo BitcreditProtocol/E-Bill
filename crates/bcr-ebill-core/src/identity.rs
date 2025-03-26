@@ -46,3 +46,9 @@ impl Identity {
         self.name.clone()
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct ActiveIdentityState {
+    pub personal: String,
+    pub company: Option<String>,
+}

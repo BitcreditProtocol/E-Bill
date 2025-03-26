@@ -1,4 +1,6 @@
 use super::Result;
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use crate::{
     constants::{DB_IDS, DB_LIMIT, DB_TABLE},
     util::date::{self, DateTimeUtc},
@@ -12,6 +14,7 @@ use crate::nostr::{NostrQueuedMessage, NostrQueuedMessageStoreApi};
 
 #[derive(Clone)]
 pub struct SurrealNostrEventQueueStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -24,12 +27,23 @@ impl SurrealNostrEventQueueStore {
     }
 
     async fn set_processing(&self, ids: Vec<Thing>) -> Result<()> {
-        self.db
+        self.db()
+            .await?
             .query("UPDATE type::table($table) SET processing = true WHERE id IN $ids")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_IDS, ids))
             .await?;
         Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
     }
 }
 
@@ -40,7 +54,8 @@ impl NostrQueuedMessageStoreApi for SurrealNostrEventQueueStore {
         let id = message.id.to_owned();
         let message = QueuedMessageDb::from(message, max_retries);
         let _: Option<QueuedMessageDb> = self
-            .db
+            .db()
+            .await?
             .create((Self::TABLE, id.to_owned()))
             .content(message)
             .await?;
@@ -49,7 +64,7 @@ impl NostrQueuedMessageStoreApi for SurrealNostrEventQueueStore {
     /// Selects all messages that are ready to be retried
     async fn get_retry_messages(&self, limit: u64) -> Result<Vec<NostrQueuedMessage>> {
         let items: Vec<QueuedMessageDb> = self
-            .db
+            .db().await?
             .query("SELECT * FROM type::table($table) WHERE completed = false AND processing = false ORDER BY last_try ASC LIMIT $limit")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_LIMIT, limit))
@@ -64,14 +79,19 @@ impl NostrQueuedMessageStoreApi for SurrealNostrEventQueueStore {
     /// Fail a retry attempt, schedules a new retry or fails the message if
     /// all retries have been exhausted.
     async fn fail_retry(&self, id: &str) -> Result<()> {
-        let current: Option<QueuedMessageDb> = self.db.select((Self::TABLE, id.to_owned())).await?;
+        let current: Option<QueuedMessageDb> = self
+            .db()
+            .await?
+            .select((Self::TABLE, id.to_owned()))
+            .await?;
         if let Some(mut msg) = current {
             msg.num_retries += 1;
             msg.last_try = date::now();
             msg.completed = msg.num_retries >= msg.max_retries;
             msg.processing = false;
             let _: Option<QueuedMessageDb> = self
-                .db
+                .db()
+                .await?
                 .update((Self::TABLE, id.to_owned()))
                 .content(msg)
                 .await?;
@@ -80,13 +100,18 @@ impl NostrQueuedMessageStoreApi for SurrealNostrEventQueueStore {
     }
     /// Flags a retry as successful
     async fn succeed_retry(&self, id: &str) -> Result<()> {
-        let current: Option<QueuedMessageDb> = self.db.select((Self::TABLE, id.to_owned())).await?;
+        let current: Option<QueuedMessageDb> = self
+            .db()
+            .await?
+            .select((Self::TABLE, id.to_owned()))
+            .await?;
         if let Some(mut msg) = current {
             msg.completed = true;
             msg.last_try = date::now();
             msg.processing = false;
             let _: Option<QueuedMessageDb> = self
-                .db
+                .db()
+                .await?
                 .update((Self::TABLE, id.to_owned()))
                 .content(msg)
                 .await?;

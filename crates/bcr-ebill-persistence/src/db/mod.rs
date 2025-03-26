@@ -1,4 +1,9 @@
 use super::Result;
+#[cfg(target_arch = "wasm32")]
+use crate::constants::{
+    SURREAL_DB_CON_INDXDB_DATA, SURREAL_DB_CON_INDXDB_FILES, SURREAL_DB_INDXDB_DB_DATA,
+    SURREAL_DB_INDXDB_DB_FILES, SURREAL_DB_INDXDB_NS_DATA, SURREAL_DB_INDXDB_NS_FILES,
+};
 use bcr_ebill_core::{File, OptionalPostalAddress, PostalAddress};
 use log::error;
 use serde::{Deserialize, Serialize};
@@ -47,6 +52,30 @@ impl Default for SurrealDbConfig {
             database: "ebills".to_owned(),
         }
     }
+}
+
+/// On WASM using IndexedDB, we need to get a new DB connection per API call
+/// to avoid overlapping transactions
+#[cfg(target_arch = "wasm32")]
+async fn get_new_surreal_db() -> Result<Surreal<Any>> {
+    let db = get_surreal_db(&SurrealDbConfig {
+        connection_string: SURREAL_DB_CON_INDXDB_DATA.to_string(),
+        namespace: SURREAL_DB_INDXDB_NS_DATA.to_string(),
+        database: SURREAL_DB_INDXDB_DB_DATA.to_string(),
+    })
+    .await?;
+    Ok(db)
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn get_new_surreal_files_db() -> Result<Surreal<Any>> {
+    let db = get_surreal_db(&SurrealDbConfig {
+        connection_string: SURREAL_DB_CON_INDXDB_FILES.to_string(),
+        namespace: SURREAL_DB_INDXDB_NS_FILES.to_string(),
+        database: SURREAL_DB_INDXDB_DB_FILES.to_string(),
+    })
+    .await?;
+    Ok(db)
 }
 
 /// Connect to the SurrealDB instance using the provided configuration.

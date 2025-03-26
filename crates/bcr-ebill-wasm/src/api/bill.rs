@@ -47,7 +47,7 @@ impl Bill {
     pub async fn endorsements(&self, id: &str) -> Result<JsValue> {
         let result = get_ctx()
             .bill_service
-            .get_endorsements(id, &get_current_identity_node_id())
+            .get_endorsements(id, &get_current_identity_node_id().await?)
             .await?;
         let res = serde_wasm_bindgen::to_value(&EndorsementsResponse {
             endorsements: result.into_iter().map(|e| e.into_web()).collect(),
@@ -59,7 +59,7 @@ impl Bill {
     pub async fn past_endorsees(&self, id: &str) -> Result<JsValue> {
         let result = get_ctx()
             .bill_service
-            .get_past_endorsees(id, &get_current_identity_node_id())
+            .get_past_endorsees(id, &get_current_identity_node_id().await?)
             .await?;
         let res = serde_wasm_bindgen::to_value(&PastEndorseesResponse {
             past_endorsees: result.into_iter().map(|e| e.into_web()).collect(),
@@ -151,7 +151,7 @@ impl Bill {
                 from,
                 to,
                 &BillsFilterRole::from_web(filter.role),
-                &get_current_identity_node_id(),
+                &get_current_identity_node_id().await?,
             )
             .await?;
 
@@ -165,7 +165,7 @@ impl Bill {
     pub async fn list_light(&self) -> Result<JsValue> {
         let bills: Vec<LightBitcreditBillResult> = get_ctx()
             .bill_service
-            .get_bills(&get_current_identity_node_id())
+            .get_bills(&get_current_identity_node_id().await?)
             .await?
             .into_iter()
             .map(|b| b.into())
@@ -180,7 +180,7 @@ impl Bill {
     pub async fn list(&self) -> Result<JsValue> {
         let bills = get_ctx()
             .bill_service
-            .get_bills(&get_current_identity_node_id())
+            .get_bills(&get_current_identity_node_id().await?)
             .await?;
         let res = serde_wasm_bindgen::to_value(&BillsResponse {
             bills: bills.into_iter().map(|b| b.into_web()).collect(),
@@ -197,7 +197,7 @@ impl Bill {
             .get_detail(
                 id,
                 &identity,
-                &get_current_identity_node_id(),
+                &get_current_identity_node_id().await?,
                 current_timestamp,
             )
             .await?;
@@ -220,7 +220,7 @@ impl Bill {
             .get_detail(
                 id,
                 &identity,
-                &get_current_identity_node_id(),
+                &get_current_identity_node_id().await?,
                 current_timestamp,
             )
             .await?;
@@ -665,7 +665,7 @@ impl Default for Bill {
 }
 
 async fn get_signer_public_data_and_keys() -> Result<(IdentityPublicData, BcrKeys)> {
-    let current_identity = get_current_identity();
+    let current_identity = get_current_identity().await?;
     let local_node_id = current_identity.personal;
     let (signer_public_data, signer_keys) = match current_identity.company {
         None => {

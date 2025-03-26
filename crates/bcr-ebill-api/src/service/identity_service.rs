@@ -11,6 +11,7 @@ use crate::data::{
 use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::IdentityChainStoreApi;
 use async_trait::async_trait;
+use bcr_ebill_core::identity::ActiveIdentityState;
 use log::info;
 use std::sync::Arc;
 
@@ -61,6 +62,15 @@ pub trait IdentityServiceApi: Send + Sync {
         file_name: &str,
         private_key: &str,
     ) -> Result<Vec<u8>>;
+
+    /// gets the currently set identity
+    async fn get_current_identity(&self) -> Result<ActiveIdentityState>;
+
+    /// sets the active identity to the given personal node id
+    async fn set_current_personal_identity(&self, node_id: &str) -> Result<()>;
+
+    /// sets the active identity to the given company node id
+    async fn set_current_company_identity(&self, node_id: &str) -> Result<()>;
 }
 
 /// The identity service is responsible for managing the local identity
@@ -344,6 +354,32 @@ impl IdentityServiceApi for IdentityService {
             .await?;
         let decrypted = util::crypto::decrypt_ecies(&read_file, private_key)?;
         Ok(decrypted)
+    }
+
+    async fn get_current_identity(&self) -> Result<ActiveIdentityState> {
+        let active_identity = self.store.get_current_identity().await?;
+        Ok(active_identity)
+    }
+
+    async fn set_current_personal_identity(&self, node_id: &str) -> Result<()> {
+        self.store
+            .set_current_identity(&ActiveIdentityState {
+                personal: node_id.to_owned(),
+                company: None,
+            })
+            .await?;
+        Ok(())
+    }
+
+    async fn set_current_company_identity(&self, node_id: &str) -> Result<()> {
+        let active_identity = self.store.get_current_identity().await?;
+        self.store
+            .set_current_identity(&ActiveIdentityState {
+                personal: active_identity.personal,
+                company: Some(node_id.to_owned()),
+            })
+            .await?;
+        Ok(())
     }
 }
 

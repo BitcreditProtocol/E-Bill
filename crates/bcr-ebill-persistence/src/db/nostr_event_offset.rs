@@ -1,4 +1,6 @@
 use super::Result;
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use crate::{
     constants::DB_TABLE,
     util::date::{self, DateTimeUtc},
@@ -11,6 +13,7 @@ use crate::{NostrEventOffset, NostrEventOffsetStoreApi};
 
 #[derive(Clone)]
 pub struct SurrealNostrEventOffsetStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -21,13 +24,24 @@ impl SurrealNostrEventOffsetStore {
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
 }
 
 #[async_trait]
 impl NostrEventOffsetStoreApi for SurrealNostrEventOffsetStore {
     async fn current_offset(&self, node_id: &str) -> Result<u64> {
         let result: Vec<NostrEventOffsetDb> = self
-            .db
+            .db()
+            .await?
             .query("SELECT * FROM type::table($table) where node_id = $node_id ORDER BY time DESC LIMIT 1")
             .bind((DB_TABLE, Self::TABLE))
             .bind(("node_id", node_id.to_owned()))
@@ -42,14 +56,16 @@ impl NostrEventOffsetStoreApi for SurrealNostrEventOffsetStore {
     }
 
     async fn is_processed(&self, event_id: &str) -> Result<bool> {
-        let result: Option<NostrEventOffsetDb> = self.db.select((Self::TABLE, event_id)).await?;
+        let result: Option<NostrEventOffsetDb> =
+            self.db().await?.select((Self::TABLE, event_id)).await?;
         Ok(result.is_some())
     }
 
     async fn add_event(&self, data: NostrEventOffset) -> Result<()> {
         let db: NostrEventOffsetDb = data.into();
         let _: Option<NostrEventOffsetDb> = self
-            .db
+            .db()
+            .await?
             .create((Self::TABLE, db.event_id.to_owned()))
             .content(db)
             .await?;

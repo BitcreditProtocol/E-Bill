@@ -3,8 +3,8 @@ pub mod date;
 
 pub use crypto::BcrKeys;
 
-use bitcoin::hashes::sha256;
 use bitcoin::hashes::Hash;
+use bitcoin::hashes::sha256;
 use thiserror::Error;
 use uuid::Uuid;
 

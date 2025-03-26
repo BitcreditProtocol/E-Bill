@@ -22,8 +22,6 @@ async function start() {
     log_level: "debug",
     bitcoin_network: "testnet",
     nostr_relay: "wss://bitcr-cloud-run-04-550030097098.europe-west1.run.app",
-    surreal_db_connection: "indxdb://default",
-    data_dir: ".",
     job_runner_initial_delay_seconds: 1,
     job_runner_check_interval_seconds: 600,
   };
@@ -119,11 +117,6 @@ async function start() {
         address: "street 1",
       },
     });
-
-    // await companyApi.add_signatory({ id: detail.id, signatory_node_id: contact_node_id });
-    // let signatories = await companyApi.list_signatories(detail.id);
-    // console.log("signatories: ", signatories);
-    // await companyApi.remove_signatory({ id: detail.id, signatory_node_id: contact_node_id });
   } else {
     document.getElementById("companies").innerHTML = "node_id: " + companies.companies[0].id;
   }
@@ -219,39 +212,32 @@ async function triggerContact() {
 }
 
 async function triggerBill() {
-  let file_upload_id = document.getElementById("file_upload_id").value || undefined;
-  let node_id = document.getElementById("node_id_bill").value;
-  let identity = await identityApi.detail();
-  let bill = await billApi.issue(
-    {
-      t: 1,
-      country_of_issuing: "AT",
-      city_of_issuing: "Vienna",
-      issue_date: "2025-01-22",
-      maturity_date: "2025-06-22",
-      payee: identity.node_id,
-      drawee: node_id,
-      sum: "1500",
-      currency: "sat",
-      country_of_payment: "UK",
-      city_of_payment: "London",
-      language: "en-UK",
-      file_upload_ids: file_upload_id ? [file_upload_id] : []
-    }
-  );
-  let bill_id = bill.id;
-  console.log("bill id: ", bill_id);
-  let detail = await billApi.detail(bill_id);
-  console.log("Bill Detail: ", detail);
-  // console.log("requesting to pay..");
-  // await billApi.request_to_pay({
-  //     bill_id,
-  //     currency: "sat",
-  // });
-  detail = await billApi.detail(bill_id);
-  console.log("Bill Detail: ", detail);
-  let num_to_words = await billApi.numbers_to_words_for_sum(bill_id);
-  console.log("num to words:", num_to_words);
+  let measured = measure(async () => {
+    console.log("creating bill");
+    let file_upload_id = document.getElementById("file_upload_id").value || undefined;
+    let node_id = document.getElementById("node_id_bill").value;
+    let identity = await identityApi.detail();
+    let bill = await billApi.issue(
+      {
+        t: 1,
+        country_of_issuing: "AT",
+        city_of_issuing: "Vienna",
+        issue_date: "2025-01-22",
+        maturity_date: "2025-06-22",
+        payee: identity.node_id,
+        drawee: node_id,
+        sum: "1500",
+        currency: "sat",
+        country_of_payment: "UK",
+        city_of_payment: "London",
+        language: "en-UK",
+        file_upload_ids: file_upload_id ? [file_upload_id] : []
+      }
+    );
+    let bill_id = bill.id;
+    console.log("created bill with id: ", bill_id);
+  });
+  await measured();
 }
 
 async function triggerNotif() {

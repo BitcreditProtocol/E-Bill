@@ -1,11 +1,15 @@
 #![cfg(any(target_arch = "wasm32", test))]
 use super::super::{Error, Result, file_upload::FileUploadStoreApi};
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_files_db;
 use crate::constants::{DB_ENTITY_ID, DB_FILE_NAME, DB_TABLE};
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use surrealdb::{Surreal, engine::any::Any};
 
 pub struct FileUploadStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -17,9 +21,19 @@ impl FileUploadStore {
         Self { db }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_files_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
+
     pub async fn cleanup_temp_uploads(&self) -> Result<()> {
         log::info!("cleaning up temp uploads");
-        let _: Vec<FileDb> = self.db.delete(Self::TEMP_FILES_TABLE).await?;
+        let _: Vec<FileDb> = self.db().await?.delete(Self::TEMP_FILES_TABLE).await?;
         Ok(())
     }
 }
@@ -28,14 +42,14 @@ impl FileUploadStore {
 pub struct FileDb {
     pub file_upload_id: String,
     pub file_name: String,
-    pub file_bytes: Vec<u8>,
+    pub file_bytes: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttachedFileDb {
     pub entity_id: String, // entity the file is attached to, e.g. a bill/company/contact
     pub file_name: String,
-    pub encrypted_bytes: Vec<u8>,
+    pub encrypted_bytes: String,
 }
 
 #[async_trait]
@@ -59,10 +73,11 @@ impl FileUploadStoreApi for FileUploadStore {
         let entity = FileDb {
             file_upload_id: file_upload_id.to_owned(),
             file_name: file_name.to_owned(),
-            file_bytes: file_bytes.to_owned(),
+            file_bytes: STANDARD.encode(file_bytes),
         };
         let _: Option<FileDb> = self
-            .db
+            .db()
+            .await?
             .create((Self::TEMP_FILES_TABLE, file_upload_id.to_owned()))
             .content(entity)
             .await?;
@@ -71,7 +86,8 @@ impl FileUploadStoreApi for FileUploadStore {
 
     async fn read_temp_upload_file(&self, file_upload_id: &str) -> Result<(String, Vec<u8>)> {
         let result: Option<FileDb> = self
-            .db
+            .db()
+            .await?
             .select((Self::TEMP_FILES_TABLE, file_upload_id))
             .await?;
         match result {
@@ -79,7 +95,12 @@ impl FileUploadStoreApi for FileUploadStore {
                 "file".to_string(),
                 file_upload_id.to_owned(),
             )),
-            Some(f) => Ok((f.file_name, f.file_bytes)),
+            Some(f) => Ok((
+                f.file_name,
+                STANDARD
+                    .decode(&f.file_bytes)
+                    .map_err(|_| Error::EncodingError)?,
+            )),
         }
     }
 
@@ -92,10 +113,11 @@ impl FileUploadStoreApi for FileUploadStore {
         let entity = AttachedFileDb {
             entity_id: id.to_owned(),
             file_name: file_name.to_owned(),
-            encrypted_bytes: encrypted_bytes.to_owned(),
+            encrypted_bytes: STANDARD.encode(encrypted_bytes),
         };
         let _: Option<AttachedFileDb> = self
-            .db
+            .db()
+            .await?
             .create(Self::ATTACHED_FILES_TABLE)
             .content(entity)
             .await?;
@@ -104,7 +126,7 @@ impl FileUploadStoreApi for FileUploadStore {
 
     async fn open_attached_file(&self, id: &str, file_name: &str) -> Result<Vec<u8>> {
         let result: Vec<AttachedFileDb> = self
-            .db
+            .db().await?
             .query("SELECT * from type::table($table) WHERE entity_id = $entity_id AND file_name = $file_name")
             .bind((DB_TABLE, Self::ATTACHED_FILES_TABLE))
             .bind((DB_ENTITY_ID, id.to_owned()))
@@ -112,7 +134,9 @@ impl FileUploadStoreApi for FileUploadStore {
             .await?
             .take(0)?;
         if let Some(attached_file) = result.into_iter().next() {
-            Ok(attached_file.encrypted_bytes)
+            Ok(STANDARD
+                .decode(attached_file.encrypted_bytes)
+                .map_err(|_| Error::EncodingError)?)
         } else {
             Err(Error::NoSuchEntity(
                 "attached file".to_string(),
@@ -123,7 +147,8 @@ impl FileUploadStoreApi for FileUploadStore {
 
     async fn delete_attached_files(&self, id: &str) -> Result<()> {
         let _: Vec<AttachedFileDb> = self
-            .db
+            .db()
+            .await?
             .query("DELETE from type::table($table) WHERE entity_id = $entity_id")
             .bind((DB_TABLE, Self::ATTACHED_FILES_TABLE))
             .bind((DB_ENTITY_ID, id.to_owned()))

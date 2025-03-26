@@ -1,4 +1,6 @@
 use super::super::{Error, Result};
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use crate::{
     constants::{
         DB_BLOCK_ID, DB_DATA, DB_HASH, DB_OP_CODE, DB_PREVIOUS_HASH, DB_PUBLIC_KEY, DB_SIGNATURE,
@@ -27,6 +29,7 @@ const CREATE_BLOCK_QUERY: &str = r#"CREATE type::table($table) CONTENT {
 
 #[derive(Clone)]
 pub struct SurrealIdentityChainStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -37,9 +40,20 @@ impl SurrealIdentityChainStore {
         Self { db }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
+
     async fn create_block(&self, query: &str, entity: IdentityBlockDb) -> Result<()> {
         let _ = self
-            .db
+            .db()
+            .await?
             .query(query)
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_BLOCK_ID, entity.block_id))
@@ -60,7 +74,8 @@ impl SurrealIdentityChainStore {
 impl IdentityChainStoreApi for SurrealIdentityChainStore {
     async fn get_latest_block(&self) -> Result<IdentityBlock> {
         let result: Vec<IdentityBlockDb> = self
-            .db
+            .db()
+            .await?
             .query("SELECT * FROM type::table($table) ORDER BY block_id DESC LIMIT 1")
             .bind((DB_TABLE, Self::TABLE))
             .await
