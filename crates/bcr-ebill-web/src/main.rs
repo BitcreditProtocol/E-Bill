@@ -81,8 +81,8 @@ async fn start(
     let keys = db.identity_store.get_or_create_key_pair().await?;
     let local_node_id = db.identity_store.get_key_pair().await?.get_public_key();
     info!("Local node id: {local_node_id:?}");
-    info!("Local npub: {:?}", keys.get_nostr_npub()?);
-    info!("Local npriv: {:?}", keys.get_nostr_npriv()?);
+    info!("Local npub: {:?}", keys.get_nostr_npub());
+    info!("Local npriv: {:?}", keys.get_nostr_npriv());
     info!("Local npub as hex: {:?}", keys.get_nostr_npub_as_hex());
 
     if db.identity_store.exists().await {

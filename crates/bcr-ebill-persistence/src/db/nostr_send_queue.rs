@@ -123,6 +123,7 @@ impl NostrQueuedMessageStoreApi for SurrealNostrEventQueueStore {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct QueuedMessageDb {
     pub id: Thing,
+    pub sender_id: String,
     pub node_id: String,
     pub payload: Value,
     pub created: DateTimeUtc,
@@ -140,6 +141,7 @@ impl QueuedMessageDb {
                 SurrealNostrEventQueueStore::TABLE.to_owned(),
                 value.id.to_owned(),
             )),
+            sender_id: value.sender_id,
             node_id: value.node_id,
             payload: value.payload,
             created: date::now(),
@@ -156,6 +158,7 @@ impl From<QueuedMessageDb> for NostrQueuedMessage {
     fn from(value: QueuedMessageDb) -> Self {
         NostrQueuedMessage {
             id: value.id.id.to_raw(),
+            sender_id: value.sender_id,
             node_id: value.node_id,
             payload: value.payload,
         }
@@ -271,6 +274,7 @@ mod tests {
     fn get_test_message(id: &str) -> NostrQueuedMessage {
         NostrQueuedMessage {
             id: id.to_string(),
+            sender_id: "test_sender".to_string(),
             node_id: "test_node".to_string(),
             payload: serde_json::json!({"foo": "bar"}),
         }

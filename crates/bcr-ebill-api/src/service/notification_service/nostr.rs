@@ -8,6 +8,7 @@ use nostr_sdk::{
     Client, EventId, Filter, Kind, Metadata, Options, PublicKey, RelayPoolNotification, Timestamp,
     ToBech32, UnsignedEvent,
 };
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -16,6 +17,17 @@ use crate::util::{BcrKeys, crypto};
 use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_persistence::{NostrEventOffset, NostrEventOffsetStoreApi};
 use bcr_ebill_transport::{Error, NotificationJsonTransportApi, Result};
+
+use tokio::task::spawn;
+#[cfg(all(
+    target_arch = "wasm32",
+    target_vendor = "unknown",
+    target_os = "unknown"
+))]
+use tokio_with_wasm as tokio;
+
+#[cfg(not(target_arch = "wasm32"))]
+use tokio;
 
 #[derive(Clone, Debug)]
 pub struct NostrConfig {
@@ -26,15 +38,17 @@ pub struct NostrConfig {
 
 impl NostrConfig {
     pub fn new(keys: BcrKeys, relays: Vec<String>, name: String) -> Self {
+        assert!(!relays.is_empty());
         Self { keys, relays, name }
     }
 
     #[allow(dead_code)]
-    pub fn get_npub(&self) -> bcr_ebill_transport::Result<String> {
-        self.keys.get_nostr_npub().map_err(|e| {
-            error!("Failed to get Nostr npub: {e}");
-            Error::Crypto("Failed to get Nostr npub".to_string())
-        })
+    pub fn get_npub(&self) -> String {
+        self.keys.get_nostr_npub()
+    }
+
+    pub fn get_relay(&self) -> String {
+        self.relays[0].clone()
     }
 }
 
@@ -85,6 +99,10 @@ impl NostrClient {
         Ok(Self { keys, client })
     }
 
+    pub fn get_node_id(&self) -> String {
+        self.keys.get_public_key()
+    }
+
     /// Subscribe to some nostr events with a filter
     pub async fn subscribe(&self, subscription: Filter) -> Result<()> {
         self.client
@@ -124,6 +142,9 @@ impl ServiceTraitBounds for NostrClient {}
 #[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 #[cfg_attr(not(target_arch = "wasm32"), async_trait)]
 impl NotificationJsonTransportApi for NostrClient {
+    fn get_sender_key(&self) -> String {
+        self.get_node_id()
+    }
     async fn send(
         &self,
         recipient: &IdentityPublicData,
@@ -162,7 +183,7 @@ impl NotificationJsonTransportApi for NostrClient {
 
 #[derive(Clone)]
 pub struct NostrConsumer {
-    client: NostrClient,
+    clients: HashMap<String, Arc<NostrClient>>,
     event_handlers: Arc<Vec<Box<dyn NotificationHandlerApi>>>,
     contact_service: Arc<dyn ContactServiceApi>,
     offset_store: Arc<dyn NostrEventOffsetStoreApi>,
@@ -171,13 +192,17 @@ pub struct NostrConsumer {
 impl NostrConsumer {
     #[allow(dead_code)]
     pub fn new(
-        client: NostrClient,
+        clients: Vec<Arc<NostrClient>>,
         contact_service: Arc<dyn ContactServiceApi>,
         event_handlers: Vec<Box<dyn NotificationHandlerApi>>,
         offset_store: Arc<dyn NostrEventOffsetStoreApi>,
     ) -> Self {
+        let clients = clients
+            .into_iter()
+            .map(|c| (c.get_node_id(), c))
+            .collect::<HashMap<String, Arc<NostrClient>>>();
         Self {
-            client,
+            clients,
             #[allow(clippy::arc_with_non_send_sync)]
             event_handlers: Arc::new(event_handlers),
             contact_service,
@@ -188,59 +213,88 @@ impl NostrConsumer {
     #[allow(dead_code)]
     pub async fn start(&self) -> Result<()> {
         // move dependencies into thread scope
-        let client = self.client.clone();
+        let clients = self.clients.clone();
         let event_handlers = self.event_handlers.clone();
         let _contact_service = self.contact_service.clone();
         let offset_store = self.offset_store.clone();
 
-        // continue where we left off
-        let offset_ts = get_offset(&offset_store).await;
-        let public_key = client.keys.get_nostr_keys().public_key();
-        let node_id = client.keys.get_public_key();
+        let mut tasks = Vec::new();
 
-        // subscribe only to private messages sent to our pubkey
-        client
-            .subscribe(
-                Filter::new()
-                    .pubkey(public_key)
-                    .kind(Kind::GiftWrap)
-                    .since(offset_ts),
-            )
-            .await
-            .expect("Failed to subscribe to Nostr events");
+        for (node_id, node_client) in clients.into_iter() {
+            let current_client = node_client.clone();
+            let event_handlers = event_handlers.clone();
+            let offset_store = offset_store.clone();
+            let client_id = node_id.clone();
 
-        client
-                .client
-                .handle_notifications(|note| async {
-                    if let Some((envelope, sender, event_id, time)) =
-                        client.unwrap_envelope(note).await
-                    {
-                        if !offset_store.is_processed(&event_id.to_hex()).await? {
-                            if let Ok(sender_npub) = sender.to_bech32() {
-                                let sender_node_id = sender.to_hex();
-                                trace!("Received event: {envelope:?} from {sender_npub:?} (hex: {sender_node_id})");
-                                // We use hex here, so we can compare it with our node_ids
-                                // TODO: re-enable after presentation: if contact_service.is_known_npub(&sender_node_id).await? {
-                                    trace!("Processing event: {envelope:?}");
-                                    handle_event(envelope, &node_id, &event_handlers).await?;
-                                // }
-                            }
+            // Spawn a task for each client
+            let task = spawn(async move {
+                // continue where we left off
+                let offset_ts = get_offset(&offset_store, &node_id).await;
+                let public_key = current_client.keys.get_nostr_keys().public_key();
 
-                            // store the new event offset
-                            add_offset(&offset_store, event_id, time, true).await;
+                // subscribe only to private messages sent to our pubkey
+                current_client
+                    .subscribe(
+                        Filter::new()
+                            .pubkey(public_key)
+                            .kind(Kind::GiftWrap)
+                            .since(offset_ts),
+                    )
+                    .await
+                    .expect("Failed to subscribe to Nostr events");
+
+                let inner = current_client.clone();
+                current_client
+                    .client
+                    .handle_notifications(move |note| {
+                        let client = inner.clone();
+                        let event_handlers = event_handlers.clone();
+                        let offset_store = offset_store.clone();
+                        let node_id = node_id.clone();
+                        let client_id = client_id.clone();
+
+                        async move {
+                            if let Some((envelope, sender, event_id, time)) =
+                                client.unwrap_envelope(note).await
+                            {
+                                if !offset_store.is_processed(&event_id.to_hex()).await? {
+                                    let sender_npub = sender.to_bech32();
+                                    let sender_node_id = sender.to_hex();
+                                    trace!("Received event: {envelope:?} from {sender_npub:?} (hex: {sender_node_id}) on client {client_id}");
+                                    // We use hex here, so we can compare it with our node_ids
+                                    // TODO: re-enable after presentation: if contact_service.is_known_npub(&sender_node_id).await? {
+                                        trace!("Processing event: {envelope:?}");
+                                        handle_event(envelope, &node_id, &event_handlers).await?;
+                                    // }
+
+                                    // store the new event offset
+                                    add_offset(&offset_store, event_id, time, true, &node_id).await;
+                                }
+                            };
+                            Ok(false)
                         }
-                    };
-                    Ok(false)
-                })
-                .await
-                .expect("Nostr notification handler failed");
+                    })
+                    .await
+                    .expect("Nostr notification handler failed");
+            });
+
+            tasks.push(task);
+        }
+
+        // Wait for all tasks to complete (they would run indefinitely unless interrupted)
+        for task in tasks {
+            if let Err(e) = task.await {
+                error!("Nostr client task failed: {e}");
+            }
+        }
+
         Ok(())
     }
 }
 
-async fn get_offset(db: &Arc<dyn NostrEventOffsetStoreApi>) -> Timestamp {
+async fn get_offset(db: &Arc<dyn NostrEventOffsetStoreApi>, node_id: &str) -> Timestamp {
     Timestamp::from_secs(
-        db.current_offset()
+        db.current_offset(node_id)
             .await
             .map_err(|e| error!("Could not get event offset: {e}"))
             .ok()
@@ -253,11 +307,13 @@ async fn add_offset(
     event_id: EventId,
     time: Timestamp,
     success: bool,
+    node_id: &str,
 ) {
     db.add_event(NostrEventOffset {
         event_id: event_id.to_hex(),
         time: time.as_u64(),
         success,
+        node_id: node_id.to_string(),
     })
     .await
     .map_err(|e| error!("Could not store event offset: {e}"))
@@ -404,7 +460,7 @@ mod tests {
         // expect the offset store to return the current offset once on start
         offset_store
             .expect_current_offset()
-            .returning(|| Ok(1000))
+            .returning(|_| Ok(1000))
             .once();
 
         // should also check if the event has been processed already
@@ -423,7 +479,7 @@ mod tests {
 
         // we start the consumer
         let consumer = NostrConsumer::new(
-            client2,
+            vec![Arc::new(client2)],
             Arc::new(contact_service),
             vec![Box::new(handler)],
             Arc::new(offset_store),

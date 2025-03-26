@@ -38,12 +38,13 @@ impl SurrealNostrEventOffsetStore {
 
 #[async_trait]
 impl NostrEventOffsetStoreApi for SurrealNostrEventOffsetStore {
-    async fn current_offset(&self) -> Result<u64> {
+    async fn current_offset(&self, node_id: &str) -> Result<u64> {
         let result: Vec<NostrEventOffsetDb> = self
             .db()
             .await?
-            .query("SELECT * FROM type::table($table) ORDER BY time DESC LIMIT 1")
+            .query("SELECT * FROM type::table($table) where node_id = $node_id ORDER BY time DESC LIMIT 1")
             .bind((DB_TABLE, Self::TABLE))
+            .bind(("node_id", node_id.to_owned()))
             .await?
             .take(0)?;
         let value = result
@@ -78,6 +79,7 @@ struct NostrEventOffsetDb {
     pub event_id: String,
     pub time: DateTimeUtc,
     pub success: bool,
+    pub node_id: String,
 }
 
 impl From<NostrEventOffsetDb> for NostrEventOffset {
@@ -86,6 +88,7 @@ impl From<NostrEventOffsetDb> for NostrEventOffset {
             event_id: db.event_id,
             time: db.time.timestamp() as u64,
             success: db.success,
+            node_id: db.node_id,
         }
     }
 }
@@ -96,6 +99,7 @@ impl From<NostrEventOffset> for NostrEventOffsetDb {
             event_id: offset.event_id,
             time: date::seconds(offset.time),
             success: offset.success,
+            node_id: offset.node_id,
         }
     }
 }
@@ -108,7 +112,10 @@ mod tests {
     #[tokio::test]
     async fn test_get_offset_from_empty_table() {
         let store = get_store().await;
-        let offset = store.current_offset().await.expect("could not get offset");
+        let offset = store
+            .current_offset("node_id")
+            .await
+            .expect("could not get offset");
         assert_eq!(offset, 0);
     }
 
@@ -119,13 +126,17 @@ mod tests {
             event_id: "test_event".to_string(),
             time: 1000,
             success: true,
+            node_id: "node_id".to_string(),
         };
         store
             .add_event(data)
             .await
             .expect("Could not add event offset");
 
-        let offset = store.current_offset().await.expect("could not get offset");
+        let offset = store
+            .current_offset("node_id")
+            .await
+            .expect("could not get offset");
         assert_eq!(offset, 1000);
     }
 
@@ -136,6 +147,7 @@ mod tests {
             event_id: "test_event".to_string(),
             time: 1000,
             success: false,
+            node_id: "node_id".to_string(),
         };
         let is_known = store
             .is_processed(&data.event_id)

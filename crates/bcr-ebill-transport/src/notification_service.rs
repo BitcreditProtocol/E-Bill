@@ -91,6 +91,7 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
     /// * recipients: The list of recipients that should receive the notification
     async fn send_request_to_action_timed_out_event(
         &self,
+        sender_node_id: &str,
         bill_id: &str,
         sum: Option<u64>,
         timed_out_action: ActionType,
@@ -114,7 +115,11 @@ pub trait NotificationServiceApi: ServiceTraitBounds {
 
     /// Sent when: A bill is requested to be minted, Sent by: Holder
     /// Receiver: Mint, Action: CheckBill (with generate quote page)
-    async fn send_request_to_mint_event(&self, bill: &BitcreditBill) -> Result<()>;
+    async fn send_request_to_mint_event(
+        &self,
+        sender_node_id: &str,
+        bill: &BitcreditBill,
+    ) -> Result<()>;
 
     /// Sent when: A new quote is created, Sent by: Mint
     /// Receiver: Holder, Action: Check quote page

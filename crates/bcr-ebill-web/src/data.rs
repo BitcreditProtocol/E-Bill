@@ -17,7 +17,7 @@ use bcr_ebill_api::data::{
     identity::{Identity, IdentityType},
     notification::{Notification, NotificationType},
 };
-use bcr_ebill_api::service::{Error, Result};
+use bcr_ebill_api::service::Error;
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
 use bcr_ebill_api::util::{BcrKeys, date::DateTimeUtc};
 use rocket::FromForm;
@@ -549,13 +549,13 @@ pub struct IdentityWeb {
 }
 
 impl IdentityWeb {
-    pub fn from(identity: Identity, keys: BcrKeys) -> Result<Self> {
-        Ok(Self {
+    pub fn from(identity: Identity, keys: BcrKeys) -> Self {
+        Self {
             node_id: identity.node_id.clone(),
             name: identity.name,
             email: identity.email,
             bitcoin_public_key: identity.node_id.clone(),
-            npub: keys.get_nostr_npub()?,
+            npub: keys.get_nostr_npub(),
             postal_address: identity.postal_address.into_web(),
             date_of_birth: identity.date_of_birth,
             country_of_birth: identity.country_of_birth,
@@ -564,7 +564,7 @@ impl IdentityWeb {
             profile_picture_file: identity.profile_picture_file.map(|f| f.into_web()),
             identity_document_file: identity.identity_document_file.map(|f| f.into_web()),
             nostr_relay: identity.nostr_relay,
-        })
+        }
     }
 }
 

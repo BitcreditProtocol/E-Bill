@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bcr_ebill_core::contact::ContactType;
 use bcr_ebill_persistence::nostr::{NostrQueuedMessage, NostrQueuedMessageStoreApi};
 use bcr_ebill_transport::{BillChainEvent, BillChainEventPayload, Error, Event, EventEnvelope};
 use log::{error, warn};
@@ -15,17 +16,18 @@ use crate::data::{
 };
 use crate::persistence::notification::{NotificationFilter, NotificationStoreApi};
 use crate::service::contact_service::ContactServiceApi;
-use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_core::notification::{ActionType, BillEventType};
+use bcr_ebill_core::{PostalAddress, ServiceTraitBounds};
 
 /// A default implementation of the NotificationServiceApi that can
 /// send events via json and email transports.
 #[allow(dead_code)]
 pub struct DefaultNotificationService {
-    notification_transport: Box<dyn NotificationJsonTransportApi>,
+    notification_transport: HashMap<String, Arc<dyn NotificationJsonTransportApi>>,
     notification_store: Arc<dyn NotificationStoreApi>,
     contact_service: Arc<dyn ContactServiceApi>,
     queued_message_store: Arc<dyn NostrQueuedMessageStoreApi>,
+    nostr_relay: String,
 }
 
 impl ServiceTraitBounds for DefaultNotificationService {}
@@ -35,61 +37,108 @@ impl DefaultNotificationService {
     const NOSTR_MAX_RETRIES: i32 = 10;
 
     pub fn new(
-        notification_transport: Box<dyn NotificationJsonTransportApi>,
+        notification_transport: Vec<Arc<dyn NotificationJsonTransportApi>>,
         notification_store: Arc<dyn NotificationStoreApi>,
         contact_service: Arc<dyn ContactServiceApi>,
         queued_message_store: Arc<dyn NostrQueuedMessageStoreApi>,
+        nostr_relay: &str,
     ) -> Self {
         Self {
-            notification_transport,
+            notification_transport: notification_transport
+                .into_iter()
+                .map(|t| (t.get_sender_key(), t))
+                .collect(),
             notification_store,
             contact_service,
             queued_message_store,
+            nostr_relay: nostr_relay.to_string(),
         }
     }
 
-    async fn send_all_events(&self, events: Vec<Event<BillChainEventPayload>>) -> Result<()> {
-        for event_to_process in events.into_iter() {
-            if let Ok(Some(identity)) = self
-                .contact_service
-                .get_identity_by_node_id(&event_to_process.node_id)
-                .await
-            {
-                if let Err(e) = self
-                    .notification_transport
-                    .send(&identity, event_to_process.clone().try_into()?)
-                    .await
+    fn get_local_identity(&self, node_id: &str) -> Option<IdentityPublicData> {
+        if self.notification_transport.get(node_id).is_some() {
+            Some(IdentityPublicData {
+                t: ContactType::Person,
+                node_id: node_id.to_string(),
+                email: None,
+                name: String::new(),
+                postal_address: PostalAddress::default(),
+                nostr_relay: Some(self.nostr_relay.clone()),
+            })
+        } else {
+            None
+        }
+    }
+
+    async fn resolve_identity(&self, node_id: &str) -> Option<IdentityPublicData> {
+        match self.get_local_identity(node_id) {
+            Some(id) => Some(id),
+            None => {
+                if let Ok(Some(identity)) =
+                    self.contact_service.get_identity_by_node_id(node_id).await
                 {
-                    error!(
-                        "Failed to send block notification, will add it to retry queue: {}",
-                        e
-                    );
-                    let queue_message = NostrQueuedMessage {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        node_id: event_to_process.node_id.clone(),
-                        payload: serde_json::to_value(event_to_process)?,
-                    };
-                    if let Err(e) = self
-                        .queued_message_store
-                        .add_message(queue_message, Self::NOSTR_MAX_RETRIES)
+                    Some(identity)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    async fn send_all_events(
+        &self,
+        sender: &str,
+        events: Vec<Event<BillChainEventPayload>>,
+    ) -> Result<()> {
+        if let Some(node) = self.notification_transport.get(sender) {
+            for event_to_process in events.into_iter() {
+                if let Some(identity) = self.resolve_identity(&event_to_process.node_id).await {
+                    if let Err(e) = node
+                        .send(&identity, event_to_process.clone().try_into()?)
                         .await
                     {
-                        error!("Failed to add block notification to retry queue: {}", e);
+                        error!(
+                            "Failed to send block notification, will add it to retry queue: {}",
+                            e
+                        );
+                        let queue_message = NostrQueuedMessage {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            sender_id: sender.to_owned(),
+                            node_id: event_to_process.node_id.clone(),
+                            payload: serde_json::to_value(event_to_process)?,
+                        };
+                        if let Err(e) = self
+                            .queued_message_store
+                            .add_message(queue_message, Self::NOSTR_MAX_RETRIES)
+                            .await
+                        {
+                            error!("Failed to add block notification to retry queue: {}", e);
+                        }
                     }
+                } else {
+                    warn!(
+                        "Failed to find recipient in contacts for node_id: {}",
+                        event_to_process.node_id
+                    );
                 }
-            } else {
-                warn!(
-                    "Failed to find recipient in contacts for node_id: {}",
-                    event_to_process.node_id
-                );
             }
+        } else {
+            warn!("No transport node found for sender node_id: {}", sender);
         }
         Ok(())
     }
 
-    async fn send_retry_message(&self, node_id: &str, message: EventEnvelope) -> Result<()> {
-        if let Ok(Some(identity)) = self.contact_service.get_identity_by_node_id(node_id).await {
-            self.notification_transport.send(&identity, message).await?;
+    async fn send_retry_message(
+        &self,
+        sender: &str,
+        node_id: &str,
+        message: EventEnvelope,
+    ) -> Result<()> {
+        if let Some(node) = self.notification_transport.get(sender) {
+            if let Ok(Some(identity)) = self.contact_service.get_identity_by_node_id(node_id).await
+            {
+                node.send(&identity, message).await?;
+            }
         }
         Ok(())
     }
@@ -116,7 +165,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             None,
         );
 
-        self.send_all_events(all_events).await?;
+        self.send_all_events(&event.sender(), all_events).await?;
         Ok(())
     }
 
@@ -129,7 +178,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             None,
             None,
         );
-        self.send_all_events(all_events).await?;
+        self.send_all_events(&event.sender(), all_events).await?;
         Ok(())
     }
 
@@ -145,7 +194,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             None,
             None,
         );
-        self.send_all_events(all_events).await?;
+        self.send_all_events(&event.sender(), all_events).await?;
         Ok(())
     }
 
@@ -158,7 +207,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             None,
             None,
         );
-        self.send_all_events(all_events).await?;
+        self.send_all_events(&event.sender(), all_events).await?;
         Ok(())
     }
 
@@ -171,7 +220,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             None,
             None,
         );
-        self.send_all_events(all_events).await?;
+        self.send_all_events(&event.sender(), all_events).await?;
         Ok(())
     }
 
@@ -184,7 +233,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             None,
             None,
         );
-        self.send_all_events(all_events).await?;
+        self.send_all_events(&bill.sender(), all_events).await?;
         Ok(())
     }
 
@@ -201,7 +250,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             None,
             None,
         );
-        self.send_all_events(all_events).await?;
+        self.send_all_events(&event.sender(), all_events).await?;
         Ok(())
     }
 
@@ -218,7 +267,7 @@ impl NotificationServiceApi for DefaultNotificationService {
             None,
             None,
         );
-        self.send_all_events(all_events).await?;
+        self.send_all_events(&event.sender(), all_events).await?;
         Ok(())
     }
 
@@ -235,11 +284,15 @@ impl NotificationServiceApi for DefaultNotificationService {
             None,
             None,
         );
-        self.send_all_events(all_events).await?;
+        self.send_all_events(&event.sender(), all_events).await?;
         Ok(())
     }
 
-    async fn send_request_to_mint_event(&self, bill: &BitcreditBill) -> Result<()> {
+    async fn send_request_to_mint_event(
+        &self,
+        sender_node_id: &str,
+        bill: &BitcreditBill,
+    ) -> Result<()> {
         let event = Event::new_bill(
             &bill.endorsee.as_ref().unwrap().node_id,
             BillChainEventPayload {
@@ -250,9 +303,10 @@ impl NotificationServiceApi for DefaultNotificationService {
                 ..Default::default()
             },
         );
-        self.notification_transport
-            .send(bill.endorsee.as_ref().unwrap(), event.try_into()?)
-            .await?;
+        if let Some(node) = self.notification_transport.get(sender_node_id) {
+            node.send(bill.endorsee.as_ref().unwrap(), event.try_into()?)
+                .await?;
+        }
         Ok(())
     }
 
@@ -268,35 +322,36 @@ impl NotificationServiceApi for DefaultNotificationService {
                 Some(rejected_action),
             );
 
-            self.send_all_events(all_events).await?;
+            self.send_all_events(&event.sender(), all_events).await?;
         }
         Ok(())
     }
 
     async fn send_request_to_action_timed_out_event(
         &self,
+        sender_node_id: &str,
         bill_id: &str,
         sum: Option<u64>,
         timed_out_action: ActionType,
         recipients: Vec<IdentityPublicData>,
     ) -> Result<()> {
-        if let Some(event_type) = timed_out_action.get_timeout_event_type() {
-            // only send to a recipient once
-            let unique: HashMap<String, IdentityPublicData> =
-                HashMap::from_iter(recipients.iter().map(|r| (r.node_id.clone(), r.clone())));
+        if let Some(node) = self.notification_transport.get(sender_node_id) {
+            if let Some(event_type) = timed_out_action.get_timeout_event_type() {
+                // only send to a recipient once
+                let unique: HashMap<String, IdentityPublicData> =
+                    HashMap::from_iter(recipients.iter().map(|r| (r.node_id.clone(), r.clone())));
 
-            let payload = BillChainEventPayload {
-                event_type,
-                bill_id: bill_id.to_owned(),
-                action_type: Some(ActionType::CheckBill),
-                sum,
-                ..Default::default()
-            };
-            for (_, recipient) in unique {
-                let event = Event::new_bill(&recipient.node_id, payload.clone());
-                self.notification_transport
-                    .send(&recipient, event.try_into()?)
-                    .await?;
+                let payload = BillChainEventPayload {
+                    event_type,
+                    bill_id: bill_id.to_owned(),
+                    action_type: Some(ActionType::CheckBill),
+                    sum,
+                    ..Default::default()
+                };
+                for (_, recipient) in unique {
+                    let event = Event::new_bill(&recipient.node_id, payload.clone());
+                    node.send(&recipient, event.try_into()?).await?;
+                }
             }
         }
         Ok(())
@@ -317,7 +372,7 @@ impl NotificationServiceApi for DefaultNotificationService {
                 Some(BillEventType::BillBlock),
                 None,
             );
-            self.send_all_events(all_events).await?;
+            self.send_all_events(&event.sender(), all_events).await?;
         }
         Ok(())
     }
@@ -420,7 +475,11 @@ impl NotificationServiceApi for DefaultNotificationService {
         {
             if let Ok(message) = serde_json::from_value::<EventEnvelope>(queued_message.payload) {
                 if let Err(e) = self
-                    .send_retry_message(&message.node_id, message.clone())
+                    .send_retry_message(
+                        &queued_message.sender_id,
+                        &message.node_id,
+                        message.clone(),
+                    )
                     .await
                 {
                     error!("Failed to send retry message: {}", e);
@@ -471,6 +530,7 @@ mod tests {
         pub NotificationJsonTransport {}
         #[async_trait]
         impl NotificationJsonTransportApi for NotificationJsonTransport {
+            fn get_sender_key(&self) -> String;
             async fn send(&self, recipient: &IdentityPublicData, event: EventEnvelope) -> bcr_ebill_transport::Result<()>;
         }
 
@@ -540,6 +600,7 @@ mod tests {
                 public_key: TEST_PUB_KEY_SECP.to_owned(),
             },
             true,
+            "node_id",
         )
         .unwrap();
 
@@ -560,6 +621,10 @@ mod tests {
             .returning(move |_| Ok(Some(payee.clone())));
 
         let mut mock = MockNotificationJsonTransport::new();
+
+        // get node_id
+        mock.expect_get_sender_key()
+            .returning(|| "node_id".to_string());
 
         // expect to send payment rejected event to all recipients
         mock.expect_send()
@@ -585,12 +650,13 @@ mod tests {
             .returning(|_, _| Ok(()))
             .times(3);
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
+        );
 
         service
             .send_request_to_action_rejected_event(&event, ActionType::PayBill)
@@ -652,6 +718,7 @@ mod tests {
                 public_key: TEST_PUB_KEY_SECP.to_owned(),
             },
             true,
+            "node_id",
         )
         .unwrap();
 
@@ -663,16 +730,19 @@ mod tests {
             .never();
 
         let mut mock = MockNotificationJsonTransport::new();
+        mock.expect_get_sender_key()
+            .returning(|| "node_id".to_string());
 
         // expect to not send rejected event for non rejectable actions
         mock.expect_send().never();
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
+        );
 
         service
             .send_request_to_action_rejected_event(&event, ActionType::CheckBill)
@@ -690,6 +760,10 @@ mod tests {
 
         let mut mock = MockNotificationJsonTransport::new();
 
+        // resolves node_id
+        mock.expect_get_sender_key()
+            .returning(|| "node_id".to_string());
+
         // expect to send payment timeout event to all recipients
         mock.expect_send()
             .withf(|_, e| check_chain_payload(e, BillEventType::BillPaymentTimeout))
@@ -702,15 +776,17 @@ mod tests {
             .returning(|_, _| Ok(()))
             .times(3);
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(MockContactServiceApi::new()),
-            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(MockContactServiceApi::new()),
+            Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
+        );
 
         service
             .send_request_to_action_timed_out_event(
+                "node_id",
                 "bill_id",
                 Some(100),
                 ActionType::PayBill,
@@ -721,6 +797,7 @@ mod tests {
 
         service
             .send_request_to_action_timed_out_event(
+                "node_id",
                 "bill_id",
                 Some(100),
                 ActionType::AcceptBill,
@@ -739,19 +816,23 @@ mod tests {
         ];
 
         let mut mock = MockNotificationJsonTransport::new();
+        mock.expect_get_sender_key()
+            .returning(|| "node_id".to_string());
 
         // expect to never send timeout event on non expiring events
         mock.expect_send().never();
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(MockContactServiceApi::new()),
-            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(MockContactServiceApi::new()),
+            Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
+        );
 
         service
             .send_request_to_action_timed_out_event(
+                "node_id",
                 "bill_id",
                 Some(100),
                 ActionType::CheckBill,
@@ -800,6 +881,7 @@ mod tests {
                 public_key: TEST_PUB_KEY_SECP.to_owned(),
             },
             true,
+            "node_id",
         )
         .unwrap();
 
@@ -818,6 +900,10 @@ mod tests {
             .returning(move |_| Ok(Some(payer.clone())));
 
         let mut mock = MockNotificationJsonTransport::new();
+
+        // resolve node_id
+        mock.expect_get_sender_key()
+            .returning(|| "node_id".to_string());
 
         // expect to send payment recourse event to all recipients
         mock.expect_send()
@@ -839,12 +925,13 @@ mod tests {
             .returning(|_, _| Ok(()))
             .times(2);
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
+        );
 
         service
             .send_recourse_action_event(&event, ActionType::PayBill, &buyer)
@@ -896,6 +983,7 @@ mod tests {
                 public_key: TEST_PUB_KEY_SECP.to_owned(),
             },
             true,
+            "node_id",
         )
         .unwrap();
 
@@ -907,16 +995,19 @@ mod tests {
             .never();
 
         let mut mock = MockNotificationJsonTransport::new();
+        mock.expect_get_sender_key()
+            .returning(|| "node_id".to_string());
 
         // expect not to send non recourse event
         mock.expect_send().never();
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(MockContactServiceApi::new()),
-            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(MockContactServiceApi::new()),
+            Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
+        );
 
         service
             .send_recourse_action_event(&event, ActionType::CheckBill, &payer)
@@ -944,6 +1035,9 @@ mod tests {
             .returning(move |_| Ok(Some(payee.clone())));
 
         let mut mock = MockNotificationJsonTransport::new();
+        mock.expect_get_sender_key()
+            .returning(|| "node_id".to_string());
+
         mock.expect_send().returning(|_, _| Ok(())).once();
         mock.expect_send()
             .returning(|_, _| Err(Error::Network("Failed to send".to_string())));
@@ -954,12 +1048,13 @@ mod tests {
             .returning(|_, _| Ok(()))
             .once();
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(queue_mock),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(queue_mock),
+            "ws://test.relay",
+        );
 
         let event = BillChainEvent::new(
             &bill,
@@ -969,6 +1064,7 @@ mod tests {
                 public_key: TEST_PUB_KEY_SECP.to_owned(),
             },
             true,
+            "node_id",
         )
         .unwrap();
 
@@ -993,6 +1089,9 @@ mod tests {
                 .with(eq(p.0.node_id.clone()))
                 .returning(move |_| Ok(Some(clone1.0.clone())));
 
+            mock.expect_get_sender_key()
+                .returning(|| "node_id".to_string());
+
             let clone2 = p.clone();
             mock.expect_send()
                 .withf(move |r, e| {
@@ -1005,12 +1104,13 @@ mod tests {
                 .returning(|_, _| Ok(()));
         }
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
+        );
 
         (
             service,
@@ -1022,6 +1122,7 @@ mod tests {
                     public_key: TEST_PUB_KEY_SECP.to_owned(),
                 },
                 new_blocks,
+                "node_id",
             )
             .unwrap(),
         )
@@ -1414,7 +1515,7 @@ mod tests {
         );
 
         service
-            .send_request_to_mint_event(&bill)
+            .send_request_to_mint_event("node_id", &bill)
             .await
             .expect("failed to send event");
     }
@@ -1433,11 +1534,17 @@ mod tests {
             .with(eq(filter.clone()))
             .returning(move |_| Ok(vec![returning.clone()]));
 
+        let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_get_sender_key()
+            .returning(|| "node_id".to_string());
+
         let service = DefaultNotificationService::new(
-            Box::new(MockNotificationJsonTransport::new()),
+            vec![Arc::new(mock_transport)],
             Arc::new(mock_store),
             Arc::new(MockContactServiceApi::new()),
             Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
         );
 
         let res = service
@@ -1456,11 +1563,17 @@ mod tests {
             .with(eq("notification_id"))
             .returning(|_| Ok(()));
 
+        let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_get_sender_key()
+            .returning(|| "node_id".to_string());
+
         let service = DefaultNotificationService::new(
-            Box::new(MockNotificationJsonTransport::new()),
+            vec![Arc::new(mock_transport)],
             Arc::new(mock_store),
             Arc::new(MockContactServiceApi::new()),
             Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
         );
 
         service
@@ -1476,6 +1589,8 @@ mod tests {
     ) -> DefaultNotificationService {
         let node_id = node_id.to_owned();
         let mut mock = MockNotificationJsonTransport::new();
+        mock.expect_get_sender_key()
+            .returning(move || "node_id".to_owned());
         mock.expect_send()
             .withf(move |r, e| {
                 let valid_node_id = r.node_id == node_id && e.node_id == node_id;
@@ -1485,12 +1600,13 @@ mod tests {
                     && event.data.action_type == Some(action_type.clone())
             })
             .returning(|_, _| Ok(()));
-        DefaultNotificationService {
-            notification_transport: Box::new(mock),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(MockContactServiceApi::new()),
-            queued_message_store: Arc::new(MockNostrQueuedMessageStore::new()),
-        }
+        DefaultNotificationService::new(
+            vec![Arc::new(mock)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(MockContactServiceApi::new()),
+            Arc::new(MockNostrQueuedMessageStore::new()),
+            "ws://test.relay",
+        )
     }
 
     fn get_test_bill() -> BitcreditBill {
@@ -1513,7 +1629,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_nostr_consumer() {
-        let client = get_mock_nostr_client().await;
+        let clients = vec![Arc::new(get_mock_nostr_client().await)];
         let contact_service = Arc::new(MockContactServiceApi::new());
         let store = Arc::new(MockNostrEventOffsetStoreApiMock::new());
         let notification_store = Arc::new(MockNotificationStoreApiMock::new());
@@ -1521,7 +1637,7 @@ mod tests {
         let bill_store = Arc::new(MockBillStoreApiMock::new());
         let bill_blockchain_store = Arc::new(MockBillChainStoreApiMock::new());
         let _ = create_nostr_consumer(
-            client,
+            clients,
             contact_service,
             store,
             notification_store,
@@ -1536,6 +1652,7 @@ mod tests {
     async fn test_send_retry_messages_success() {
         let node_id = "test_node_id";
         let message_id = "test_message_id";
+        let sender_id = "test_sender";
         let payload = serde_json::to_value(EventEnvelope {
             node_id: node_id.to_string(),
             version: "1.0".to_string(),
@@ -1546,6 +1663,7 @@ mod tests {
 
         let queued_message = NostrQueuedMessage {
             id: message_id.to_string(),
+            sender_id: sender_id.to_string(),
             node_id: node_id.to_string(),
             payload: payload.clone(),
         };
@@ -1560,6 +1678,9 @@ mod tests {
             .returning(move |_| Ok(Some(identity.clone())));
 
         let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_get_sender_key()
+            .returning(|| sender_id.to_string());
         mock_transport.expect_send().returning(|_, _| Ok(()));
 
         let mut mock_queue = MockNostrQueuedMessageStore::new();
@@ -1577,12 +1698,13 @@ mod tests {
             .with(eq(message_id))
             .returning(|_| Ok(()));
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(mock_queue),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock_transport)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(mock_queue),
+            "ws://test.relay",
+        );
 
         let result = service.send_retry_messages().await;
         assert!(result.is_ok());
@@ -1592,6 +1714,7 @@ mod tests {
     async fn test_send_retry_messages_with_send_failure() {
         let node_id = "test_node_id";
         let message_id = "test_message_id";
+        let sender_id = "test_sender";
         let payload = serde_json::to_value(EventEnvelope {
             node_id: node_id.to_string(),
             version: "1.0".to_string(),
@@ -1602,6 +1725,7 @@ mod tests {
 
         let queued_message = NostrQueuedMessage {
             id: message_id.to_string(),
+            sender_id: sender_id.to_string(),
             node_id: node_id.to_string(),
             payload: payload.clone(),
         };
@@ -1616,6 +1740,10 @@ mod tests {
             .returning(move |_| Ok(Some(identity.clone())));
 
         let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_get_sender_key()
+            .returning(|| sender_id.to_string());
+
         mock_transport
             .expect_send()
             .returning(|_, _| Err(Error::Network("Failed to send".to_string())));
@@ -1635,12 +1763,13 @@ mod tests {
             .with(eq(message_id))
             .returning(|_| Ok(()));
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(mock_queue),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock_transport)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(mock_queue),
+            "ws://test.relay",
+        );
 
         let result = service.send_retry_messages().await;
         assert!(result.is_ok());
@@ -1649,6 +1778,7 @@ mod tests {
     #[tokio::test]
     async fn test_send_retry_messages_with_multiple_messages() {
         let node_id1 = "test_node_id_1";
+        let sender_id = "node_id";
         let node_id2 = "test_node_id_2";
         let message_id1 = "test_message_id_1";
         let message_id2 = "test_message_id_2";
@@ -1671,12 +1801,14 @@ mod tests {
 
         let queued_message1 = NostrQueuedMessage {
             id: message_id1.to_string(),
+            sender_id: sender_id.to_string(),
             node_id: node_id1.to_string(),
             payload: payload1.clone(),
         };
 
         let queued_message2 = NostrQueuedMessage {
             id: message_id2.to_string(),
+            sender_id: sender_id.to_string(),
             node_id: node_id2.to_string(),
             payload: payload2.clone(),
         };
@@ -1696,6 +1828,11 @@ mod tests {
             .returning(move |_| Ok(Some(identity2.clone())));
 
         let mut mock_transport = MockNotificationJsonTransport::new();
+
+        mock_transport
+            .expect_get_sender_key()
+            .returning(|| "node_id".to_string());
+
         // First message succeeds, second fails
         mock_transport
             .expect_send()
@@ -1733,12 +1870,13 @@ mod tests {
             .with(eq(message_id2))
             .returning(|_| Ok(()));
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(mock_queue),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock_transport)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(mock_queue),
+            "ws://test.relay",
+        );
 
         let result = service.send_retry_messages().await;
         assert!(result.is_ok());
@@ -1748,11 +1886,13 @@ mod tests {
     async fn test_send_retry_messages_with_invalid_payload() {
         let node_id = "test_node_id";
         let message_id = "test_message_id";
+        let sender = "node_id";
         // Invalid payload that can't be deserialized to EventEnvelope
         let invalid_payload = serde_json::json!({ "invalid": "data" });
 
         let queued_message = NostrQueuedMessage {
             id: message_id.to_string(),
+            sender_id: sender.to_string(),
             node_id: node_id.to_string(),
             payload: invalid_payload,
         };
@@ -1769,14 +1909,18 @@ mod tests {
             .returning(|_| Ok(vec![]))
             .times(1);
 
-        // Neither succeed nor fail should be called since payload can't be parsed
+        let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_get_sender_key()
+            .returning(|| sender.to_string());
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(MockNotificationJsonTransport::new()),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(MockContactServiceApi::new()),
-            queued_message_store: Arc::new(mock_queue),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock_transport)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(MockContactServiceApi::new()),
+            Arc::new(mock_queue),
+            "ws://test.relay",
+        );
 
         let result = service.send_retry_messages().await;
         assert!(result.is_ok());
@@ -1786,6 +1930,7 @@ mod tests {
     async fn test_send_retry_messages_with_fail_retry_error() {
         let node_id = "test_node_id";
         let message_id = "test_message_id";
+        let sender = "node_id";
         let payload = serde_json::to_value(EventEnvelope {
             node_id: node_id.to_string(),
             version: "1.0".to_string(),
@@ -1796,6 +1941,7 @@ mod tests {
 
         let queued_message = NostrQueuedMessage {
             id: message_id.to_string(),
+            sender_id: sender.to_string(),
             node_id: node_id.to_string(),
             payload: payload.clone(),
         };
@@ -1810,6 +1956,9 @@ mod tests {
             .returning(move |_| Ok(Some(identity.clone())));
 
         let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_get_sender_key()
+            .returning(|| sender.to_string());
         mock_transport
             .expect_send()
             .returning(|_, _| Err(Error::Network("Failed to send".to_string())));
@@ -1835,12 +1984,13 @@ mod tests {
                 ))
             });
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(mock_queue),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock_transport)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(mock_queue),
+            "ws://test.relay",
+        );
 
         let result = service.send_retry_messages().await;
         assert!(result.is_ok()); // Should still return Ok despite the internal error
@@ -1850,6 +2000,7 @@ mod tests {
     async fn test_send_retry_messages_with_succeed_retry_error() {
         let node_id = "test_node_id";
         let message_id = "test_message_id";
+        let sender = "node_id";
         let payload = serde_json::to_value(EventEnvelope {
             node_id: node_id.to_string(),
             version: "1.0".to_string(),
@@ -1860,6 +2011,7 @@ mod tests {
 
         let queued_message = NostrQueuedMessage {
             id: message_id.to_string(),
+            sender_id: sender.to_string(),
             node_id: node_id.to_string(),
             payload: payload.clone(),
         };
@@ -1874,6 +2026,9 @@ mod tests {
             .returning(move |_| Ok(Some(identity.clone())));
 
         let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_get_sender_key()
+            .returning(|| sender.to_string());
         mock_transport.expect_send().returning(|_, _| Ok(()));
 
         let mut mock_queue = MockNostrQueuedMessageStore::new();
@@ -1897,12 +2052,13 @@ mod tests {
                 ))
             });
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(mock_transport),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(mock_contact_service),
-            queued_message_store: Arc::new(mock_queue),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock_transport)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(mock_contact_service),
+            Arc::new(mock_queue),
+            "ws://test.relay",
+        );
 
         let result = service.send_retry_messages().await;
         assert!(result.is_ok()); // Should still return Ok despite the internal error
@@ -1916,13 +2072,18 @@ mod tests {
             .with(eq(1))
             .returning(|_| Ok(vec![]))
             .times(1);
+        let mut mock_transport = MockNotificationJsonTransport::new();
+        mock_transport
+            .expect_get_sender_key()
+            .returning(|| "node_id".to_string());
 
-        let service = DefaultNotificationService {
-            notification_transport: Box::new(MockNotificationJsonTransport::new()),
-            notification_store: Arc::new(MockNotificationStoreApiMock::new()),
-            contact_service: Arc::new(MockContactServiceApi::new()),
-            queued_message_store: Arc::new(mock_queue),
-        };
+        let service = DefaultNotificationService::new(
+            vec![Arc::new(mock_transport)],
+            Arc::new(MockNotificationStoreApiMock::new()),
+            Arc::new(MockContactServiceApi::new()),
+            Arc::new(mock_queue),
+            "ws://test.relay",
+        );
 
         let result = service.send_retry_messages().await;
         assert!(result.is_ok());

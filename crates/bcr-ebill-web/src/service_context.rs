@@ -6,7 +6,7 @@ use bcr_ebill_api::service::contact_service::{ContactService, ContactServiceApi}
 use bcr_ebill_api::service::file_upload_service::{FileUploadService, FileUploadServiceApi};
 use bcr_ebill_api::service::identity_service::{IdentityService, IdentityServiceApi};
 use bcr_ebill_api::service::notification_service::{
-    NostrConsumer, create_nostr_client, create_nostr_consumer, create_notification_service,
+    NostrConsumer, create_nostr_clients, create_nostr_consumer, create_notification_service,
 };
 use bcr_ebill_api::service::search_service::{SearchService, SearchServiceApi};
 use bcr_ebill_api::{Config, DbContext, SurrealDbConfig, service::Result};
@@ -91,12 +91,14 @@ pub async fn create_service_context(
     ));
     let bitcoin_client = Arc::new(BitcoinClient::new());
 
-    let nostr_client = create_nostr_client(&config, db.identity_store.clone()).await?;
+    let nostr_clients =
+        create_nostr_clients(&config, db.identity_store.clone(), db.company_store.clone()).await?;
     let notification_service = create_notification_service(
-        nostr_client.clone(),
+        nostr_clients.clone(),
         db.notification_store.clone(),
         contact_service.clone(),
         db.queued_message_store.clone(),
+        &config.nostr_relay,
     )
     .await?;
 
@@ -131,7 +133,7 @@ pub async fn create_service_context(
     let push_service = Arc::new(PushService::new());
 
     let nostr_consumer = create_nostr_consumer(
-        nostr_client,
+        nostr_clients,
         contact_service.clone(),
         db.nostr_event_offset_store.clone(),
         db.notification_store.clone(),

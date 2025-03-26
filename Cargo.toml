@@ -1,6 +1,13 @@
 [workspace]
 resolver = "3"
-members = [ "crates/bcr-ebill-web", "crates/bcr-ebill-core", "crates/bcr-ebill-api", "crates/bcr-ebill-persistence" , "crates/bcr-ebill-transport", "crates/bcr-ebill-wasm"]
+members = [
+  "crates/bcr-ebill-web",
+  "crates/bcr-ebill-core",
+  "crates/bcr-ebill-api",
+  "crates/bcr-ebill-persistence",
+  "crates/bcr-ebill-transport",
+  "crates/bcr-ebill-wasm",
+]
 
 
 [workspace.dependencies]
@@ -9,8 +16,12 @@ borsh = "1.5"
 borsh-derive = "1.5"
 env_logger = { version = "0.11", default-features = false }
 log = { version = "0.4", features = ["serde"] }
-chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+chrono = { version = "0.4", default-features = false, features = [
+  "serde",
+  "clock",
+] }
 tokio = { version = "1.43", default-features = false, features = ["rt"] }
+tokio_with_wasm = { version = "0.8.2", features = ["rt"] }
 async-trait = "0.1"
 serde_json = "1"
 serde = { version = "1", default-features = false, features = ["derive"] }
@@ -20,10 +31,10 @@ anyhow = { version = "1", default-features = false }
 thiserror = { version = "2", default-features = false }
 lazy_static = "1.5"
 uuid = { version = "1", default-features = false, features = ["v4", "js"] }
-bitcoin = { version = "0.32",  default-features = false }
+bitcoin = { version = "0.32", default-features = false }
 bip39 = { version = "2.1", features = ["rand"] }
 ecies = { version = "0.2", default-features = false, features = ["pure"] }
-nostr-sdk = { version = "0.39", features = ["nip59"] }
+nostr-sdk = { version = "0.40", features = ["nip59"] }
 getrandom = { version = "0.3.1", features = ["wasm_js"] }
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 async-broadcast = "0.7.2"
