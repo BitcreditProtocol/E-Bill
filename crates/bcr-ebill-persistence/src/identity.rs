@@ -3,7 +3,7 @@ use async_trait::async_trait;
 
 use bcr_ebill_core::{
     blockchain::identity::IdentityBlock,
-    identity::{Identity, IdentityWithAll},
+    identity::{ActiveIdentityState, Identity, IdentityWithAll},
     util::crypto::BcrKeys,
 };
 
@@ -26,6 +26,10 @@ pub trait IdentityStoreApi: Send + Sync {
     async fn get_or_create_key_pair(&self) -> Result<BcrKeys>;
     /// Returns the seed phrase that generated the private keys.
     async fn get_seedphrase(&self) -> Result<String>;
+    /// Returns actively set identity
+    async fn get_current_identity(&self) -> Result<ActiveIdentityState>;
+    /// Sets the given current active identity state
+    async fn set_current_identity(&self, identity_state: &ActiveIdentityState) -> Result<()>;
 }
 
 #[async_trait]

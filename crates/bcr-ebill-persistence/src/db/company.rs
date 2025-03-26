@@ -1,3 +1,5 @@
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use super::{FileDb, PostalAddressDb, Result};
 use crate::constants::{DB_SEARCH_TERM, DB_TABLE};
 use async_trait::async_trait;
@@ -10,6 +12,7 @@ use surrealdb::{Surreal, engine::any::Any, sql::Thing};
 
 #[derive(Clone)]
 pub struct SurrealCompanyStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -20,12 +23,22 @@ impl SurrealCompanyStore {
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
 }
 
 #[async_trait]
 impl CompanyStoreApi for SurrealCompanyStore {
     async fn search(&self, search_term: &str) -> Result<Vec<Company>> {
-        let results: Vec<CompanyDb> = self.db
+        let results: Vec<CompanyDb> = self.db().await?
             .query("SELECT * from type::table($table) WHERE string::lowercase(name) CONTAINS $search_term")
             .bind((DB_TABLE, Self::DATA_TABLE))
             .bind((DB_SEARCH_TERM, search_term.to_owned())).await?
@@ -39,7 +52,7 @@ impl CompanyStoreApi for SurrealCompanyStore {
     }
 
     async fn get(&self, id: &str) -> Result<Company> {
-        let result: Option<CompanyDb> = self.db.select((Self::DATA_TABLE, id)).await?;
+        let result: Option<CompanyDb> = self.db().await?.select((Self::DATA_TABLE, id)).await?;
         match result {
             None => Err(Error::NoSuchEntity("company".to_string(), id.to_owned())),
             Some(c) => Ok(c.into()),
@@ -47,8 +60,8 @@ impl CompanyStoreApi for SurrealCompanyStore {
     }
 
     async fn get_all(&self) -> Result<HashMap<String, (Company, CompanyKeys)>> {
-        let companies: Vec<CompanyDb> = self.db.select(Self::DATA_TABLE).await?;
-        let company_keys: Vec<CompanyKeysDb> = self.db.select(Self::KEYS_TABLE).await?;
+        let companies: Vec<CompanyDb> = self.db().await?.select(Self::DATA_TABLE).await?;
+        let company_keys: Vec<CompanyKeysDb> = self.db().await?.select(Self::KEYS_TABLE).await?;
         let companies_map: HashMap<String, CompanyDb> = companies
             .into_iter()
             .map(|company| (company.id.id.to_raw(), company))
@@ -72,7 +85,8 @@ impl CompanyStoreApi for SurrealCompanyStore {
         let id = data.id.to_owned();
         let entity: CompanyDb = data.into();
         let _: Option<CompanyDb> = self
-            .db
+            .db()
+            .await?
             .create((Self::DATA_TABLE, id))
             .content(entity)
             .await?;
@@ -82,7 +96,8 @@ impl CompanyStoreApi for SurrealCompanyStore {
     async fn update(&self, id: &str, data: &Company) -> Result<()> {
         let entity: CompanyDb = data.into();
         let _: Option<CompanyDb> = self
-            .db
+            .db()
+            .await?
             .update((Self::DATA_TABLE, id))
             .content(entity)
             .await?;
@@ -90,15 +105,16 @@ impl CompanyStoreApi for SurrealCompanyStore {
     }
 
     async fn remove(&self, id: &str) -> Result<()> {
-        let _: Option<CompanyDb> = self.db.delete((Self::DATA_TABLE, id)).await?;
-        let _: Option<CompanyKeysDb> = self.db.delete((Self::KEYS_TABLE, id)).await?;
+        let _: Option<CompanyDb> = self.db().await?.delete((Self::DATA_TABLE, id)).await?;
+        let _: Option<CompanyKeysDb> = self.db().await?.delete((Self::KEYS_TABLE, id)).await?;
         Ok(())
     }
 
     async fn save_key_pair(&self, id: &str, key_pair: &CompanyKeys) -> Result<()> {
         let entity: CompanyKeysDb = key_pair.into();
         let _: Option<CompanyKeysDb> = self
-            .db
+            .db()
+            .await?
             .create((Self::KEYS_TABLE, id))
             .content(entity)
             .await?;
@@ -106,7 +122,7 @@ impl CompanyStoreApi for SurrealCompanyStore {
     }
 
     async fn get_key_pair(&self, id: &str) -> Result<CompanyKeys> {
-        let result: Option<CompanyKeysDb> = self.db.select((Self::KEYS_TABLE, id)).await?;
+        let result: Option<CompanyKeysDb> = self.db().await?.select((Self::KEYS_TABLE, id)).await?;
         match result {
             None => Err(Error::NoSuchEntity("company".to_string(), id.to_owned())),
             Some(c) => Ok(c.into()),

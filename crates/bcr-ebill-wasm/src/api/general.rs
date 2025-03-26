@@ -85,7 +85,7 @@ impl General {
         }
         let result = get_ctx()
             .bill_service
-            .get_bill_balances(currency, &get_current_identity_node_id())
+            .get_bill_balances(currency, &get_current_identity_node_id().await?)
             .await?;
 
         let res = serde_wasm_bindgen::to_value(&OverviewResponse {
@@ -124,7 +124,7 @@ impl General {
                 &search_filter.filter.search_term,
                 &search_filter.filter.currency,
                 &filters,
-                &get_current_identity_node_id(),
+                &get_current_identity_node_id().await?,
             )
             .await?;
 

@@ -1,5 +1,5 @@
 use crate::{
-    CONTEXT, Result,
+    Result,
     context::get_ctx,
     data::{
         BinaryFileResponse, FromWeb, IntoWeb, UploadFile,
@@ -9,7 +9,10 @@ use crate::{
     },
 };
 use bcr_ebill_api::{
-    data::{OptionalPostalAddress, identity::IdentityType},
+    data::{
+        OptionalPostalAddress,
+        identity::{ActiveIdentityState, IdentityType},
+    },
     external,
     service::Error,
     util::{
@@ -173,7 +176,7 @@ impl Identity {
 
     #[wasm_bindgen(unchecked_return_type = "SwitchIdentity")]
     pub async fn active(&self) -> Result<JsValue> {
-        let current_identity = get_current_identity();
+        let current_identity = get_current_identity().await?;
         let (node_id, t) = match current_identity.company {
             None => (current_identity.personal, IdentityType::Person),
             Some(company_node_id) => (company_node_id, IdentityType::Company),
@@ -197,7 +200,10 @@ impl Identity {
 
         // if it's the personal node id, set it
         if node_id == personal_node_id {
-            set_current_personal_identity(node_id);
+            get_ctx()
+                .identity_service
+                .set_current_personal_identity(&node_id)
+                .await?;
             return Ok(());
         }
 
@@ -209,7 +215,10 @@ impl Identity {
             .iter()
             .any(|c| c.id == node_id)
         {
-            set_current_company_identity(node_id);
+            get_ctx()
+                .identity_service
+                .set_current_company_identity(&node_id)
+                .await?;
             return Ok(());
         }
 
@@ -247,31 +256,15 @@ impl Default for Identity {
     }
 }
 
-pub fn get_current_identity() -> SwitchIdentityState {
-    get_ctx().current_identity.clone()
+pub async fn get_current_identity() -> Result<ActiveIdentityState> {
+    let active_identity = get_ctx().identity_service.get_current_identity().await?;
+    Ok(active_identity)
 }
 
-pub fn set_current_personal_identity(node_id: String) {
-    CONTEXT.with(|ctx| {
-        if let Some(ref mut ctx) = *ctx.borrow_mut() {
-            ctx.current_identity.personal = node_id;
-            ctx.current_identity.company = None;
-        }
-    });
-}
-
-pub fn set_current_company_identity(node_id: String) {
-    CONTEXT.with(|ctx| {
-        if let Some(ref mut ctx) = *ctx.borrow_mut() {
-            ctx.current_identity.company = Some(node_id);
-        }
-    });
-}
-
-pub fn get_current_identity_node_id() -> String {
-    let current_identity = get_current_identity();
+pub async fn get_current_identity_node_id() -> Result<String> {
+    let current_identity = get_current_identity().await?;
     match current_identity.company {
-        None => current_identity.personal,
-        Some(company_node_id) => company_node_id,
+        None => Ok(current_identity.personal),
+        Some(company_node_id) => Ok(company_node_id),
     }
 }

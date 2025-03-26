@@ -21,8 +21,6 @@ use bcr_ebill_transport::{
 };
 use std::sync::Arc;
 
-use crate::api::identity::SwitchIdentityState;
-
 #[derive(Clone)]
 pub struct Context {
     pub contact_service: Arc<dyn ContactServiceApi>,
@@ -34,12 +32,11 @@ pub struct Context {
     pub nostr_consumer: NostrConsumer,
     pub notification_service: Arc<dyn NotificationServiceApi>,
     pub push_service: Arc<dyn PushApi>,
-    pub current_identity: SwitchIdentityState,
     pub cfg: Config,
 }
 
 impl Context {
-    pub async fn new(cfg: Config, db: DbContext, local_node_id: &str) -> Result<Self> {
+    pub async fn new(cfg: Config, db: DbContext) -> Result<Self> {
         let contact_service = Arc::new(ContactService::new(
             db.contact_store.clone(),
             db.file_upload_store.clone(),
@@ -113,17 +110,11 @@ impl Context {
             nostr_consumer,
             notification_service,
             push_service,
-            current_identity: SwitchIdentityState {
-                personal: local_node_id.to_owned(),
-                company: None,
-            },
             cfg,
         })
     }
 }
 
-pub fn get_ctx() -> Context {
-    CONTEXT
-        .with(|ctx| ctx.borrow().clone())
-        .expect("is initialized")
+pub fn get_ctx() -> &'static Context {
+    CONTEXT.with(|c| c.borrow().expect("Context is not initialized"))
 }

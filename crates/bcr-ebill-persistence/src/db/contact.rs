@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use super::{FileDb, PostalAddressDb, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -13,6 +15,7 @@ use bcr_ebill_core::contact::{Contact, ContactType};
 
 #[derive(Clone)]
 pub struct SurrealContactStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -22,12 +25,22 @@ impl SurrealContactStore {
     pub fn new(db: Surreal<Any>) -> Self {
         Self { db }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
 }
 
 #[async_trait]
 impl ContactStoreApi for SurrealContactStore {
     async fn search(&self, search_term: &str) -> Result<Vec<Contact>> {
-        let results: Vec<ContactDb> = self.db
+        let results: Vec<ContactDb> = self.db().await?
             .query("SELECT * from type::table($table) WHERE string::lowercase(name) CONTAINS $search_term")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_SEARCH_TERM, search_term.to_owned())).await?
@@ -36,7 +49,7 @@ impl ContactStoreApi for SurrealContactStore {
     }
 
     async fn get_map(&self) -> Result<HashMap<String, Contact>> {
-        let all: Vec<ContactDb> = self.db.select(Self::TABLE).await?;
+        let all: Vec<ContactDb> = self.db().await?.select(Self::TABLE).await?;
         let mut map = HashMap::new();
         for contact in all.into_iter() {
             map.insert(contact.node_id.clone(), contact.into());
@@ -45,14 +58,19 @@ impl ContactStoreApi for SurrealContactStore {
     }
 
     async fn get(&self, node_id: &str) -> Result<Option<Contact>> {
-        let result: Option<ContactDb> = self.db.select((Self::TABLE, node_id.to_owned())).await?;
+        let result: Option<ContactDb> = self
+            .db()
+            .await?
+            .select((Self::TABLE, node_id.to_owned()))
+            .await?;
         Ok(result.map(|c| c.to_owned().into()))
     }
 
     async fn insert(&self, node_id: &str, data: Contact) -> Result<()> {
         let entity: ContactDb = data.into();
         let _: Option<ContactDb> = self
-            .db
+            .db()
+            .await?
             .create((Self::TABLE, node_id.to_owned()))
             .content(entity)
             .await?;
@@ -60,14 +78,19 @@ impl ContactStoreApi for SurrealContactStore {
     }
 
     async fn delete(&self, node_id: &str) -> Result<()> {
-        let _: Option<ContactDb> = self.db.delete((Self::TABLE, node_id.to_owned())).await?;
+        let _: Option<ContactDb> = self
+            .db()
+            .await?
+            .delete((Self::TABLE, node_id.to_owned()))
+            .await?;
         Ok(())
     }
 
     async fn update(&self, node_id: &str, data: Contact) -> Result<()> {
         let entity: ContactDb = data.into();
         let _: Option<ContactDb> = self
-            .db
+            .db()
+            .await?
             .update((Self::TABLE, node_id.to_owned()))
             .content(entity)
             .await?;

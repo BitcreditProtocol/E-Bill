@@ -1,4 +1,6 @@
 use super::super::{Error, Result};
+#[cfg(target_arch = "wasm32")]
+use super::get_new_surreal_db;
 use crate::{
     bill::BillChainStoreApi,
     constants::{
@@ -28,6 +30,7 @@ const CREATE_BLOCK_QUERY: &str = r#"CREATE type::table($table) CONTENT {
 
 #[derive(Clone)]
 pub struct SurrealBillChainStore {
+    #[allow(dead_code)]
     db: Surreal<Any>,
 }
 
@@ -40,7 +43,8 @@ impl SurrealBillChainStore {
 
     async fn create_block(&self, query: &str, entity: BillBlockDb) -> Result<()> {
         let _ = self
-            .db
+            .db()
+            .await?
             .query(query)
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_BILL_ID, entity.bill_id))
@@ -56,13 +60,23 @@ impl SurrealBillChainStore {
             .check()?;
         Ok(())
     }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        get_new_surreal_db().await
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    async fn db(&self) -> Result<Surreal<Any>> {
+        Ok(self.db.clone())
+    }
 }
 
 #[async_trait]
 impl BillChainStoreApi for SurrealBillChainStore {
     async fn get_latest_block(&self, id: &str) -> Result<BillBlock> {
         let result: Vec<BillBlockDb> = self
-            .db
+            .db().await?
             .query("SELECT * FROM type::table($table) WHERE bill_id = $bill_id ORDER BY block_id DESC LIMIT 1")
             .bind((DB_TABLE, Self::TABLE))
             .bind((DB_BILL_ID, id.to_owned()))
@@ -145,7 +159,8 @@ impl BillChainStoreApi for SurrealBillChainStore {
 
     async fn get_chain(&self, id: &str) -> Result<BillBlockchain> {
         let result: Vec<BillBlockDb> = self
-            .db
+            .db()
+            .await?
             .query(
                 "SELECT * FROM type::table($table) WHERE bill_id = $bill_id ORDER BY block_id ASC",
             )
