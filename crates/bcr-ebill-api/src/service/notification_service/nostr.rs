@@ -225,7 +225,7 @@ impl NostrConsumer {
             let event_handlers = event_handlers.clone();
             let offset_store = offset_store.clone();
             let client_id = node_id.clone();
-            
+
             // Spawn a task for each client
             let task = spawn(async move {
                 // continue where we left off
@@ -252,7 +252,7 @@ impl NostrConsumer {
                         let offset_store = offset_store.clone();
                         let node_id = node_id.clone();
                         let client_id = client_id.clone();
-                        
+
                         async move {
                             if let Some((envelope, sender, event_id, time)) =
                                 client.unwrap_envelope(note).await
@@ -277,7 +277,7 @@ impl NostrConsumer {
                     .await
                     .expect("Nostr notification handler failed");
             });
-            
+
             tasks.push(task);
         }
 
@@ -287,7 +287,7 @@ impl NostrConsumer {
                 error!("Nostr client task failed: {e}");
             }
         }
-        
+
         Ok(())
     }
 }
