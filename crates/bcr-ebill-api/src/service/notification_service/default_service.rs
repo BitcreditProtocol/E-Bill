@@ -61,7 +61,7 @@ impl DefaultNotificationService {
                 t: ContactType::Person,
                 node_id: node_id.to_string(),
                 email: None,
-                name: "".to_string(),
+                name: String::new(),
                 postal_address: PostalAddress::default(),
                 nostr_relay: Some(self.nostr_relay.clone()),
             })
