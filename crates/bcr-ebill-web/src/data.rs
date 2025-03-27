@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use bcr_ebill_api::data::{
     File, GeneralSearchFilterItemType, GeneralSearchResult, OptionalPostalAddress, PostalAddress,
-    UploadFilesResult,
+    UploadFileResult,
     bill::{
         BillAcceptanceStatus, BillCombinedBitcoinKey, BillCurrentWaitingState, BillData,
         BillParticipants, BillPaymentStatus, BillRecourseStatus, BillSellStatus, BillStatus,
@@ -441,13 +441,13 @@ pub struct EditContactPayload {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct UploadFilesResponse {
+pub struct UploadFileResponse {
     pub file_upload_id: String,
 }
 
-impl IntoWeb<UploadFilesResponse> for UploadFilesResult {
-    fn into_web(self) -> UploadFilesResponse {
-        UploadFilesResponse {
+impl IntoWeb<UploadFileResponse> for UploadFileResult {
+    fn into_web(self) -> UploadFileResponse {
+        UploadFileResponse {
             file_upload_id: self.file_upload_id,
         }
     }

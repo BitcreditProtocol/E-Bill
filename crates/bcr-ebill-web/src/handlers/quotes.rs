@@ -14,7 +14,7 @@ pub async fn return_quote(
     id: String,
 ) -> Result<Json<BitcreditEbillQuote>> {
     info!("return quote called with {id} - not implemented");
-    Err(Error::PreconditionFailed.into())
+    Err(Error::NotFound.into())
 }
 
 #[put("/accept/<id>")]
@@ -24,5 +24,5 @@ pub async fn accept_quote(
     id: String,
 ) -> Result<Json<BitcreditEbillQuote>> {
     info!("accept quote called with {id} - not implemented");
-    Err(Error::PreconditionFailed.into())
+    Err(Error::NotFound.into())
 }

@@ -195,7 +195,6 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for ServiceError {
                     .sized_body(body.len(), Cursor::new(body))
                     .ok()
             }
-            Error::PreconditionFailed => Status::NotAcceptable.respond_to(req),
             Error::NotFound => {
                 let body =
                     ErrorResponse::new("not_found", "not found".to_string(), 404).to_json_string();

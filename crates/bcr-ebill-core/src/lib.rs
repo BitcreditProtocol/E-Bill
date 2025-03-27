@@ -98,6 +98,6 @@ pub struct File {
 }
 
 #[derive(Debug)]
-pub struct UploadFilesResult {
+pub struct UploadFileResult {
     pub file_upload_id: String,
 }

@@ -2,6 +2,7 @@ use crate::{get_config, util};
 use async_trait::async_trait;
 use bcr_ebill_core::ServiceTraitBounds;
 use bitcoin::{Network, secp256k1::Scalar};
+use log::debug;
 use serde::Deserialize;
 use std::str::FromStr;
 use thiserror::Error;
@@ -144,6 +145,7 @@ impl BitcoinClientApi for BitcoinClient {
     }
 
     async fn check_if_paid(&self, address: &str, sum: u64) -> Result<(bool, u64)> {
+        debug!("checking if btc address {address} is paid {sum}");
         let info_about_address = self.get_address_info(address).await?;
 
         // the received and spent sum need to add up to the sum

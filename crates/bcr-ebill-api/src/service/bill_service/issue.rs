@@ -11,7 +11,7 @@ use bcr_ebill_core::{
     util::BcrKeys,
 };
 use bcr_ebill_transport::BillChainEvent;
-use log::error;
+use log::{debug, error};
 
 impl BillService {
     #[allow(clippy::too_many_arguments)]
@@ -34,6 +34,7 @@ impl BillService {
         drawer_keys: BcrKeys,
         timestamp: u64,
     ) -> Result<BitcreditBill> {
+        debug!("issuing bill with type {t}");
         let (sum, bill_type) = self.validate_bill_issue(
             &sum,
             &file_upload_ids,
@@ -98,6 +99,7 @@ impl BillService {
                 (public_data_drawee, public_data_payee)
             }
         };
+        debug!("issuing bill with drawee {public_data_drawee:?} and payee {public_data_payee:?}");
 
         let identity = self.identity_store.get_full().await?;
         let keys = BcrKeys::new();
@@ -204,8 +206,11 @@ impl BillService {
             error!("Error propagating bill via Nostr {e}");
         }
 
+        debug!("issued bill with id {bill_id}");
+
         // If we're the drawee, we immediately accept the bill with timestamp increased by 1 sec
         if bill.drawer == bill.drawee {
+            debug!("we are drawer and drawee of bill: {bill_id} - immediately accepting");
             self.execute_bill_action(
                 &bill_id,
                 BillAction::Accept,

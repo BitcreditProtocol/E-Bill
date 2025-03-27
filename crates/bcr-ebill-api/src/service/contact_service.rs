@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::Result;
-use log::info;
+use log::{debug, info};
 
 #[cfg_attr(test, automock)]
 #[async_trait]
@@ -108,6 +108,7 @@ impl ContactService {
         public_key: &str,
     ) -> Result<Option<File>> {
         if let Some(upload_id) = upload_id {
+            debug!("processing upload file for contact {id}: {upload_id:?}");
             let (file_name, file_bytes) = &self
                 .file_upload_store
                 .read_temp_upload_file(upload_id)
@@ -185,6 +186,7 @@ impl ContactServiceApi for ContactService {
         avatar_file_upload_id: Option<String>,
         proof_document_file_upload_id: Option<String>,
     ) -> Result<()> {
+        debug!("updating contact with node_id: {node_id}");
         let mut contact = match self.store.get(node_id).await? {
             Some(contact) => contact,
             None => {
@@ -274,6 +276,7 @@ impl ContactServiceApi for ContactService {
         }
 
         self.store.update(node_id, contact).await?;
+        debug!("updated contact with node_id: {node_id}");
 
         Ok(())
     }
@@ -292,6 +295,7 @@ impl ContactServiceApi for ContactService {
         avatar_file_upload_id: Option<String>,
         proof_document_file_upload_id: Option<String>,
     ) -> Result<Contact> {
+        debug!("creating {:?} contact with node_id {node_id}", &t);
         if util::crypto::validate_pub_key(node_id).is_err() {
             return Err(super::Error::Validation(format!(
                 "Not a valid secp256k1 key: {node_id}",
@@ -313,7 +317,7 @@ impl ContactServiceApi for ContactService {
 
         let contact = Contact {
             node_id: node_id.to_owned(),
-            t,
+            t: t.clone(),
             name,
             email,
             postal_address,
@@ -327,6 +331,7 @@ impl ContactServiceApi for ContactService {
         };
 
         self.store.insert(node_id, contact.clone()).await?;
+        debug!("contact {:?} with node_id {node_id} created", &t);
         Ok(contact)
     }
 
@@ -343,6 +348,7 @@ impl ContactServiceApi for ContactService {
         file_name: &str,
         private_key: &str,
     ) -> Result<Vec<u8>> {
+        debug!("getting file {file_name} for contact with id: {id}",);
         let read_file = self
             .file_upload_store
             .open_attached_file(id, file_name)

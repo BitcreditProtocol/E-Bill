@@ -22,7 +22,7 @@ mod job;
 #[derive(Tsify, Debug, Clone, Deserialize)]
 #[tsify(from_wasm_abi)]
 pub struct Config {
-    pub log_level: Option<log::Level>,
+    pub log_level: Option<String>,
     pub bitcoin_network: String,
     pub nostr_relay: String,
     pub job_runner_initial_delay_seconds: u32,
@@ -44,8 +44,17 @@ pub async fn initialize_api(
 
     // init logging
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-    console_log::init_with_level(config.log_level.unwrap_or(log::Level::Info))
-        .expect("can initialize logging");
+    let log_level = match config.log_level {
+        Some(ref log_level) => match log_level.as_str() {
+            "info" => log::Level::Info,
+            "debug" => log::Level::Debug,
+            "error" => log::Level::Error,
+            "trace" => log::Level::Trace,
+            _ => log::Level::Info,
+        },
+        None => log::Level::Info,
+    };
+    console_log::init_with_level(log_level).expect("can initialize logging");
     let api_config = ApiConfig {
         bitcoin_network: config.bitcoin_network,
         nostr_relay: config.nostr_relay,
