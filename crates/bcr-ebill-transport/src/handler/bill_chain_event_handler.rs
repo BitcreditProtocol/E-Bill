@@ -13,6 +13,7 @@ use bcr_ebill_persistence::NotificationStoreApi;
 use bcr_ebill_persistence::bill::BillChainStoreApi;
 use bcr_ebill_persistence::bill::BillStoreApi;
 use log::error;
+use log::info;
 use log::warn;
 use std::sync::Arc;
 
@@ -103,37 +104,50 @@ impl BillChainEventHandler {
         blocks: Vec<BillBlock>,
         keys: Option<BillKeys>,
     ) -> Result<()> {
-        match keys {
-            Some(keys) => self.add_new_chain(blocks, &keys).await,
-            None if !blocks.is_empty() => self.add_bill_blocks(bill_id, blocks).await,
-            _ => Ok(()),
+        if let Ok(existing_chain) = self.bill_blockchain_store.get_chain(bill_id).await {
+            self.add_bill_blocks(bill_id, existing_chain, blocks).await
+        } else {
+            match keys {
+                Some(keys) => self.add_new_chain(blocks, &keys).await,
+                _ => {
+                    error!("Received bill blocks for unknown bill {bill_id}");
+                    Err(Error::Blockchain(
+                        "Received bill blocks for unknown bill".to_string(),
+                    ))
+                }
+            }
         }
     }
 
-    async fn add_bill_blocks(&self, bill_id: &str, blocks: Vec<BillBlock>) -> Result<()> {
-        if let Ok(mut chain) = self.bill_blockchain_store.get_chain(bill_id).await {
-            let mut block_added = false;
-            for block in blocks {
-                if !chain.try_add_block(block.clone()) {
-                    error!("Received invalid block for bill {bill_id}");
-                    return Err(Error::Blockchain(
-                        "Received invalid block for bill".to_string(),
-                    ));
-                }
-                self.save_block(bill_id, &block).await?;
-                block_added = true;
+    async fn add_bill_blocks(
+        &self,
+        bill_id: &str,
+        existing: BillBlockchain,
+        blocks: Vec<BillBlock>,
+    ) -> Result<()> {
+        let mut block_added = false;
+        let mut chain = existing;
+        let block_height = chain.get_latest_block().id;
+        for block in blocks {
+            // if we already have the block, we skip it
+            if block.id <= block_height {
+                info!("Skipping block with id {} as we already have it", block.id);
+                continue;
             }
-            // if the bill was changed, we invalidate the cache
-            if block_added {
-                self.invalidate_cache_for_bill(bill_id).await?;
+            if !chain.try_add_block(block.clone()) {
+                error!("Received invalid block for bill {bill_id}");
+                return Err(Error::Blockchain(
+                    "Received invalid block for bill".to_string(),
+                ));
             }
-            Ok(())
-        } else {
-            error!("Failed to get chain for received bill block {bill_id}");
-            Err(Error::Blockchain(
-                "Failed to get chain for bill".to_string(),
-            ))
+            self.save_block(bill_id, &block).await?;
+            block_added = true;
         }
+        // if the bill was changed, we invalidate the cache
+        if block_added {
+            self.invalidate_cache_for_bill(bill_id).await?;
+        }
+        Ok(())
     }
 
     async fn add_new_chain(&self, blocks: Vec<BillBlock>, keys: &BillKeys) -> Result<()> {
@@ -306,6 +320,11 @@ mod tests {
             create_mocks();
 
         bill_chain_store
+            .expect_get_chain()
+            .with(eq("bill"))
+            .times(1)
+            .returning(move |_| Err(bcr_ebill_persistence::Error::NoBillBlock));
+        bill_chain_store
             .expect_add_block()
             .with(eq("bill"), eq(chain.blocks()[0].clone()))
             .times(1)
@@ -327,7 +346,7 @@ mod tests {
             EventType::Bill,
             "node_id",
             BillChainEventPayload {
-                bill_id: "bill_id".to_string(),
+                bill_id: "bill".to_string(),
                 event_type: BillEventType::BillBlock,
                 blocks: chain.blocks().clone(),
                 keys: Some(keys.clone()),

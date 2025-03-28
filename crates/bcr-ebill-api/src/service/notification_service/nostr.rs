@@ -215,16 +215,19 @@ impl NostrConsumer {
         // move dependencies into thread scope
         let clients = self.clients.clone();
         let event_handlers = self.event_handlers.clone();
-        let _contact_service = self.contact_service.clone();
+        let contact_service = self.contact_service.clone();
         let offset_store = self.offset_store.clone();
 
         let mut tasks = Vec::new();
+        let local_node_ids = clients.keys().cloned().collect::<Vec<String>>();
 
         for (node_id, node_client) in clients.into_iter() {
             let current_client = node_client.clone();
             let event_handlers = event_handlers.clone();
             let offset_store = offset_store.clone();
             let client_id = node_id.clone();
+            let contact_service = contact_service.clone();
+            let local_node_ids = local_node_ids.clone();
 
             // Spawn a task for each client
             let task = spawn(async move {
@@ -252,6 +255,8 @@ impl NostrConsumer {
                         let offset_store = offset_store.clone();
                         let node_id = node_id.clone();
                         let client_id = client_id.clone();
+                        let contact_service = contact_service.clone();
+                        let local_node_ids = local_node_ids.clone();
 
                         async move {
                             if let Some((envelope, sender, event_id, time)) =
@@ -262,10 +267,10 @@ impl NostrConsumer {
                                     let sender_node_id = sender.to_hex();
                                     trace!("Received event: {envelope:?} from {sender_npub:?} (hex: {sender_node_id}) on client {client_id}");
                                     // We use hex here, so we can compare it with our node_ids
-                                    // TODO: re-enable after presentation: if contact_service.is_known_npub(&sender_node_id).await? {
+                                    if valid_sender(&sender_node_id, &local_node_ids, &contact_service).await {
                                         trace!("Processing event: {envelope:?}");
                                         handle_event(envelope, &node_id, &event_handlers).await?;
-                                    // }
+                                    }
 
                                     // store the new event offset
                                     add_offset(&offset_store, event_id, time, true, &node_id).await;
@@ -289,6 +294,22 @@ impl NostrConsumer {
         }
 
         Ok(())
+    }
+}
+
+async fn valid_sender(
+    node_id: &str,
+    local_node_ids: &Vec<String>,
+    contact_service: &Arc<dyn ContactServiceApi>,
+) -> bool {
+    if local_node_ids.contains(&node_id.to_string()) {
+        return true;
+    }
+    if let Ok(res) = contact_service.is_known_npub(node_id).await {
+        res
+    } else {
+        error!("Could not check if sender is a known contact");
+        false
     }
 }
 
