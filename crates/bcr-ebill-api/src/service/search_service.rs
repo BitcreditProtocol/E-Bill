@@ -6,6 +6,7 @@ use super::{
 use crate::data::GeneralSearchResult;
 use crate::data::{GeneralSearchFilterItemType, bill::BillsFilterRole};
 use async_trait::async_trait;
+use log::debug;
 use std::sync::Arc;
 
 use bcr_ebill_core::ServiceTraitBounds;
@@ -57,6 +58,7 @@ impl SearchServiceApi for SearchService {
         item_types: &[GeneralSearchFilterItemType],
         current_identity_node_id: &str,
     ) -> Result<GeneralSearchResult> {
+        debug!("search for {search_term}, with {currency} and {item_types:?}");
         let search_term_lc = search_term.to_lowercase();
         let bills = if item_types.contains(&GeneralSearchFilterItemType::Bill) {
             self.bill_service

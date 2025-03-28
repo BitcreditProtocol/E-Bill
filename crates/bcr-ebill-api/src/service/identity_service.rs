@@ -12,7 +12,7 @@ use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::persistence::identity::IdentityChainStoreApi;
 use async_trait::async_trait;
 use bcr_ebill_core::identity::ActiveIdentityState;
-use log::info;
+use log::{debug, info};
 use std::sync::Arc;
 
 #[async_trait]
@@ -101,6 +101,7 @@ impl IdentityService {
         public_key: &str,
     ) -> Result<Option<File>> {
         if let Some(upload_id) = upload_id {
+            debug!("processing upload file for identity {id}: {upload_id:?}");
             let (file_name, file_bytes) = &self
                 .file_upload_store
                 .read_temp_upload_file(upload_id)
@@ -154,6 +155,7 @@ impl IdentityServiceApi for IdentityService {
         identity_document_file_upload_id: Option<String>,
         timestamp: u64,
     ) -> Result<()> {
+        debug!("updating identity");
         let mut identity = self.store.get().await?;
         let mut changed = false;
 
@@ -262,6 +264,7 @@ impl IdentityServiceApi for IdentityService {
         self.blockchain_store.add_block(&new_block).await?;
 
         self.store.save(&identity).await?;
+        debug!("updated identity");
         Ok(())
     }
 
@@ -287,6 +290,7 @@ impl IdentityServiceApi for IdentityService {
         identity_document_file_upload_id: Option<String>,
         timestamp: u64,
     ) -> Result<()> {
+        debug!("creating identity");
         let keys = self.store.get_or_create_key_pair().await?;
         let node_id = keys.get_public_key();
 
@@ -327,6 +331,7 @@ impl IdentityServiceApi for IdentityService {
 
         // persist the identity in the DB
         self.store.save(&identity).await?;
+        debug!("created identity");
         Ok(())
     }
 
@@ -348,6 +353,7 @@ impl IdentityServiceApi for IdentityService {
         file_name: &str,
         private_key: &str,
     ) -> Result<Vec<u8>> {
+        debug!("getting file {file_name} for identity with id: {id}");
         let read_file = self
             .file_upload_store
             .open_attached_file(id, file_name)
@@ -362,6 +368,7 @@ impl IdentityServiceApi for IdentityService {
     }
 
     async fn set_current_personal_identity(&self, node_id: &str) -> Result<()> {
+        debug!("setting current identity to personal identity: {node_id}");
         self.store
             .set_current_identity(&ActiveIdentityState {
                 personal: node_id.to_owned(),
@@ -372,6 +379,7 @@ impl IdentityServiceApi for IdentityService {
     }
 
     async fn set_current_company_identity(&self, node_id: &str) -> Result<()> {
+        debug!("setting current identity to company identity: {node_id}");
         let active_identity = self.store.get_current_identity().await?;
         self.store
             .set_current_identity(&ActiveIdentityState {

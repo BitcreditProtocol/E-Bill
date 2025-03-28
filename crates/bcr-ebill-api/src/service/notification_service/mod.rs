@@ -21,7 +21,7 @@ pub mod default_service;
 mod nostr;
 
 pub use bcr_ebill_transport::NotificationJsonTransportApi;
-use log::error;
+use log::{debug, error};
 pub use nostr::{NostrClient, NostrConfig, NostrConsumer};
 
 use super::contact_service::ContactServiceApi;
@@ -72,7 +72,9 @@ pub async fn create_nostr_clients(
     // init all the clients
     let mut clients = vec![];
     for config in configs {
+        debug!("initializing nostr client for {}", &config.get_npub());
         if let Ok(client) = NostrClient::new(&config).await {
+            debug!("initialized nostr client for {}", &config.get_npub());
             clients.push(Arc::new(client));
         }
     }
@@ -126,6 +128,7 @@ pub async fn create_nostr_consumer(
             bill_store,
         )),
     ];
+    debug!("initializing nostr consumer for {} clients", clients.len());
     let consumer = NostrConsumer::new(clients, contact_service, handlers, nostr_event_offset_store);
     Ok(consumer)
 }

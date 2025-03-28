@@ -2,7 +2,7 @@
 use super::super::{Error, Result, file_upload::FileUploadStoreApi};
 #[cfg(target_arch = "wasm32")]
 use super::get_new_surreal_files_db;
-use crate::constants::{DB_ENTITY_ID, DB_FILE_NAME, DB_TABLE};
+use crate::constants::{DB_ENTITY_ID, DB_FILE_NAME, DB_FILE_UPLOAD_ID, DB_TABLE};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
@@ -59,8 +59,15 @@ impl FileUploadStoreApi for FileUploadStore {
         Ok(())
     }
 
-    async fn remove_temp_upload_folder(&self, _file_upload_id: &str) -> Result<()> {
-        // NOOP for wasm32
+    async fn remove_temp_upload_folder(&self, file_upload_id: &str) -> Result<()> {
+        let _: Vec<FileDb> = self
+            .db()
+            .await?
+            .query("DELETE from type::table($table) WHERE file_upload_id = $file_upload_id")
+            .bind((DB_TABLE, Self::TEMP_FILES_TABLE))
+            .bind((DB_FILE_UPLOAD_ID, file_upload_id.to_owned()))
+            .await?
+            .take(0)?;
         Ok(())
     }
 

@@ -1,6 +1,10 @@
 # 0.3.2
 
 * Fixed `request_to_accept` calling the correct action
+* Multi-identity Nostr consumer and currently-active-identity-sending
+* Added more thorough logging, especially debug logging
+* Expose Error types to TS
+* Use string for `log_level` in config
 
 # 0.3.1
 

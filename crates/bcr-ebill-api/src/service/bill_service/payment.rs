@@ -8,7 +8,7 @@ use bcr_ebill_core::{
     identity::{Identity, IdentityWithAll},
     util::BcrKeys,
 };
-use log::info;
+use log::{debug, info};
 use std::collections::HashMap;
 
 impl BillService {
@@ -38,6 +38,7 @@ impl BillService {
             .await
         {
             if paid && sum > 0 {
+                debug!("bill {bill_id} is paid - setting to paid and invalidating cache");
                 self.store.set_to_paid(bill_id, &address_to_pay).await?;
                 // invalidate bill cache, so payment state is updated on next fetch
                 self.store.invalidate_bill_in_cache(bill_id).await?;
@@ -70,6 +71,9 @@ impl BillService {
                 .await
             {
                 if paid && sum > 0 {
+                    debug!(
+                        "bill {bill_id} is recourse-paid - creating recourse block if we're recourser"
+                    );
                     // If we are the recourser and a bill issuer and it's paid, we add a Recourse block
                     if payment_info.recourser.node_id == identity.identity.node_id {
                         if let Some(signer_identity) =
@@ -150,6 +154,7 @@ impl BillService {
                 .await
             {
                 if paid && sum > 0 {
+                    debug!("bill {bill_id} got bought - creating sell block if we're seller");
                     // If we are the seller and a bill issuer and it's paid, we add a Sell block
                     if payment_info.seller.node_id == identity.identity.node_id {
                         if let Some(signer_identity) =

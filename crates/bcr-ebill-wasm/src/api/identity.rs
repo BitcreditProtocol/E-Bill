@@ -64,7 +64,7 @@ impl Identity {
         Ok(res)
     }
 
-    #[wasm_bindgen(unchecked_return_type = "UploadFilesResponse")]
+    #[wasm_bindgen(unchecked_return_type = "UploadFileResponse")]
     pub async fn upload(
         &self,
         #[wasm_bindgen(unchecked_param_type = "UploadFile")] payload: JsValue,
@@ -79,7 +79,7 @@ impl Identity {
 
         let file_upload_response = get_ctx()
             .file_upload_service
-            .upload_files(vec![upload_file_handler])
+            .upload_file(upload_file_handler)
             .await?;
 
         let res = serde_wasm_bindgen::to_value(&file_upload_response.into_web())?;

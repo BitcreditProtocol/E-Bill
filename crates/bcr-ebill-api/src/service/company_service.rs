@@ -23,7 +23,7 @@ use crate::{
     util,
 };
 use async_trait::async_trait;
-use log::{error, info};
+use log::{debug, error, info};
 use std::sync::Arc;
 
 #[async_trait]
@@ -145,6 +145,7 @@ impl CompanyService {
         public_key: &str,
     ) -> Result<Option<File>> {
         if let Some(upload_id) = upload_id {
+            debug!("processing upload file for company {id}: {upload_id:?}");
             let (file_name, file_bytes) = &self
                 .file_upload_store
                 .read_temp_upload_file(upload_id)
@@ -218,6 +219,7 @@ impl CompanyServiceApi for CompanyService {
         logo_file_upload_id: Option<String>,
         timestamp: u64,
     ) -> Result<Company> {
+        debug!("creating company");
         let keys = BcrKeys::new();
         let private_key = keys.get_private_key_string();
         let public_key = keys.get_public_key();
@@ -287,6 +289,7 @@ impl CompanyServiceApi for CompanyService {
             .add_block(&id, create_company_block)
             .await?;
         self.identity_blockchain_store.add_block(&new_block).await?;
+        debug!("company with id {id} created");
 
         // TODO NOSTR: create company topic and subscribe to it
         // TODO NOSTR: upload files to nostr
@@ -322,7 +325,9 @@ impl CompanyServiceApi for CompanyService {
         proof_of_registration_file_upload_id: Option<String>,
         timestamp: u64,
     ) -> Result<()> {
+        debug!("editing company with id: {id}");
         if !self.store.exists(id).await {
+            debug!("company with id {id} does not exist");
             return Err(super::Error::NotFound);
         }
         let full_identity = self.identity_store.get_full().await?;
@@ -446,6 +451,7 @@ impl CompanyServiceApi for CompanyService {
         self.company_blockchain_store
             .add_block(id, &new_block)
             .await?;
+        debug!("company with id {id} updated");
 
         if let Some(upload_id) = logo_file_upload_id {
             if let Err(e) = self
@@ -466,6 +472,10 @@ impl CompanyServiceApi for CompanyService {
         signatory_node_id: String,
         timestamp: u64,
     ) -> Result<()> {
+        debug!(
+            "adding signatory {} to company with id: {id}",
+            &signatory_node_id
+        );
         if !self.store.exists(id).await {
             return Err(super::Error::Validation(format!(
                 "No company with id: {id} found.",
@@ -513,7 +523,7 @@ impl CompanyServiceApi for CompanyService {
                 company_id: id.to_owned(),
                 block_hash: new_block.hash.clone(),
                 block_id: new_block.id,
-                signatory: signatory_node_id,
+                signatory: signatory_node_id.clone(),
             },
             &full_identity.key_pair,
             timestamp,
@@ -524,6 +534,10 @@ impl CompanyServiceApi for CompanyService {
         self.identity_blockchain_store
             .add_block(&new_identity_block)
             .await?;
+        debug!(
+            "added signatory {} to company with id: {id}",
+            &signatory_node_id
+        );
 
         // TODO NOSTR: propagate block to company topic
         // TODO NOSTR: propagate company and files to new signatory
@@ -537,6 +551,10 @@ impl CompanyServiceApi for CompanyService {
         signatory_node_id: String,
         timestamp: u64,
     ) -> Result<()> {
+        debug!(
+            "removing signatory {} from company with id: {id}",
+            &signatory_node_id
+        );
         if !self.store.exists(id).await {
             return Err(super::Error::Validation(format!(
                 "No company with id: {id} found.",
@@ -607,6 +625,10 @@ impl CompanyServiceApi for CompanyService {
                 error!("Could not delete local company chain for {id}: {e}");
             }
         }
+        debug!(
+            "removed signatory {} to company with id: {id}",
+            &signatory_node_id
+        );
 
         Ok(())
     }
@@ -636,6 +658,7 @@ impl CompanyServiceApi for CompanyService {
         file_name: &str,
         private_key: &str,
     ) -> Result<Vec<u8>> {
+        debug!("getting file {file_name} for company with id: {id}",);
         let read_file = self
             .file_upload_store
             .open_attached_file(id, file_name)

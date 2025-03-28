@@ -8,7 +8,7 @@ use crate::data::{
     RejectActionBillPayload, RequestRecourseForAcceptancePayload, RequestRecourseForPaymentPayload,
     RequestToAcceptBitcreditBillPayload, RequestToMintBitcreditBillPayload,
     RequestToPayBitcreditBillPayload, SuccessResponse, TempFileWrapper, UploadFileForm,
-    UploadFilesResponse,
+    UploadFileResponse,
 };
 use crate::service_context::ServiceContext;
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
@@ -326,7 +326,7 @@ pub async fn upload_file(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     file_upload_form: Form<UploadFileForm<'_>>,
-) -> Result<Json<UploadFilesResponse>> {
+) -> Result<Json<UploadFileResponse>> {
     let file = &file_upload_form.file;
     let upload_file_handler: &dyn UploadFileHandler =
         &TempFileWrapper(file) as &dyn UploadFileHandler;
@@ -338,7 +338,7 @@ pub async fn upload_file(
 
     let file_upload_response = state
         .file_upload_service
-        .upload_files(vec![upload_file_handler])
+        .upload_file(upload_file_handler)
         .await?;
 
     Ok(Json(file_upload_response.into_web()))
