@@ -1,5 +1,8 @@
-# 0.3.1
+# 0.3.2
 
+* Fixed `request_to_accept` calling the correct action
+
+# 0.3.1
 
 * Persist active Identity to DB for WASM
 * Change indexed-db name to "data"
