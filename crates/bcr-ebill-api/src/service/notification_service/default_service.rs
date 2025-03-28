@@ -56,7 +56,7 @@ impl DefaultNotificationService {
     }
 
     fn get_local_identity(&self, node_id: &str) -> Option<IdentityPublicData> {
-        if self.notification_transport.get(node_id).is_some() {
+        if self.notification_transport.contains_key(node_id) {
             Some(IdentityPublicData {
                 t: ContactType::Person,
                 node_id: node_id.to_string(),
