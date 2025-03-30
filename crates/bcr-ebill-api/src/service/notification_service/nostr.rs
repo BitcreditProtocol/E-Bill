@@ -291,7 +291,7 @@ impl NostrConsumer {
 
 async fn valid_sender(
     node_id: &str,
-    local_node_ids: &Vec<String>,
+    local_node_ids: &[String],
     contact_service: &Arc<dyn ContactServiceApi>,
 ) -> bool {
     if local_node_ids.contains(&node_id.to_string()) {
