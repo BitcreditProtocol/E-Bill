@@ -402,7 +402,7 @@ impl Bill {
             .bill_service
             .execute_bill_action(
                 &request_to_accept_bill_payload.bill_id,
-                BillAction::RejectAcceptance,
+                BillAction::RequestAcceptance,
                 &signer_public_data,
                 &signer_keys,
                 timestamp,
