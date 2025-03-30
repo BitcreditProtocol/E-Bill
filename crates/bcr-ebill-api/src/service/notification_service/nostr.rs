@@ -19,15 +19,7 @@ use bcr_ebill_persistence::{NostrEventOffset, NostrEventOffsetStoreApi};
 use bcr_ebill_transport::{Error, NotificationJsonTransportApi, Result};
 
 use tokio::task::spawn;
-#[cfg(all(
-    target_arch = "wasm32",
-    target_vendor = "unknown",
-    target_os = "unknown"
-))]
-use tokio_with_wasm as tokio;
-
-#[cfg(not(target_arch = "wasm32"))]
-use tokio;
+use tokio_with_wasm::alias as tokio;
 
 #[derive(Clone, Debug)]
 pub struct NostrConfig {

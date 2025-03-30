@@ -9,6 +9,8 @@ use log::info;
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::thread_local;
+use tokio::spawn;
+use tokio_with_wasm::alias as tokio;
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
@@ -85,7 +87,7 @@ pub async fn initialize_api(
     });
 
     // start nostr subscription
-    wasm_bindgen_futures::spawn_local(async {
+    spawn(async {
         get_ctx()
             .nostr_consumer
             .start()
