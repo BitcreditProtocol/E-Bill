@@ -131,15 +131,11 @@ impl Bill {
         let (from, to) = match filter.date_range {
             None => (None, None),
             Some(date_range) => {
-                let from: Option<u64> =
-                    util::date::date_string_to_i64_timestamp(&date_range.from, None)
-                        .map(|v| v as u64);
+                let from = util::date::date_string_to_timestamp(&date_range.from, None)?;
                 // Change the date to the end of the day, so we collect bills during the day as well
-                let to: Option<u64> =
-                    util::date::date_string_to_i64_timestamp(&date_range.to, None).and_then(|v| {
-                        util::date::end_of_day_as_timestamp(v as u64).map(|v| v as u64)
-                    });
-                (from, to)
+                let to = util::date::date_string_to_timestamp(&date_range.to, None)
+                    .map(util::date::end_of_day_as_timestamp)?;
+                (Some(from), Some(to))
             }
         };
         let bills = get_ctx()

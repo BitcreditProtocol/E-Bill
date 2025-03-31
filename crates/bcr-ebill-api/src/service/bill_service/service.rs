@@ -276,16 +276,16 @@ impl BillServiceApi for BillService {
         // directly
         for bill in bills {
             // if the bill wasn't issued between from and to, we kick them out
-            if let Some(issue_date_ts) =
-                util::date::date_string_to_i64_timestamp(&bill.data.issue_date, None)
+            if let Ok(issue_date_ts) =
+                util::date::date_string_to_timestamp(&bill.data.issue_date, None)
             {
                 if let Some(from) = date_range_from {
-                    if from > issue_date_ts as u64 {
+                    if from > issue_date_ts {
                         continue;
                     }
                 }
                 if let Some(to) = date_range_to {
-                    if to < issue_date_ts as u64 {
+                    if to < issue_date_ts {
                         continue;
                     }
                 }
@@ -613,9 +613,10 @@ impl BillServiceApi for BillService {
     async fn check_bills_payment(&self) -> Result<()> {
         let identity = self.identity_store.get().await?;
         let bill_ids_waiting_for_payment = self.store.get_bill_ids_waiting_for_payment().await?;
+        let now = external::time::TimeApi::get_atomic_time().await.timestamp;
 
         for bill_id in bill_ids_waiting_for_payment {
-            if let Err(e) = self.check_bill_payment(&bill_id, &identity).await {
+            if let Err(e) = self.check_bill_payment(&bill_id, &identity, now).await {
                 error!("Checking bill payment for {bill_id} failed: {e}");
             }
         }

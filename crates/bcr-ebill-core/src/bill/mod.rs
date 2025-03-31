@@ -3,7 +3,6 @@ use super::{
     contact::{IdentityPublicData, LightIdentityPublicData, LightIdentityPublicDataWithAddress},
     notification::Notification,
 };
-use crate::util::date::date_string_to_i64_timestamp;
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
@@ -318,8 +317,7 @@ impl From<BitcreditBillResult> for LightBitcreditBillResult {
             currency: value.data.currency,
             issue_date: value.data.issue_date,
             time_of_drawing: value.data.time_of_drawing,
-            time_of_maturity: date_string_to_i64_timestamp(&value.data.maturity_date, None)
-                .unwrap_or(0) as u64,
+            time_of_maturity: value.data.time_of_maturity,
         }
     }
 }

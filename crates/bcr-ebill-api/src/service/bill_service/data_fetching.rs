@@ -553,7 +553,7 @@ impl BillService {
             language: bill.language,
             time_of_drawing,
             issue_date: bill.issue_date,
-            time_of_maturity: util::date::date_string_to_i64_timestamp(&bill.maturity_date, None)
+            time_of_maturity: util::date::date_string_to_timestamp(&bill.maturity_date, None)
                 .unwrap_or(0) as u64,
             maturity_date: bill.maturity_date,
             country_of_issuing: bill.country_of_issuing,
