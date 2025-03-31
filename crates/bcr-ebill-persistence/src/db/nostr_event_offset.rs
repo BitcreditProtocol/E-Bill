@@ -2,7 +2,7 @@ use super::Result;
 #[cfg(target_arch = "wasm32")]
 use super::get_new_surreal_db;
 use crate::{
-    constants::DB_TABLE,
+    constants::{DB_NODE_ID, DB_TABLE},
     util::date::{self, DateTimeUtc},
 };
 use async_trait::async_trait;
@@ -42,9 +42,9 @@ impl NostrEventOffsetStoreApi for SurrealNostrEventOffsetStore {
         let result: Vec<NostrEventOffsetDb> = self
             .db()
             .await?
-            .query("SELECT * FROM type::table($table) where node_id = $node_id ORDER BY time DESC LIMIT 1")
+            .query(format!("SELECT * FROM type::table($table) where {DB_NODE_ID} = $node_id ORDER BY time DESC LIMIT 1"))
             .bind((DB_TABLE, Self::TABLE))
-            .bind(("node_id", node_id.to_owned()))
+            .bind((DB_NODE_ID, node_id.to_owned()))
             .await?
             .take(0)?;
         let value = result

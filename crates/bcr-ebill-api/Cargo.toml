@@ -28,8 +28,6 @@ bcr-ebill-core = { path = "../bcr-ebill-core" }
 bcr-ebill-persistence = { path = "../bcr-ebill-persistence" }
 bcr-ebill-transport = { path = "../bcr-ebill-transport" }
 tokio.workspace = true
-
-[target.'cfg(all(target_arch = "wasm32", target_vendor = "unknown", target_os = "unknown"))'.dependencies]
 tokio_with_wasm.workspace = true
 
 [dev-dependencies]
