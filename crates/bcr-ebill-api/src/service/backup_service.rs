@@ -7,6 +7,7 @@ use crate::{
 };
 
 use super::{Error, Result};
+use bcr_ebill_core::ValidationError;
 #[cfg(test)]
 use mockall::automock;
 use tokio::{
@@ -57,10 +58,7 @@ impl BackupService {
         {
             return Ok(());
         }
-        Err(Error::Validation(format!(
-            "SurrealDB connection {} does not support exports",
-            connection
-        )))
+        Err(Error::Validation(ValidationError::BackupNotSupported))
     }
 }
 

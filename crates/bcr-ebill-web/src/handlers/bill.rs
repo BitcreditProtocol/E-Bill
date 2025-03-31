@@ -11,15 +11,13 @@ use crate::data::{
     UploadFileResponse,
 };
 use crate::service_context::ServiceContext;
-use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
-use bcr_ebill_api::util::{self, BcrKeys};
-use bcr_ebill_api::{
-    data::{
-        bill::{BillsFilterRole, LightBitcreditBillResult, RecourseReason},
-        contact::IdentityPublicData,
-    },
-    service::bill_service::BillAction,
+use bcr_ebill_api::data::{
+    bill::{BillAction, BillsFilterRole, LightBitcreditBillResult, RecourseReason},
+    contact::IdentityPublicData,
 };
+use bcr_ebill_api::service::bill_service::error::Error as BillServiceError;
+use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
+use bcr_ebill_api::util::{self, BcrKeys, ValidationError, currency};
 use bcr_ebill_api::{external, service};
 use log::{error, info};
 use rocket::form::Form;
@@ -46,10 +44,9 @@ pub async fn get_signer_public_data_and_keys(
             match IdentityPublicData::new(identity.identity) {
                 Some(identity_public_data) => (identity_public_data, identity.key_pair),
                 None => {
-                    return Err(service::Error::Validation(String::from(
-                        "Drawer is not a bill issuer - does not have a postal address set",
-                    ))
-                    .into());
+                    return Err(
+                        service::Error::Validation(ValidationError::DrawerIsNotBillIssuer).into(),
+                    );
                 }
             }
         }
@@ -59,8 +56,8 @@ pub async fn get_signer_public_data_and_keys(
                 .get_company_and_keys_by_id(&company_node_id)
                 .await?;
             if !company.signatories.contains(&local_node_id) {
-                return Err(service::Error::Validation(format!(
-                    "Signer {local_node_id} for company {company_node_id} is not signatory",
+                return Err(service::Error::Validation(ValidationError::NotASignatory(
+                    local_node_id.to_owned(),
                 ))
                 .into());
             }
@@ -151,9 +148,9 @@ pub async fn attachment(
         None => None,
         Some(t) => ContentType::parse_flexible(&t),
     }
-    .ok_or(service::Error::Validation(String::from(
-        "Content Type of the requested file could not be determined",
-    )))?;
+    .ok_or(service::Error::Validation(
+        ValidationError::InvalidContentType,
+    ))?;
 
     Ok((content_type, file_bytes))
 }
@@ -265,7 +262,7 @@ pub async fn numbers_to_words_for_sum(
         )
         .await?;
     let sum = bill.data.sum;
-    let parsed_sum = util::currency::parse_sum(&sum)?;
+    let parsed_sum = currency::parse_sum(&sum)?;
     let sum_as_words = util::numbers_to_words::encode(&parsed_sum);
     Ok(Json(BillNumbersToWordsForSum {
         sum: parsed_sum,
@@ -393,14 +390,11 @@ pub async fn offer_to_sell_bill(
     {
         Ok(Some(buyer)) => buyer,
         Ok(None) | Err(_) => {
-            return Err(service::Error::Validation(String::from(
-                "Can not get buyer identity from contacts.",
-            ))
-            .into());
+            return Err(BillServiceError::BuyerNotInContacts.into());
         }
     };
 
-    let sum = util::currency::parse_sum(&offer_to_sell_payload.sum)?;
+    let sum = currency::parse_sum(&offer_to_sell_payload.sum)?;
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
 
@@ -435,10 +429,7 @@ pub async fn endorse_bill(
     {
         Ok(Some(endorsee)) => endorsee,
         Ok(None) | Err(_) => {
-            return Err(service::Error::Validation(String::from(
-                "Can not get endorsee identity from contacts.",
-            ))
-            .into());
+            return Err(BillServiceError::EndorseeNotInContacts.into());
         }
     };
 
@@ -559,7 +550,7 @@ pub async fn mint_bill(
 ) -> Result<Json<SuccessResponse>> {
     info!("mint bill called with payload {mint_bill_payload:?} - not implemented");
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
-    let sum = util::currency::parse_sum(&mint_bill_payload.sum)?;
+    let sum = currency::parse_sum(&mint_bill_payload.sum)?;
 
     let public_mint_node = match state
         .contact_service
@@ -568,10 +559,7 @@ pub async fn mint_bill(
     {
         Ok(Some(drawee)) => drawee,
         Ok(None) | Err(_) => {
-            return Err(service::Error::Validation(String::from(
-                "Can not get public mint node identity from contacts.",
-            ))
-            .into());
+            return Err(BillServiceError::MintNotInContacts.into());
         }
     };
     let (signer_public_data, signer_keys) = get_signer_public_data_and_keys(state).await?;
@@ -693,7 +681,7 @@ pub async fn request_to_recourse_bill_payment(
     state: &State<ServiceContext>,
     request_recourse_payload: Json<RequestRecourseForPaymentPayload>,
 ) -> Result<Json<SuccessResponse>> {
-    let sum = util::currency::parse_sum(&request_recourse_payload.sum)?;
+    let sum = currency::parse_sum(&request_recourse_payload.sum)?;
     request_recourse(
         state,
         RecourseReason::Pay(sum, request_recourse_payload.currency.clone()),
@@ -738,10 +726,7 @@ async fn request_recourse(
     {
         Ok(Some(buyer)) => buyer,
         Ok(None) | Err(_) => {
-            return Err(service::Error::Validation(String::from(
-                "Can not get recoursee identity from contacts.",
-            ))
-            .into());
+            return Err(BillServiceError::RecourseeNotInContacts.into());
         }
     };
 

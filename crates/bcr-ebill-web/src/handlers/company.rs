@@ -7,7 +7,7 @@ use crate::data::{
 };
 use crate::service_context::ServiceContext;
 use bcr_ebill_api::data::{OptionalPostalAddress, PostalAddress};
-use bcr_ebill_api::util;
+use bcr_ebill_api::util::{ValidationError, validate_file_upload_id};
 use bcr_ebill_api::{
     external,
     service::{self},
@@ -63,9 +63,9 @@ pub async fn get_file(
         None => None,
         Some(t) => ContentType::parse_flexible(&t),
     }
-    .ok_or(service::Error::Validation(String::from(
-        "Content Type of the requested file could not be determined",
-    )))?;
+    .ok_or(service::Error::Validation(
+        ValidationError::InvalidContentType,
+    ))?;
 
     Ok((content_type, file_bytes))
 }
@@ -112,8 +112,8 @@ pub async fn create(
     let payload = create_company_payload.0;
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
 
-    util::file::validate_file_upload_id(payload.logo_file_upload_id.as_deref())?;
-    util::file::validate_file_upload_id(payload.proof_of_registration_file_upload_id.as_deref())?;
+    validate_file_upload_id(payload.logo_file_upload_id.as_deref())?;
+    validate_file_upload_id(payload.proof_of_registration_file_upload_id.as_deref())?;
 
     let created_company = state
         .company_service
@@ -142,8 +142,8 @@ pub async fn edit(
 ) -> Result<Json<SuccessResponse>> {
     let payload = edit_company_payload.0;
 
-    util::file::validate_file_upload_id(payload.logo_file_upload_id.as_deref())?;
-    util::file::validate_file_upload_id(payload.proof_of_registration_file_upload_id.as_deref())?;
+    validate_file_upload_id(payload.logo_file_upload_id.as_deref())?;
+    validate_file_upload_id(payload.proof_of_registration_file_upload_id.as_deref())?;
 
     if payload.name.is_none()
         && payload.email.is_none()

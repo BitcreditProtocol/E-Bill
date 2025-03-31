@@ -1,6 +1,6 @@
 [package]
 name = "bcr-ebill-core"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 
 [lib]
@@ -20,4 +20,4 @@ bitcoin.workspace = true
 bip39.workspace = true
 ecies.workspace = true
 nostr-sdk.workspace = true
-
+rust_decimal = { version = "1.36.0", default-features = false }

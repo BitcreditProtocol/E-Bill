@@ -1,13 +1,10 @@
-use crate::{
-    constants::SAT_TO_BTC_RATE,
-    service::{Error, Result},
-};
+use crate::{ValidationError, constants::SAT_TO_BTC_RATE};
 use rust_decimal::Decimal;
 
-pub fn parse_sum(sum: &str) -> Result<u64> {
+pub fn parse_sum(sum: &str) -> Result<u64, ValidationError> {
     match sum.parse::<u64>() {
         Ok(num) => Ok(num),
-        Err(_) => Err(Error::Validation(format!("invalid sum: {sum}"))),
+        Err(_) => Err(ValidationError::InvalidSum),
     }
 }
 

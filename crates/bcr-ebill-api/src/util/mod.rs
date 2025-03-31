@@ -1,9 +1,11 @@
-pub mod currency;
 pub mod file;
 pub mod numbers_to_words;
 
+pub use bcr_ebill_core::ValidationError;
 pub use bcr_ebill_core::util::crypto;
+pub use bcr_ebill_core::util::currency;
 pub use bcr_ebill_core::util::date;
+pub use bcr_ebill_core::util::validate_file_upload_id;
 
 pub use bcr_ebill_core::util::BcrKeys;
 pub use bcr_ebill_core::util::Error;

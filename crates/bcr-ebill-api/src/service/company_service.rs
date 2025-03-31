@@ -23,6 +23,7 @@ use crate::{
     util,
 };
 use async_trait::async_trait;
+use bcr_ebill_core::ValidationError;
 use log::{debug, error, info};
 use std::sync::Arc;
 
@@ -336,9 +337,9 @@ impl CompanyServiceApi for CompanyService {
         let company_keys = self.store.get_key_pair(id).await?;
 
         if !company.signatories.contains(&node_id.to_string()) {
-            return Err(super::Error::Validation(String::from(
-                "Caller must be signatory for company",
-            )));
+            return Err(super::Error::Validation(
+                ValidationError::CallerMustBeSignatory,
+            ));
         }
         let mut changed = false;
 
@@ -477,9 +478,7 @@ impl CompanyServiceApi for CompanyService {
             &signatory_node_id
         );
         if !self.store.exists(id).await {
-            return Err(super::Error::Validation(format!(
-                "No company with id: {id} found.",
-            )));
+            return Err(super::Error::NotFound);
         }
         let full_identity = self.identity_store.get_full().await?;
         let contacts = self.contact_store.get_map().await?;
@@ -487,17 +486,17 @@ impl CompanyServiceApi for CompanyService {
             *node_id == signatory_node_id && contact.t == ContactType::Person
         });
         if !is_in_contacts {
-            return Err(super::Error::Validation(format!(
-                "Node Id {signatory_node_id} is not a person in the contacts.",
-            )));
+            return Err(super::Error::Validation(
+                ValidationError::SignatoryNotInContacts(signatory_node_id),
+            ));
         }
 
         let mut company = self.store.get(id).await?;
         let company_keys = self.store.get_key_pair(id).await?;
         if company.signatories.contains(&signatory_node_id) {
-            return Err(super::Error::Validation(format!(
-                "Node Id {signatory_node_id} is already a signatory.",
-            )));
+            return Err(super::Error::Validation(
+                ValidationError::SignatoryAlreadySignatory(signatory_node_id),
+            ));
         }
         company.signatories.push(signatory_node_id.clone());
         self.store.update(id, &company).await?;
@@ -556,22 +555,20 @@ impl CompanyServiceApi for CompanyService {
             &signatory_node_id
         );
         if !self.store.exists(id).await {
-            return Err(super::Error::Validation(format!(
-                "No company with id: {id} found.",
-            )));
+            return Err(super::Error::NotFound);
         }
 
         let full_identity = self.identity_store.get_full().await?;
         let mut company = self.store.get(id).await?;
         let company_keys = self.store.get_key_pair(id).await?;
         if company.signatories.len() == 1 {
-            return Err(super::Error::Validation(String::from(
-                "Can't remove last signatory.",
-            )));
+            return Err(super::Error::Validation(
+                ValidationError::CantRemoveLastSignatory,
+            ));
         }
         if !company.signatories.contains(&signatory_node_id) {
-            return Err(super::Error::Validation(format!(
-                "Node id {signatory_node_id} is not a signatory.",
+            return Err(super::Error::Validation(ValidationError::NotASignatory(
+                signatory_node_id,
             )));
         }
 

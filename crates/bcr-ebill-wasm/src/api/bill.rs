@@ -1,13 +1,13 @@
 use super::Result;
 use bcr_ebill_api::{
     data::{
-        bill::{BillsFilterRole, LightBitcreditBillResult, RecourseReason},
+        bill::{BillAction, BillsFilterRole, LightBitcreditBillResult, RecourseReason},
         contact::IdentityPublicData,
     },
     external,
-    service::{Error, bill_service::BillAction},
+    service::{Error, bill_service::error::Error as BillServiceError},
     util::{
-        self, BcrKeys,
+        self, BcrKeys, ValidationError, currency,
         file::{UploadFileHandler, detect_content_type_for_bytes},
     },
 };
@@ -87,9 +87,8 @@ impl Bill {
             .await
             .map_err(|_| Error::NotFound)?;
 
-        let content_type = detect_content_type_for_bytes(&file_bytes).ok_or(Error::Validation(
-            String::from("Content Type of the requested file could not be determined"),
-        ))?;
+        let content_type = detect_content_type_for_bytes(&file_bytes)
+            .ok_or(Error::Validation(ValidationError::InvalidContentType))?;
 
         let res = serde_wasm_bindgen::to_value(&BinaryFileResponse {
             data: file_bytes,
@@ -202,7 +201,7 @@ impl Bill {
             )
             .await?;
         let sum = bill.data.sum;
-        let parsed_sum = util::currency::parse_sum(&sum)?;
+        let parsed_sum = currency::parse_sum(&sum)?;
         let sum_as_words = util::numbers_to_words::encode(&parsed_sum);
         let res = serde_wasm_bindgen::to_value(&BillNumbersToWordsForSum {
             sum: parsed_sum,
@@ -296,14 +295,11 @@ impl Bill {
         {
             Ok(Some(buyer)) => buyer,
             Ok(None) | Err(_) => {
-                return Err(Error::Validation(String::from(
-                    "Can not get buyer identity from contacts.",
-                ))
-                .into());
+                return Err(BillServiceError::BuyerNotInContacts.into());
             }
         };
 
-        let sum = util::currency::parse_sum(&offer_to_sell_payload.sum)?;
+        let sum = currency::parse_sum(&offer_to_sell_payload.sum)?;
         let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
         let (signer_public_data, signer_keys) = get_signer_public_data_and_keys().await?;
 
@@ -339,10 +335,7 @@ impl Bill {
         {
             Ok(Some(endorsee)) => endorsee,
             Ok(None) | Err(_) => {
-                return Err(Error::Validation(String::from(
-                    "Can not get endorsee identity from contacts.",
-                ))
-                .into());
+                return Err(BillServiceError::EndorseeNotInContacts.into());
             }
         };
 
@@ -462,7 +455,7 @@ impl Bill {
         info!("mint bill called with payload {mint_bill_payload:?} - not implemented");
 
         let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
-        let sum = util::currency::parse_sum(&mint_bill_payload.sum)?;
+        let sum = currency::parse_sum(&mint_bill_payload.sum)?;
 
         let public_mint_node = match get_ctx()
             .contact_service
@@ -471,10 +464,7 @@ impl Bill {
         {
             Ok(Some(drawee)) => drawee,
             Ok(None) | Err(_) => {
-                return Err(Error::Validation(String::from(
-                    "Can not get public mint node identity from contacts.",
-                ))
-                .into());
+                return Err(BillServiceError::MintNotInContacts.into());
             }
         };
         let (signer_public_data, signer_keys) = get_signer_public_data_and_keys().await?;
@@ -596,7 +586,7 @@ impl Bill {
     ) -> Result<()> {
         let request_recourse_payload: RequestRecourseForPaymentPayload =
             serde_wasm_bindgen::from_value(payload)?;
-        let sum = util::currency::parse_sum(&request_recourse_payload.sum)?;
+        let sum = currency::parse_sum(&request_recourse_payload.sum)?;
         request_recourse(
             RecourseReason::Pay(sum, request_recourse_payload.currency.clone()),
             &request_recourse_payload.bill_id,
@@ -637,10 +627,7 @@ async fn request_recourse(
     {
         Ok(Some(buyer)) => buyer,
         Ok(None) | Err(_) => {
-            return Err(Error::Validation(String::from(
-                "Can not get recoursee identity from contacts.",
-            ))
-            .into());
+            return Err(BillServiceError::RecourseeNotInContacts.into());
         }
     };
 
@@ -673,10 +660,7 @@ async fn get_signer_public_data_and_keys() -> Result<(IdentityPublicData, BcrKey
             match IdentityPublicData::new(identity.identity) {
                 Some(identity_public_data) => (identity_public_data, identity.key_pair),
                 None => {
-                    return Err(Error::Validation(String::from(
-                        "Drawer is not a bill issuer - does not have a postal address set",
-                    ))
-                    .into());
+                    return Err(Error::Validation(ValidationError::DrawerIsNotBillIssuer).into());
                 }
             }
         }
@@ -686,8 +670,8 @@ async fn get_signer_public_data_and_keys() -> Result<(IdentityPublicData, BcrKey
                 .get_company_and_keys_by_id(&company_node_id)
                 .await?;
             if !company.signatories.contains(&local_node_id) {
-                return Err(Error::Validation(format!(
-                    "Signer {local_node_id} for company {company_node_id} is not signatory",
+                return Err(Error::Validation(ValidationError::NotASignatory(
+                    local_node_id.to_owned(),
                 ))
                 .into());
             }

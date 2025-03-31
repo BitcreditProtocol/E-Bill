@@ -11,8 +11,8 @@ use bcr_ebill_api::data::{
     contact::{Contact, ContactType},
 };
 use bcr_ebill_api::service::{self};
-use bcr_ebill_api::util;
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
+use bcr_ebill_api::util::{ValidationError, validate_file_upload_id};
 use rocket::form::Form;
 use rocket::http::ContentType;
 use rocket::serde::json::Json;
@@ -44,9 +44,9 @@ pub async fn get_file(
         None => None,
         Some(t) => ContentType::parse_flexible(&t),
     }
-    .ok_or(service::Error::Validation(String::from(
-        "Content Type of the requested file could not be determined",
-    )))?;
+    .ok_or(service::Error::Validation(
+        ValidationError::InvalidContentType,
+    ))?;
 
     Ok((content_type, file_bytes))
 }
@@ -113,8 +113,8 @@ pub async fn new_contact(
 ) -> Result<Json<ContactWeb>> {
     let payload = new_contact_payload.0;
 
-    util::file::validate_file_upload_id(payload.avatar_file_upload_id.as_deref())?;
-    util::file::validate_file_upload_id(payload.proof_document_file_upload_id.as_deref())?;
+    validate_file_upload_id(payload.avatar_file_upload_id.as_deref())?;
+    validate_file_upload_id(payload.proof_document_file_upload_id.as_deref())?;
 
     let contact = state
         .contact_service
@@ -142,8 +142,8 @@ pub async fn edit_contact(
     edit_contact_payload: Json<EditContactPayload>,
 ) -> Result<Json<SuccessResponse>> {
     let payload = edit_contact_payload.0;
-    util::file::validate_file_upload_id(payload.avatar_file_upload_id.as_deref())?;
-    util::file::validate_file_upload_id(payload.proof_document_file_upload_id.as_deref())?;
+    validate_file_upload_id(payload.avatar_file_upload_id.as_deref())?;
+    validate_file_upload_id(payload.proof_document_file_upload_id.as_deref())?;
     state
         .contact_service
         .update_contact(

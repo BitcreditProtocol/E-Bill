@@ -4,6 +4,7 @@ use crate::data::UploadFileResult;
 use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::{persistence, util};
 use async_trait::async_trait;
+use bcr_ebill_core::ValidationError;
 use log::{debug, error};
 use std::sync::Arc;
 
@@ -37,42 +38,38 @@ impl FileUploadService {
 impl FileUploadServiceApi for FileUploadService {
     async fn validate_attached_file(&self, file: &dyn util::file::UploadFileHandler) -> Result<()> {
         if file.len() > MAX_FILE_SIZE_BYTES as u64 {
-            return Err(Error::Validation(format!(
-                "Maximum file size is {} bytes",
-                MAX_FILE_SIZE_BYTES
+            return Err(Error::Validation(ValidationError::FileIsTooBig(
+                MAX_FILE_SIZE_BYTES,
             )));
         }
 
         let name = match file.name() {
             Some(n) => n,
             None => {
-                return Err(Error::Validation(String::from("File name needs to be set")));
+                return Err(Error::Validation(ValidationError::InvalidFileName(
+                    MAX_FILE_NAME_CHARACTERS,
+                )));
             }
         };
 
         if name.is_empty() || name.len() > MAX_FILE_NAME_CHARACTERS {
-            return Err(Error::Validation(format!(
-                "File name needs to have between 1 and {} characters",
-                MAX_FILE_NAME_CHARACTERS
+            return Err(Error::Validation(ValidationError::InvalidFileName(
+                MAX_FILE_NAME_CHARACTERS,
             )));
         }
 
         let detected_type = match file.detect_content_type().await.map_err(|e| {
             error!("Could not detect content type for file {name}: {e}");
-            Error::Validation(String::from("Could not detect content type for file"))
+            Error::Validation(ValidationError::InvalidContentType)
         })? {
             Some(t) => t,
             None => {
-                return Err(Error::Validation(String::from(
-                    "Unknown file type detected",
-                )));
+                return Err(Error::Validation(ValidationError::InvalidContentType));
             }
         };
 
         if !VALID_FILE_MIME_TYPES.contains(&detected_type.as_str()) {
-            return Err(Error::Validation(String::from(
-                "Invalid file type detected",
-            )));
+            return Err(Error::Validation(ValidationError::InvalidContentType));
         }
         Ok(())
     }
@@ -89,11 +86,9 @@ impl FileUploadServiceApi for FileUploadService {
             .await?;
         // sanitize and randomize file name and write file into the temporary folder
         let file_name = util::file::generate_unique_filename(
-            &util::file::sanitize_filename(
-                &file
-                    .name()
-                    .ok_or(Error::Validation(String::from("Invalid file name")))?,
-            ),
+            &util::file::sanitize_filename(&file.name().ok_or(Error::Validation(
+                ValidationError::InvalidFileName(MAX_FILE_NAME_CHARACTERS),
+            ))?),
             file.extension(),
         );
         let read_file = file.get_contents().await.map_err(persistence::Error::Io)?;

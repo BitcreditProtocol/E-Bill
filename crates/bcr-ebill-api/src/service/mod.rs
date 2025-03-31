@@ -37,9 +37,9 @@ pub enum Error {
     #[error("Crypto util error: {0}")]
     CryptoUtil(#[from] util::crypto::Error),
 
-    /// errors that stem from validation
+    /// errors that stem from validation in core
     #[error("Validation Error: {0}")]
-    Validation(String),
+    Validation(#[from] bcr_ebill_core::ValidationError),
 
     #[error("External API error: {0}")]
     ExternalApi(#[from] external::Error),

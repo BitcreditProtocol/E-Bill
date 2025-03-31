@@ -16,8 +16,9 @@ use bcr_ebill_api::{
     external,
     service::Error,
     util::{
-        self,
+        ValidationError,
         file::{UploadFileHandler, detect_content_type_for_bytes},
+        validate_file_upload_id,
     },
 };
 use wasm_bindgen::prelude::*;
@@ -52,9 +53,8 @@ impl Identity {
             .await
             .map_err(|_| Error::NotFound)?;
 
-        let content_type = detect_content_type_for_bytes(&file_bytes).ok_or(Error::Validation(
-            String::from("Content Type of the requested file could not be determined"),
-        ))?;
+        let content_type = detect_content_type_for_bytes(&file_bytes)
+            .ok_or(Error::Validation(ValidationError::InvalidContentType))?;
 
         let res = serde_wasm_bindgen::to_value(&BinaryFileResponse {
             data: file_bytes,
@@ -107,8 +107,8 @@ impl Identity {
 
         let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
 
-        util::file::validate_file_upload_id(identity.profile_picture_file_upload_id.as_deref())?;
-        util::file::validate_file_upload_id(identity.identity_document_file_upload_id.as_deref())?;
+        validate_file_upload_id(identity.profile_picture_file_upload_id.as_deref())?;
+        validate_file_upload_id(identity.identity_document_file_upload_id.as_deref())?;
 
         get_ctx()
             .identity_service
@@ -136,12 +136,8 @@ impl Identity {
     ) -> Result<()> {
         let identity_payload: ChangeIdentityPayload = serde_wasm_bindgen::from_value(payload)?;
 
-        util::file::validate_file_upload_id(
-            identity_payload.profile_picture_file_upload_id.as_deref(),
-        )?;
-        util::file::validate_file_upload_id(
-            identity_payload.identity_document_file_upload_id.as_deref(),
-        )?;
+        validate_file_upload_id(identity_payload.profile_picture_file_upload_id.as_deref())?;
+        validate_file_upload_id(identity_payload.identity_document_file_upload_id.as_deref())?;
 
         if identity_payload.name.is_none()
             && identity_payload.email.is_none()
@@ -223,10 +219,7 @@ impl Identity {
         }
 
         // otherwise, return an error
-        Err(Error::Validation(format!(
-            "The provided node_id: {node_id} is not a valid company id, or personal node_id"
-        ))
-        .into())
+        Err(Error::Validation(ValidationError::UnknownNodeId(node_id.to_owned())).into())
     }
 
     #[wasm_bindgen(unchecked_return_type = "SeedPhrase")]

@@ -1,6 +1,7 @@
 use bcr_ebill_api::{
     data::contact::{Contact, ContactType},
     service::Error,
+    util::ValidationError,
 };
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
@@ -62,9 +63,7 @@ impl TryFrom<u64> for ContactTypeWeb {
         match value {
             0 => Ok(ContactTypeWeb::Person),
             1 => Ok(ContactTypeWeb::Company),
-            _ => Err(Error::Validation(format!(
-                "Invalid contact type found: {value}"
-            ))),
+            _ => Err(Error::Validation(ValidationError::InvalidContactType)),
         }
     }
 }

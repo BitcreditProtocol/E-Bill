@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bcr_ebill_core::ValidationError;
 #[cfg(test)]
 use mockall::automock;
 
@@ -297,9 +298,9 @@ impl ContactServiceApi for ContactService {
     ) -> Result<Contact> {
         debug!("creating {:?} contact with node_id {node_id}", &t);
         if util::crypto::validate_pub_key(node_id).is_err() {
-            return Err(super::Error::Validation(format!(
-                "Not a valid secp256k1 key: {node_id}",
-            )));
+            return Err(super::Error::Validation(
+                ValidationError::InvalidSecp256k1Key(node_id.to_owned()),
+            ));
         }
 
         let identity_public_key = self.identity_store.get_key_pair().await?.get_public_key();
