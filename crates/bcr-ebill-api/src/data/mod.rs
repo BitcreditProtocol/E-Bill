@@ -9,4 +9,4 @@ pub use bcr_ebill_core::GeneralSearchFilterItemType;
 pub use bcr_ebill_core::GeneralSearchResult;
 pub use bcr_ebill_core::OptionalPostalAddress;
 pub use bcr_ebill_core::PostalAddress;
-pub use bcr_ebill_core::UploadFilesResult;
+pub use bcr_ebill_core::UploadFileResult;

@@ -12,6 +12,7 @@ use bcr_ebill_core::notification::{Notification, NotificationType};
 use bcr_ebill_persistence::NotificationStoreApi;
 use bcr_ebill_persistence::bill::BillChainStoreApi;
 use bcr_ebill_persistence::bill::BillStoreApi;
+use log::debug;
 use log::error;
 use log::info;
 use log::warn;
@@ -45,6 +46,7 @@ impl BillChainEventHandler {
         event: &BillChainEventPayload,
         node_id: &str,
     ) -> Result<()> {
+        debug!("creating notification {event:?} for {node_id}");
         // no action no notification required
         if event.action_type.is_none() {
             return Ok(());
@@ -89,6 +91,7 @@ impl BillChainEventHandler {
         // send push notification to connected clients
         match serde_json::to_value(notification) {
             Ok(notification) => {
+                debug!("sending notification {notification:?} for {node_id}");
                 self.push_service.send(notification).await;
             }
             Err(e) => {
@@ -128,6 +131,7 @@ impl BillChainEventHandler {
         let mut block_added = false;
         let mut chain = existing;
         let block_height = chain.get_latest_block().id;
+        debug!("adding {} bill blocks for bill {bill_id}", blocks.len());
         for block in blocks {
             // if we already have the block, we skip it
             if block.id <= block_height {
@@ -145,6 +149,7 @@ impl BillChainEventHandler {
         }
         // if the bill was changed, we invalidate the cache
         if block_added {
+            debug!("block was added for bill {bill_id} - invalidating cache");
             self.invalidate_cache_for_bill(bill_id).await?;
         }
         Ok(())
@@ -152,6 +157,7 @@ impl BillChainEventHandler {
 
     async fn add_new_chain(&self, blocks: Vec<BillBlock>, keys: &BillKeys) -> Result<()> {
         let (bill_id, chain) = self.get_valid_chain(blocks, keys)?;
+        debug!("adding new chain for bill {bill_id}");
         for block in chain.blocks() {
             self.save_block(&bill_id, block).await?;
         }
@@ -227,6 +233,7 @@ impl NotificationHandlerApi for BillChainEventHandler {
     }
 
     async fn handle_event(&self, event: EventEnvelope, node_id: &str) -> Result<()> {
+        debug!("incoming bill chain event {event:?} for {node_id}");
         if let Ok(decoded) = Event::<BillChainEventPayload>::try_from(event.clone()) {
             if !decoded.data.blocks.is_empty() {
                 if let Err(e) = self
