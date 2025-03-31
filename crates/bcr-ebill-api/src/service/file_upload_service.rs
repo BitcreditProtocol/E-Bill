@@ -1,10 +1,10 @@
 use super::{Error, Result};
 use crate::constants::{MAX_FILE_NAME_CHARACTERS, MAX_FILE_SIZE_BYTES, VALID_FILE_MIME_TYPES};
-use crate::data::UploadFilesResult;
+use crate::data::UploadFileResult;
 use crate::persistence::file_upload::FileUploadStoreApi;
 use crate::{persistence, util};
 use async_trait::async_trait;
-use log::error;
+use log::{debug, error};
 use std::sync::Arc;
 
 #[async_trait]
@@ -13,10 +13,10 @@ pub trait FileUploadServiceApi: Send + Sync {
     async fn validate_attached_file(&self, file: &dyn util::file::UploadFileHandler) -> Result<()>;
 
     /// uploads files
-    async fn upload_files(
+    async fn upload_file(
         &self,
-        files: Vec<&dyn util::file::UploadFileHandler>,
-    ) -> Result<UploadFilesResult>;
+        file: &dyn util::file::UploadFileHandler,
+    ) -> Result<UploadFileResult>;
 
     /// returns a temp upload file
     async fn get_temp_file(&self, file_upload_id: &str) -> Result<Option<(String, Vec<u8>)>>;
@@ -77,10 +77,10 @@ impl FileUploadServiceApi for FileUploadService {
         Ok(())
     }
 
-    async fn upload_files(
+    async fn upload_file(
         &self,
-        files: Vec<&dyn util::file::UploadFileHandler>,
-    ) -> Result<UploadFilesResult> {
+        file: &dyn util::file::UploadFileHandler,
+    ) -> Result<UploadFileResult> {
         // create a new random id
         let file_upload_id = util::get_uuid_v4().to_string();
         // create a folder to store the files
@@ -88,24 +88,23 @@ impl FileUploadServiceApi for FileUploadService {
             .create_temp_upload_folder(&file_upload_id)
             .await?;
         // sanitize and randomize file name and write file into the temporary folder
-        for file in files {
-            let file_name = util::file::generate_unique_filename(
-                &util::file::sanitize_filename(
-                    &file
-                        .name()
-                        .ok_or(Error::Validation(String::from("Invalid file name")))?,
-                ),
-                file.extension(),
-            );
-            let read_file = file.get_contents().await.map_err(persistence::Error::Io)?;
-            self.file_upload_store
-                .write_temp_upload_file(&file_upload_id, &file_name, &read_file)
-                .await?;
-        }
-        Ok(UploadFilesResult { file_upload_id })
+        let file_name = util::file::generate_unique_filename(
+            &util::file::sanitize_filename(
+                &file
+                    .name()
+                    .ok_or(Error::Validation(String::from("Invalid file name")))?,
+            ),
+            file.extension(),
+        );
+        let read_file = file.get_contents().await.map_err(persistence::Error::Io)?;
+        self.file_upload_store
+            .write_temp_upload_file(&file_upload_id, &file_name, &read_file)
+            .await?;
+        Ok(UploadFileResult { file_upload_id })
     }
 
     async fn get_temp_file(&self, file_upload_id: &str) -> Result<Option<(String, Vec<u8>)>> {
+        debug!("getting temp file for file_upload_id: {file_upload_id}",);
         let file = self
             .file_upload_store
             .read_temp_upload_file(file_upload_id)
@@ -128,7 +127,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upload_files_baseline() {
+    async fn upload_file_baseline() {
         let file_bytes = String::from("hello world").as_bytes().to_vec();
         let mut storage = MockFileUploadStoreApiMock::new();
         storage
@@ -146,7 +145,7 @@ mod tests {
             .returning(move || Ok(file_bytes.clone()));
         let service = get_service(storage);
 
-        let res = service.upload_files(vec![&file]).await;
+        let res = service.upload_file(&file).await;
         assert!(res.is_ok());
         assert_eq!(
             res.unwrap().file_upload_id,
@@ -155,7 +154,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upload_files_baseline_fails_on_folder_creation() {
+    async fn upload_file_baseline_fails_on_folder_creation() {
         let file_bytes = String::from("hello world").as_bytes().to_vec();
         let mut storage = MockFileUploadStoreApiMock::new();
         storage
@@ -170,12 +169,12 @@ mod tests {
             .returning(move || Ok(file_bytes.clone()));
         let service = get_service(storage);
 
-        let res = service.upload_files(vec![&file]).await;
+        let res = service.upload_file(&file).await;
         assert!(res.is_err());
     }
 
     #[tokio::test]
-    async fn upload_files_baseline_fails_on_file_creation() {
+    async fn upload_file_baseline_fails_on_file_creation() {
         let mut storage = MockFileUploadStoreApiMock::new();
         storage
             .expect_create_temp_upload_folder()
@@ -189,12 +188,12 @@ mod tests {
             .returning(|| Err(std::io::Error::other("test error")));
         let service = get_service(storage);
 
-        let res = service.upload_files(vec![&file]).await;
+        let res = service.upload_file(&file).await;
         assert!(res.is_err());
     }
 
     #[tokio::test]
-    async fn upload_files_baseline_fails_on_file_name_errors() {
+    async fn upload_file_baseline_fails_on_file_name_errors() {
         let mut storage = MockFileUploadStoreApiMock::new();
         storage
             .expect_create_temp_upload_folder()
@@ -203,12 +202,12 @@ mod tests {
         file.expect_name().returning(|| None);
         let service = get_service(storage);
 
-        let res = service.upload_files(vec![&file]).await;
+        let res = service.upload_file(&file).await;
         assert!(res.is_err());
     }
 
     #[tokio::test]
-    async fn upload_files_baseline_fails_on_file_read_errors() {
+    async fn upload_file_baseline_fails_on_file_read_errors() {
         let file_bytes = String::from("hello world").as_bytes().to_vec();
         let mut storage = MockFileUploadStoreApiMock::new();
         storage
@@ -226,7 +225,7 @@ mod tests {
             .returning(move || Ok(file_bytes.clone()));
         let service = get_service(storage);
 
-        let res = service.upload_files(vec![&file]).await;
+        let res = service.upload_file(&file).await;
         assert!(res.is_err());
     }
 

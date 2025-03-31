@@ -264,6 +264,9 @@ impl BillServiceApi for BillService {
         role: &BillsFilterRole,
         current_identity_node_id: &str,
     ) -> Result<Vec<LightBitcreditBillResult>> {
+        debug!(
+            "searching bills with {search_term:?} from {date_range_from:?} to {date_range_to:?} and {role:?}"
+        );
         let bills = self.get_bills(current_identity_node_id).await?;
         let mut result = vec![];
 
@@ -361,6 +364,7 @@ impl BillServiceApi for BillService {
         for bill_id in bill_ids.iter() {
             // if bill was not in cache - recalculate and cache it
             if !bills.iter().any(|bill| *bill_id == bill.id) {
+                debug!("Bill {bill_id} was not in the cache - recalculate");
                 let calculated_bill = self
                     .recalculate_and_cache_bill(
                         bill_id,
@@ -409,6 +413,7 @@ impl BillServiceApi for BillService {
             .iter()
             .any(|p| p == &caller_public_data.node_id)
         {
+            debug!("caller is not a participant of bill {bill_id}");
             return Err(Error::NotFound);
         }
 
@@ -462,6 +467,7 @@ impl BillServiceApi for BillService {
         file_name: &str,
         bill_private_key: &str,
     ) -> Result<Vec<u8>> {
+        debug!("getting file {file_name} for bill with id: {bill_id}");
         let read_file = self
             .file_upload_store
             .open_attached_file(bill_id, file_name)
@@ -537,6 +543,10 @@ impl BillServiceApi for BillService {
         signer_keys: &BcrKeys,
         timestamp: u64,
     ) -> Result<BillBlockchain> {
+        debug!(
+            "Executing bill action {:?} for bill {bill_id}",
+            &bill_action
+        );
         // fetch data
         let identity = self.identity_store.get_full().await?;
         let contacts = self.contact_store.get_map().await?;
@@ -590,6 +600,8 @@ impl BillServiceApi for BillService {
             &contacts,
         )
         .await?;
+
+        debug!("Executed bill action {:?} for bill {bill_id}", &bill_action);
 
         Ok(blockchain)
     }
@@ -682,6 +694,7 @@ impl BillServiceApi for BillService {
             .iter()
             .any(|p| p == current_identity_node_id)
         {
+            debug!("caller is not a participant of bill {bill_id}");
             return Err(Error::NotFound);
         }
 
@@ -706,6 +719,7 @@ impl BillServiceApi for BillService {
             .iter()
             .any(|p| p == current_identity_node_id)
         {
+            debug!("caller is not a participant of bill {bill_id}");
             return Err(Error::NotFound);
         }
 

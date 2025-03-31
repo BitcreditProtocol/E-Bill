@@ -3,7 +3,7 @@ use super::middleware::IdentityCheck;
 use crate::data::{
     AddSignatoryPayload, CompaniesResponse, CompanyWeb, CreateCompanyPayload, EditCompanyPayload,
     FromWeb, IntoWeb, ListSignatoriesResponse, RemoveSignatoryPayload, SuccessResponse,
-    TempFileWrapper, UploadFileForm, UploadFilesResponse,
+    TempFileWrapper, UploadFileForm, UploadFileResponse,
 };
 use crate::service_context::ServiceContext;
 use bcr_ebill_api::data::{OptionalPostalAddress, PostalAddress};
@@ -75,7 +75,7 @@ pub async fn upload_file(
     _identity: IdentityCheck,
     state: &State<ServiceContext>,
     file_upload_form: Form<UploadFileForm<'_>>,
-) -> Result<Json<UploadFilesResponse>> {
+) -> Result<Json<UploadFileResponse>> {
     let file = &file_upload_form.file;
     let upload_file_handler: &dyn UploadFileHandler =
         &TempFileWrapper(file) as &dyn UploadFileHandler;
@@ -87,7 +87,7 @@ pub async fn upload_file(
 
     let file_upload_response = state
         .file_upload_service
-        .upload_files(vec![upload_file_handler])
+        .upload_file(upload_file_handler)
         .await?;
 
     Ok(Json(file_upload_response.into_web()))

@@ -16,13 +16,13 @@ impl Quote {
     #[wasm_bindgen(unchecked_return_type = "BitcreditEbillQuote")]
     pub async fn get(&self, id: &str) -> Result<JsValue> {
         info!("return quote called with {id} - not implemented");
-        Err(Error::PreconditionFailed.into())
+        Err(Error::NotFound.into())
     }
 
     #[wasm_bindgen(unchecked_return_type = "BitcreditEbillQuote")]
     pub async fn accept(&self, id: &str) -> Result<JsValue> {
         info!("accept quote called with {id} - not implemented");
-        Err(Error::PreconditionFailed.into())
+        Err(Error::NotFound.into())
     }
 }
 

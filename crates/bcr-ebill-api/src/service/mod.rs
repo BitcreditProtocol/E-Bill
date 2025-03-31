@@ -25,10 +25,6 @@ pub enum Error {
     #[error("not found")]
     NotFound,
 
-    /// errors that currently return early http status code Status::NotAcceptable
-    #[error("not acceptable")]
-    PreconditionFailed,
-
     /// errors stemming from sending or receiving notifications
     #[error("Notification service error: {0}")]
     NotificationService(#[from] bcr_ebill_transport::Error),
