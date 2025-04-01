@@ -255,42 +255,47 @@ impl BillBlockchain {
         let mut result: HashMap<String, PastEndorsee> = HashMap::new();
 
         let mut found_last_endorsing_block_for_node = false;
-        for block in self.blocks().iter().rev() {
-            // we ignore recourse blocks, since we're only interested in previous endorsees before
-            // recourse
-            if block.op_code == BillOpCode::Recourse {
+        // we ignore recourse blocks, since we're only interested in previous endorsees before
+        // recourse
+        let holders = self
+            .blocks()
+            .iter()
+            .rev()
+            .filter(|block| block.op_code != BillOpCode::Recourse)
+            .filter_map(|block| {
+                block
+                    .get_holder_from_block(bill_keys)
+                    .unwrap_or(None)
+                    .map(|holder| (block.timestamp, holder))
+            });
+        for (timestamp, holder) in holders {
+            // first, we search for the last non-recourse block in which we became holder
+            if holder.holder.node_id == *current_identity_node_id
+                && !found_last_endorsing_block_for_node
+            {
+                found_last_endorsing_block_for_node = true;
                 continue;
             }
-            if let Ok(Some(holder_from_block)) = block.get_holder_from_block(bill_keys) {
-                // first, we search for the last non-recourse block in which we became holder
-                if holder_from_block.holder.node_id == *current_identity_node_id
-                    && !found_last_endorsing_block_for_node
-                {
-                    found_last_endorsing_block_for_node = true;
-                }
 
-                // we add the holders after ourselves, if they're not in the list already
-                if found_last_endorsing_block_for_node
-                    && holder_from_block.holder.node_id != *current_identity_node_id
-                {
-                    result
-                        .entry(holder_from_block.holder.node_id.clone())
-                        .or_insert(PastEndorsee {
-                            pay_to_the_order_of: holder_from_block.holder.clone().into(),
-                            signed: LightSignedBy {
-                                data: holder_from_block.signer.clone().into(),
-                                signatory: holder_from_block.signatory.map(|s| {
-                                    LightIdentityPublicData {
-                                        t: ContactType::Person,
-                                        name: s.name,
-                                        node_id: s.node_id,
-                                    }
-                                }),
-                            },
-                            signing_timestamp: block.timestamp,
-                            signing_address: holder_from_block.signer.postal_address,
-                        });
-                }
+            // we add the holders before ourselves, if they're not in the list already
+            if found_last_endorsing_block_for_node
+                && holder.holder.node_id != *current_identity_node_id
+            {
+                result
+                    .entry(holder.holder.node_id.clone())
+                    .or_insert(PastEndorsee {
+                        pay_to_the_order_of: holder.holder.clone().into(),
+                        signed: LightSignedBy {
+                            data: holder.signer.clone().into(),
+                            signatory: holder.signatory.map(|s| LightIdentityPublicData {
+                                t: ContactType::Person,
+                                name: s.name,
+                                node_id: s.node_id,
+                            }),
+                        },
+                        signing_timestamp: timestamp,
+                        signing_address: holder.signer.postal_address,
+                    });
             }
         }
 
