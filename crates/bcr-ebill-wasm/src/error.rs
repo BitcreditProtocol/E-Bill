@@ -90,7 +90,8 @@ enum JsErrorType {
     BillIsRequestedToPayAndWaitingForPayment,
     BillIsOfferedToSellAndWaitingForPayment,
     BillIsInRecourseAndWaitingForPayment,
-    BillIsRequestedToPay,
+    BillWasRequestedToPay,
+    BillRequestedToPayBeforeMaturityDate,
     // general
     DrawerIsNotBillIssuer,
     SignatoryNotInContacts,
@@ -112,412 +113,174 @@ struct JsErrorData {
     message: String,
     code: u16,
 }
-
 impl From<WasmError> for JsValue {
     fn from(error: WasmError) -> JsValue {
         error!("{error}");
         let js_error_data = match error {
             WasmError::Service(e) => match e {
-                ServiceError::NoFileForFileUploadId => JsErrorData {
-                    error: JsErrorType::NoFileForFileUploadId,
-                    message: e.to_string(),
-                    code: 400,
-                },
-                ServiceError::NotFound => JsErrorData {
-                    error: JsErrorType::NotFound,
-                    message: e.to_string(),
-                    code: 404,
-                },
+                ServiceError::NoFileForFileUploadId => {
+                    err_400(e, JsErrorType::NoFileForFileUploadId)
+                }
+                ServiceError::NotFound => err_404(e, JsErrorType::NotFound),
                 ServiceError::NotificationService(e) => notification_service_error_data(e),
                 ServiceError::BillService(e) => bill_service_error_data(e),
                 ServiceError::Validation(e) => validation_error_data(e),
-                ServiceError::ExternalApi(e) => JsErrorData {
-                    error: JsErrorType::ExternalApi,
-                    message: e.to_string(),
-                    code: 500,
-                },
-                ServiceError::Io(e) => JsErrorData {
-                    error: JsErrorType::Io,
-                    message: e.to_string(),
-                    code: 500,
-                },
-                ServiceError::CryptoUtil(e) => JsErrorData {
-                    error: JsErrorType::Crypto,
-                    message: e.to_string(),
-                    code: 500,
-                },
-                ServiceError::Persistence(e) => JsErrorData {
-                    error: JsErrorType::Persistence,
-                    message: e.to_string(),
-                    code: 500,
-                },
-                ServiceError::Blockchain(e) => JsErrorData {
-                    error: JsErrorType::Blockchain,
-                    message: e.to_string(),
-                    code: 500,
-                },
+                ServiceError::ExternalApi(e) => err_500(e, JsErrorType::ExternalApi),
+                ServiceError::Io(e) => err_500(e, JsErrorType::Io),
+                ServiceError::CryptoUtil(e) => err_500(e, JsErrorType::Crypto),
+                ServiceError::Persistence(e) => err_500(e, JsErrorType::Persistence),
+                ServiceError::Blockchain(e) => err_500(e, JsErrorType::Blockchain),
             },
             WasmError::BillService(e) => bill_service_error_data(e),
             WasmError::Validation(e) => validation_error_data(e),
             WasmError::NotificationService(e) => notification_service_error_data(e),
-            WasmError::WasmSerialization(e) => JsErrorData {
-                error: JsErrorType::Serialization,
-                message: e.to_string(),
-                code: 500,
-            },
-            WasmError::Crypto(e) => JsErrorData {
-                error: JsErrorType::Crypto,
-                message: e.to_string(),
-                code: 500,
-            },
-            WasmError::Persistence(e) => JsErrorData {
-                error: JsErrorType::Persistence,
-                message: e.to_string(),
-                code: 500,
-            },
-            WasmError::Init(e) => JsErrorData {
-                error: JsErrorType::Init,
-                message: e.to_string(),
-                code: 500,
-            },
+            WasmError::WasmSerialization(e) => err_500(e, JsErrorType::Serialization),
+            WasmError::Crypto(e) => err_500(e, JsErrorType::Crypto),
+            WasmError::Persistence(e) => err_500(e, JsErrorType::Persistence),
+            WasmError::Init(e) => err_500(e, JsErrorType::Init),
         };
         serde_wasm_bindgen::to_value(&js_error_data).expect("can serialize error")
     }
 }
-
 fn notification_service_error_data(e: NotificationServiceError) -> JsErrorData {
     match e {
-        NotificationServiceError::Network(e) => JsErrorData {
-            error: JsErrorType::NotificationNetwork,
-            message: e.to_string(),
-            code: 500,
-        },
-        NotificationServiceError::Message(e) => JsErrorData {
-            error: JsErrorType::NotificationMessage,
-            message: e.to_string(),
-            code: 500,
-        },
-        NotificationServiceError::Persistence(e) => JsErrorData {
-            error: JsErrorType::Persistence,
-            message: e.to_string(),
-            code: 500,
-        },
-        NotificationServiceError::Crypto(e) => JsErrorData {
-            error: JsErrorType::Crypto,
-            message: e.to_string(),
-            code: 500,
-        },
-        NotificationServiceError::Blockchain(e) => JsErrorData {
-            error: JsErrorType::Blockchain,
-            message: e.to_string(),
-            code: 500,
-        },
+        NotificationServiceError::Network(e) => err_500(e, JsErrorType::NotificationNetwork),
+        NotificationServiceError::Message(e) => err_500(e, JsErrorType::NotificationMessage),
+        NotificationServiceError::Persistence(e) => err_500(e, JsErrorType::Persistence),
+        NotificationServiceError::Crypto(e) => err_500(e, JsErrorType::Crypto),
+        NotificationServiceError::Blockchain(e) => err_500(e, JsErrorType::Blockchain),
     }
 }
 
 fn bill_service_error_data(e: BillServiceError) -> JsErrorData {
     match e {
-        BillServiceError::DraweeNotInContacts => JsErrorData {
-            error: JsErrorType::DraweeNotInContacts,
-            message: e.to_string(),
-            code: 400,
-        },
-        BillServiceError::PayeeNotInContacts => JsErrorData {
-            error: JsErrorType::PayeeNotInContacts,
-            message: e.to_string(),
-            code: 400,
-        },
-        BillServiceError::BuyerNotInContacts => JsErrorData {
-            error: JsErrorType::BuyerNotInContacts,
-            message: e.to_string(),
-            code: 400,
-        },
-        BillServiceError::EndorseeNotInContacts => JsErrorData {
-            error: JsErrorType::EndorseeNotInContacts,
-            message: e.to_string(),
-            code: 400,
-        },
-        BillServiceError::MintNotInContacts => JsErrorData {
-            error: JsErrorType::MintNotInContacts,
-            message: e.to_string(),
-            code: 400,
-        },
-        BillServiceError::RecourseeNotInContacts => JsErrorData {
-            error: JsErrorType::RecourseeNotInContacts,
-            message: e.to_string(),
-            code: 400,
-        },
-        BillServiceError::NoFileForFileUploadId => JsErrorData {
-            error: JsErrorType::NoFileForFileUploadId,
-            message: e.to_string(),
-            code: 400,
-        },
-        BillServiceError::InvalidOperation => JsErrorData {
-            error: JsErrorType::InvalidOperation,
-            message: e.to_string(),
-            code: 400,
-        },
+        BillServiceError::DraweeNotInContacts => err_400(e, JsErrorType::DraweeNotInContacts),
+        BillServiceError::PayeeNotInContacts => err_400(e, JsErrorType::PayeeNotInContacts),
+        BillServiceError::BuyerNotInContacts => err_400(e, JsErrorType::BuyerNotInContacts),
+        BillServiceError::EndorseeNotInContacts => err_400(e, JsErrorType::EndorseeNotInContacts),
+        BillServiceError::MintNotInContacts => err_400(e, JsErrorType::MintNotInContacts),
+        BillServiceError::RecourseeNotInContacts => err_400(e, JsErrorType::RecourseeNotInContacts),
+        BillServiceError::NoFileForFileUploadId => err_400(e, JsErrorType::NoFileForFileUploadId),
+        BillServiceError::InvalidOperation => err_400(e, JsErrorType::InvalidOperation),
         BillServiceError::Validation(e) => validation_error_data(e),
-        BillServiceError::NotFound => JsErrorData {
-            error: JsErrorType::NotFound,
-            message: e.to_string(),
-            code: 404,
-        },
-        BillServiceError::Io(e) => JsErrorData {
-            error: JsErrorType::Io,
-            message: e.to_string(),
-            code: 500,
-        },
-        BillServiceError::Persistence(e) => JsErrorData {
-            error: JsErrorType::Persistence,
-            message: e.to_string(),
-            code: 500,
-        },
-        BillServiceError::ExternalApi(e) => JsErrorData {
-            error: JsErrorType::ExternalApi,
-            message: e.to_string(),
-            code: 500,
-        },
-        BillServiceError::Blockchain(e) => JsErrorData {
-            error: JsErrorType::Blockchain,
-            message: e.to_string(),
-            code: 500,
-        },
-        BillServiceError::Cryptography(e) => JsErrorData {
-            error: JsErrorType::Crypto,
-            message: e.to_string(),
-            code: 500,
-        },
+        BillServiceError::NotFound => err_404(e, JsErrorType::NotFound),
+        BillServiceError::Io(e) => err_500(e, JsErrorType::Io),
+        BillServiceError::Persistence(e) => err_500(e, JsErrorType::Persistence),
+        BillServiceError::ExternalApi(e) => err_500(e, JsErrorType::ExternalApi),
+        BillServiceError::Blockchain(e) => err_500(e, JsErrorType::Blockchain),
+        BillServiceError::Cryptography(e) => err_500(e, JsErrorType::Crypto),
         BillServiceError::Notification(e) => notification_service_error_data(e),
     }
 }
 
 fn validation_error_data(e: ValidationError) -> JsErrorData {
     match e {
-        ValidationError::InvalidSum => JsErrorData {
-            error: JsErrorType::InvalidSum,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::InvalidCurrency => JsErrorData {
-            error: JsErrorType::InvalidCurrency,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::InvalidContactType => JsErrorData {
-            error: JsErrorType::InvalidContactType,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::InvalidContentType => JsErrorData {
-            error: JsErrorType::InvalidContentType,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::InvalidDate => JsErrorData {
-            error: JsErrorType::InvalidDate,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::InvalidFileUploadId => JsErrorData {
-            error: JsErrorType::InvalidFileUploadId,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::InvalidBillType => JsErrorData {
-            error: JsErrorType::InvalidBillType,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::DraweeCantBePayee => JsErrorData {
-            error: JsErrorType::DraweeCantBePayee,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::RequestAlreadyExpired => JsErrorData {
-            error: JsErrorType::RequestAlreadyExpired,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillAlreadyAccepted => JsErrorData {
-            error: JsErrorType::BillAlreadyAccepted,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillWasNotOfferedToSell => JsErrorData {
-            error: JsErrorType::BillWasNotOfferedToSell,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillWasNotRequestedToPay => JsErrorData {
-            error: JsErrorType::BillWasNotRequestedToPay,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillWasNotRequestedToAccept => JsErrorData {
-            error: JsErrorType::BillWasNotRequestedToAccept,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillWasNotRequestedToRecourse => JsErrorData {
-            error: JsErrorType::BillWasNotRequestedToRecourse,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillIsNotOfferToSellWaitingForPayment => JsErrorData {
-            error: JsErrorType::BillIsNotOfferToSellWaitingForPayment,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillIsOfferedToSellAndWaitingForPayment => JsErrorData {
-            error: JsErrorType::BillIsOfferedToSellAndWaitingForPayment,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillIsRequestedToPay => JsErrorData {
-            error: JsErrorType::BillIsRequestedToPay,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillIsInRecourseAndWaitingForPayment => JsErrorData {
-            error: JsErrorType::BillIsInRecourseAndWaitingForPayment,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillRequestToAcceptDidNotExpireAndWasNotRejected => JsErrorData {
-            error: JsErrorType::BillRequestToAcceptDidNotExpireAndWasNotRejected,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillRequestToPayDidNotExpireAndWasNotRejected => JsErrorData {
-            error: JsErrorType::BillRequestToPayDidNotExpireAndWasNotRejected,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillIsNotRequestedToRecourseAndWaitingForPayment => JsErrorData {
-            error: JsErrorType::BillIsNotRequestedToRecourseAndWaitingForPayment,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillSellDataInvalid => JsErrorData {
-            error: JsErrorType::BillSellDataInvalid,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillAlreadyPaid => JsErrorData {
-            error: JsErrorType::BillAlreadyPaid,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillNotAccepted => JsErrorData {
-            error: JsErrorType::BillNotAccepted,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillAlreadyRequestedToAccept => JsErrorData {
-            error: JsErrorType::BillAlreadyRequestedToAccept,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillIsRequestedToPayAndWaitingForPayment => JsErrorData {
-            error: JsErrorType::BillIsRequestedToPayAndWaitingForPayment,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BillRecourseDataInvalid => JsErrorData {
-            error: JsErrorType::BillRecourseDataInvalid,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::RecourseeNotPastHolder => JsErrorData {
-            error: JsErrorType::RecourseeNotPastHolder,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::CallerIsNotDrawee => JsErrorData {
-            error: JsErrorType::CallerIsNotDrawee,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::CallerIsNotBuyer => JsErrorData {
-            error: JsErrorType::CallerIsNotBuyer,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::CallerIsNotRecoursee => JsErrorData {
-            error: JsErrorType::CallerIsNotRecoursee,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::RequestAlreadyRejected => JsErrorData {
-            error: JsErrorType::RequestAlreadyRejected,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::CallerIsNotHolder => JsErrorData {
-            error: JsErrorType::CallerIsNotHolder,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::DrawerIsNotBillIssuer => JsErrorData {
-            error: JsErrorType::DrawerIsNotBillIssuer,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::CallerMustBeSignatory => JsErrorData {
-            error: JsErrorType::CallerMustBeSignatory,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::SignatoryNotInContacts(_) => JsErrorData {
-            error: JsErrorType::SignatoryNotInContacts,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::SignatoryAlreadySignatory(_) => JsErrorData {
-            error: JsErrorType::SignatoryAlreadySignatory,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::CantRemoveLastSignatory => JsErrorData {
-            error: JsErrorType::CantRemoveLastSignatory,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::NotASignatory(_) => JsErrorData {
-            error: JsErrorType::NotASignatory,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::InvalidSecp256k1Key(_) => JsErrorData {
-            error: JsErrorType::InvalidSecp256k1Key,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::FileIsTooBig(_) => JsErrorData {
-            error: JsErrorType::FileIsTooBig,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::InvalidFileName(_) => JsErrorData {
-            error: JsErrorType::InvalidFileName,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::UnknownNodeId(_) => JsErrorData {
-            error: JsErrorType::UnknownNodeId,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::BackupNotSupported => JsErrorData {
-            error: JsErrorType::BackupNotSupported,
-            message: e.to_string(),
-            code: 400,
-        },
-        ValidationError::Blockchain(e) => JsErrorData {
-            error: JsErrorType::Blockchain,
-            message: e.to_string(),
-            code: 500,
-        },
+        ValidationError::InvalidSum => err_400(e, JsErrorType::InvalidSum),
+        ValidationError::InvalidCurrency => err_400(e, JsErrorType::InvalidCurrency),
+        ValidationError::InvalidContactType => err_400(e, JsErrorType::InvalidContactType),
+        ValidationError::InvalidContentType => err_400(e, JsErrorType::InvalidContentType),
+        ValidationError::InvalidDate => err_400(e, JsErrorType::InvalidDate),
+        ValidationError::InvalidFileUploadId => err_400(e, JsErrorType::InvalidFileUploadId),
+        ValidationError::InvalidBillType => err_400(e, JsErrorType::InvalidBillType),
+        ValidationError::DraweeCantBePayee => err_400(e, JsErrorType::DraweeCantBePayee),
+        ValidationError::RequestAlreadyExpired => err_400(e, JsErrorType::RequestAlreadyExpired),
+        ValidationError::BillAlreadyAccepted => err_400(e, JsErrorType::BillAlreadyAccepted),
+        ValidationError::BillWasNotOfferedToSell => {
+            err_400(e, JsErrorType::BillWasNotOfferedToSell)
+        }
+        ValidationError::BillWasNotRequestedToPay => {
+            err_400(e, JsErrorType::BillWasNotRequestedToPay)
+        }
+        ValidationError::BillWasNotRequestedToAccept => {
+            err_400(e, JsErrorType::BillWasNotRequestedToAccept)
+        }
+        ValidationError::BillWasNotRequestedToRecourse => {
+            err_400(e, JsErrorType::BillWasNotRequestedToRecourse)
+        }
+        ValidationError::BillIsNotOfferToSellWaitingForPayment => {
+            err_400(e, JsErrorType::BillIsNotOfferToSellWaitingForPayment)
+        }
+        ValidationError::BillIsOfferedToSellAndWaitingForPayment => {
+            err_400(e, JsErrorType::BillIsOfferedToSellAndWaitingForPayment)
+        }
+        ValidationError::BillWasRequestedToPay => err_400(e, JsErrorType::BillWasRequestedToPay),
+        ValidationError::BillIsInRecourseAndWaitingForPayment => {
+            err_400(e, JsErrorType::BillIsInRecourseAndWaitingForPayment)
+        }
+        ValidationError::BillRequestToAcceptDidNotExpireAndWasNotRejected => err_400(
+            e,
+            JsErrorType::BillRequestToAcceptDidNotExpireAndWasNotRejected,
+        ),
+        ValidationError::BillRequestToPayDidNotExpireAndWasNotRejected => err_400(
+            e,
+            JsErrorType::BillRequestToPayDidNotExpireAndWasNotRejected,
+        ),
+        ValidationError::BillIsNotRequestedToRecourseAndWaitingForPayment => err_400(
+            e,
+            JsErrorType::BillIsNotRequestedToRecourseAndWaitingForPayment,
+        ),
+        ValidationError::BillSellDataInvalid => err_400(e, JsErrorType::BillSellDataInvalid),
+        ValidationError::BillAlreadyPaid => err_400(e, JsErrorType::BillAlreadyPaid),
+        ValidationError::BillNotAccepted => err_400(e, JsErrorType::BillNotAccepted),
+        ValidationError::BillAlreadyRequestedToAccept => {
+            err_400(e, JsErrorType::BillAlreadyRequestedToAccept)
+        }
+        ValidationError::BillIsRequestedToPayAndWaitingForPayment => {
+            err_400(e, JsErrorType::BillIsRequestedToPayAndWaitingForPayment)
+        }
+        ValidationError::BillRecourseDataInvalid => {
+            err_400(e, JsErrorType::BillRecourseDataInvalid)
+        }
+        ValidationError::BillRequestedToPayBeforeMaturityDate => {
+            err_400(e, JsErrorType::BillRequestedToPayBeforeMaturityDate)
+        }
+        ValidationError::RecourseeNotPastHolder => err_400(e, JsErrorType::RecourseeNotPastHolder),
+        ValidationError::CallerIsNotDrawee => err_400(e, JsErrorType::CallerIsNotDrawee),
+        ValidationError::CallerIsNotBuyer => err_400(e, JsErrorType::CallerIsNotBuyer),
+        ValidationError::CallerIsNotRecoursee => err_400(e, JsErrorType::CallerIsNotRecoursee),
+        ValidationError::RequestAlreadyRejected => err_400(e, JsErrorType::RequestAlreadyRejected),
+        ValidationError::CallerIsNotHolder => err_400(e, JsErrorType::CallerIsNotHolder),
+        ValidationError::DrawerIsNotBillIssuer => err_400(e, JsErrorType::DrawerIsNotBillIssuer),
+        ValidationError::CallerMustBeSignatory => err_400(e, JsErrorType::CallerMustBeSignatory),
+        ValidationError::SignatoryNotInContacts(_) => {
+            err_400(e, JsErrorType::SignatoryNotInContacts)
+        }
+        ValidationError::SignatoryAlreadySignatory(_) => {
+            err_400(e, JsErrorType::SignatoryAlreadySignatory)
+        }
+        ValidationError::CantRemoveLastSignatory => {
+            err_400(e, JsErrorType::CantRemoveLastSignatory)
+        }
+        ValidationError::NotASignatory(_) => err_400(e, JsErrorType::NotASignatory),
+        ValidationError::InvalidSecp256k1Key(_) => err_400(e, JsErrorType::InvalidSecp256k1Key),
+        ValidationError::FileIsTooBig(_) => err_400(e, JsErrorType::FileIsTooBig),
+        ValidationError::InvalidFileName(_) => err_400(e, JsErrorType::InvalidFileName),
+        ValidationError::UnknownNodeId(_) => err_400(e, JsErrorType::UnknownNodeId),
+        ValidationError::BackupNotSupported => err_400(e, JsErrorType::BackupNotSupported),
+        ValidationError::Blockchain(e) => err_500(e, JsErrorType::Blockchain),
+    }
+}
+
+fn err_400<E: ToString>(e: E, t: JsErrorType) -> JsErrorData {
+    JsErrorData {
+        error: t,
+        message: e.to_string(),
+        code: 400,
+    }
+}
+
+fn err_404<E: ToString>(e: E, t: JsErrorType) -> JsErrorData {
+    JsErrorData {
+        error: t,
+        message: e.to_string(),
+        code: 404,
+    }
+}
+
+fn err_500<E: ToString>(e: E, t: JsErrorType) -> JsErrorData {
+    JsErrorData {
+        error: t,
+        message: e.to_string(),
+        code: 500,
     }
 }

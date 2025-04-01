@@ -318,11 +318,12 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for ValidationError {
                 | bcr_ebill_api::util::ValidationError::BillWasNotRequestedToRecourse
                 | bcr_ebill_api::util::ValidationError::BillIsNotOfferToSellWaitingForPayment
                 | bcr_ebill_api::util::ValidationError::BillIsOfferedToSellAndWaitingForPayment
-                | bcr_ebill_api::util::ValidationError::BillIsRequestedToPay
+                | bcr_ebill_api::util::ValidationError::BillWasRequestedToPay
                 | bcr_ebill_api::util::ValidationError::BillIsInRecourseAndWaitingForPayment
                 | bcr_ebill_api::util::ValidationError::BillRequestToAcceptDidNotExpireAndWasNotRejected
                 | bcr_ebill_api::util::ValidationError::BillRequestToPayDidNotExpireAndWasNotRejected
                 | bcr_ebill_api::util::ValidationError::BillIsNotRequestedToRecourseAndWaitingForPayment
+                | bcr_ebill_api::util::ValidationError::BillRequestedToPayBeforeMaturityDate
                 | bcr_ebill_api::util::ValidationError::BillSellDataInvalid
                 | bcr_ebill_api::util::ValidationError::BillAlreadyPaid
                 | bcr_ebill_api::util::ValidationError::BillNotAccepted

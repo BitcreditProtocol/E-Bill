@@ -352,8 +352,8 @@ pub mod tests {
         assert!(res_term.is_ok());
         assert_eq!(res_term.as_ref().unwrap().len(), 1);
 
-        let from_ts = util::date::date_string_to_i64_timestamp("2030-05-01", None).unwrap();
-        let to_ts = util::date::date_string_to_i64_timestamp("2030-05-30", None).unwrap();
+        let from_ts = util::date::date_string_to_timestamp("2030-05-01", None).unwrap();
+        let to_ts = util::date::date_string_to_timestamp("2030-05-30", None).unwrap();
         let res_fromto = service
             .search_bills(
                 "sat",
@@ -2140,6 +2140,7 @@ pub mod tests {
         let mut ctx = get_ctx();
         let identity = get_baseline_identity();
         let mut bill = get_baseline_bill("some id");
+        bill.maturity_date = "2022-11-12".to_string(); // maturity date has to be in the past
         bill.payee = identity_public_data_only_node_id(identity.identity.node_id.clone());
         ctx.bill_store
             .expect_save_bill_to_cache()

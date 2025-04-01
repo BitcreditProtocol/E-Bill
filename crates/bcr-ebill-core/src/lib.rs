@@ -189,15 +189,19 @@ pub enum ValidationError {
     #[error("Bill was not offered to sell")]
     BillWasNotOfferedToSell,
 
-    /// error returned someone wants to request acceptance recourse, but the request to accept did
+    /// error returned if someone wants to request acceptance recourse, but the request to accept did
     /// not expire and was not rejected
     #[error("Bill request to accept did not expire and was not rejected")]
     BillRequestToAcceptDidNotExpireAndWasNotRejected,
 
-    /// error returned someone wants to request payment recourse, but the request to pay did
+    /// error returned if someone wants to request payment recourse, but the request to pay did
     /// not expire and was not rejected
     #[error("Bill request to pay did not expire and was not rejected")]
     BillRequestToPayDidNotExpireAndWasNotRejected,
+
+    /// error returned if the bill was requested to pay before the maturity date started
+    #[error("Bill requested to pay before maturity date started")]
+    BillRequestedToPayBeforeMaturityDate,
 
     /// error returned if the bill was not requester to recourse, e.g. when rejecting to pay for
     /// recourse
@@ -234,9 +238,9 @@ pub enum ValidationError {
     #[error("Bill is in recourse and waiting for payment")]
     BillIsInRecourseAndWaitingForPayment,
 
-    /// error returned if the bill is requested to pay
-    #[error("Bill is requested to pay")]
-    BillIsRequestedToPay,
+    /// error returned if the bill was requested to pay
+    #[error("Bill was requested to pay")]
+    BillWasRequestedToPay,
 
     /// error returned if the signatory is not a signatory of the company
     #[error("Caller must be signatory for company")]
