@@ -895,7 +895,6 @@ pub mod tests {
                 1731593928,
             )
             .await;
-        println!("{res:?}");
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
         assert_eq!(
@@ -948,7 +947,6 @@ pub mod tests {
                 1731593928,
             )
             .await;
-        println!("{res:?}");
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
         assert_eq!(
@@ -986,7 +984,6 @@ pub mod tests {
                 1731593928,
             )
             .await;
-        println!("{res:?}");
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().id, "some id".to_string());
         assert_eq!(
@@ -1134,6 +1131,7 @@ pub mod tests {
     #[tokio::test]
     async fn get_detail_waiting_for_offer_to_sell_and_expire() {
         let mut ctx = get_ctx();
+        let now = util::date::now().timestamp() as u64;
         let identity = get_baseline_identity();
         let mut bill = get_baseline_bill("some id");
         bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
@@ -1143,13 +1141,12 @@ pub mod tests {
             .expect_get_chain()
             .returning(move |_| {
                 let mut chain = get_genesis_chain(Some(bill.clone()));
-                let last_block = chain.get_latest_block();
                 assert!(chain.try_add_block(offer_to_sell_block(
                     "1234",
                     chain.get_latest_block(),
                     &bill.drawee,
                     // expired
-                    Some(last_block.timestamp - PAYMENT_DEADLINE_SECONDS * 2),
+                    Some(now - PAYMENT_DEADLINE_SECONDS * 2),
                 )));
                 Ok(chain)
             });
@@ -1163,7 +1160,7 @@ pub mod tests {
                 "some id",
                 &identity.identity,
                 &identity.identity.node_id,
-                1731593928,
+                now,
             )
             .await;
         assert!(res.is_ok());
@@ -1183,6 +1180,7 @@ pub mod tests {
         let mut ctx = get_ctx();
         let identity = get_baseline_identity();
         let mut bill = get_baseline_bill("some id");
+        let now = util::date::now().timestamp() as u64;
         bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
         let drawee_node_id = bill.drawee.node_id.clone();
         ctx.bill_store.expect_exists().returning(|_| true);
@@ -1190,13 +1188,12 @@ pub mod tests {
             .expect_get_chain()
             .returning(move |_| {
                 let mut chain = get_genesis_chain(Some(bill.clone()));
-                let last_block = chain.get_latest_block();
                 assert!(chain.try_add_block(offer_to_sell_block(
                     "1234",
                     chain.get_latest_block(),
                     &bill.drawee,
                     // expired
-                    Some(last_block.timestamp - PAYMENT_DEADLINE_SECONDS * 2),
+                    Some(now - PAYMENT_DEADLINE_SECONDS * 2),
                 )));
                 assert!(chain.try_add_block(reject_buy_block("1234", chain.get_latest_block(),)));
                 Ok(chain)
@@ -1211,7 +1208,7 @@ pub mod tests {
                 "some id",
                 &identity.identity,
                 &identity.identity.node_id,
-                1731593928,
+                now,
             )
             .await;
         assert!(res.is_ok());
@@ -1419,6 +1416,7 @@ pub mod tests {
         let mut ctx = get_ctx();
         let identity = get_baseline_identity();
         let mut bill = get_baseline_bill("some_id");
+        let now = util::date::now().timestamp() as u64;
         bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
         let drawee_node_id = bill.drawee.node_id.clone();
         ctx.bill_store.expect_exists().returning(|_| true);
@@ -1431,7 +1429,7 @@ pub mod tests {
                     "some_id",
                     chain.get_latest_block(),
                     &identity_public_data_only_node_id(bill.drawee.node_id.clone()),
-                    Some(chain.get_latest_block().timestamp - RECOURSE_DEADLINE_SECONDS * 2),
+                    Some(now - RECOURSE_DEADLINE_SECONDS * 2),
                 );
                 assert!(chain.try_add_block(req_to_pay_block));
                 Ok(chain)
@@ -1446,7 +1444,7 @@ pub mod tests {
                 "some_id",
                 &identity.identity,
                 &identity.identity.node_id,
-                1731593928,
+                now,
             )
             .await;
         assert!(res.is_ok());
@@ -1687,6 +1685,9 @@ pub mod tests {
         let identity = get_baseline_identity();
         let mut bill = get_baseline_bill("some id");
         bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
+        let now = util::date::now().timestamp() as u64;
+        bill.maturity_date =
+            util::date::format_date_string(util::date::seconds(now - PAYMENT_DEADLINE_SECONDS * 2));
         let drawee_node_id = bill.drawee.node_id.clone();
         ctx.bill_store.expect_exists().returning(|_| true);
         ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
@@ -1697,7 +1698,7 @@ pub mod tests {
                 let req_to_pay_block = request_to_pay_block(
                     "some_id",
                     chain.get_latest_block(),
-                    Some(chain.get_latest_block().timestamp - PAYMENT_DEADLINE_SECONDS * 2),
+                    Some(now - PAYMENT_DEADLINE_SECONDS * 2),
                 );
                 assert!(chain.try_add_block(req_to_pay_block));
                 Ok(chain)
@@ -1712,7 +1713,7 @@ pub mod tests {
                 "some id",
                 &identity.identity,
                 &identity.identity.node_id,
-                1731593928,
+                now,
             )
             .await;
         assert!(res.is_ok());
@@ -1741,6 +1742,7 @@ pub mod tests {
         let mut bill = get_baseline_bill("some id");
         bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
         let drawee_node_id = bill.drawee.node_id.clone();
+        let now = util::date::now().timestamp() as u64;
         ctx.bill_store.expect_exists().returning(|_| true);
         ctx.bill_store.expect_is_paid().returning(|_| Ok(true));
         ctx.bill_blockchain_store
@@ -1750,7 +1752,7 @@ pub mod tests {
                 let req_to_pay_block = request_to_pay_block(
                     "some_id",
                     chain.get_latest_block(),
-                    Some(chain.get_latest_block().timestamp - PAYMENT_DEADLINE_SECONDS * 2),
+                    Some(now - PAYMENT_DEADLINE_SECONDS * 2),
                 );
                 assert!(chain.try_add_block(req_to_pay_block));
                 Ok(chain)
@@ -1765,7 +1767,7 @@ pub mod tests {
                 "some id",
                 &identity.identity,
                 &identity.identity.node_id,
-                1731593928,
+                now,
             )
             .await;
         assert!(res.is_ok());
@@ -1889,12 +1891,13 @@ pub mod tests {
     }
 
     #[tokio::test]
-    async fn get_detail_bill_req_to_accept_expired() {
+    async fn get_detail_bill_req_to_accept_rejected() {
         let mut ctx = get_ctx();
         let identity = get_baseline_identity();
         let mut bill = get_baseline_bill("some id");
         bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
         let drawee_node_id = bill.drawee.node_id.clone();
+        let now = util::date::now().timestamp() as u64;
         ctx.bill_store.expect_exists().returning(|_| true);
         ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
         ctx.bill_blockchain_store
@@ -1919,7 +1922,7 @@ pub mod tests {
                 "some id",
                 &identity.identity,
                 &identity.identity.node_id,
-                1731593928,
+                now,
             )
             .await;
         assert!(res.is_ok());
@@ -1942,10 +1945,11 @@ pub mod tests {
     }
 
     #[tokio::test]
-    async fn get_detail_bill_req_to_accept_rejected() {
+    async fn get_detail_bill_req_to_accept_expired() {
         let mut ctx = get_ctx();
         let identity = get_baseline_identity();
         let mut bill = get_baseline_bill("some id");
+        let now = util::date::now().timestamp() as u64;
         bill.drawee = identity_public_data_only_node_id(identity.identity.node_id.clone());
         let drawee_node_id = bill.drawee.node_id.clone();
         ctx.bill_store.expect_exists().returning(|_| true);
@@ -1957,7 +1961,7 @@ pub mod tests {
                 let req_to_pay_block = request_to_accept_block(
                     "some_id",
                     chain.get_latest_block(),
-                    Some(chain.get_latest_block().timestamp - ACCEPT_DEADLINE_SECONDS * 2),
+                    Some(now - ACCEPT_DEADLINE_SECONDS * 2),
                 );
                 assert!(chain.try_add_block(req_to_pay_block));
                 Ok(chain)
@@ -1972,7 +1976,7 @@ pub mod tests {
                 "some id",
                 &identity.identity,
                 &identity.identity.node_id,
-                1731593928,
+                now,
             )
             .await;
         assert!(res.is_ok());
@@ -3393,6 +3397,7 @@ pub mod tests {
         let identity = get_baseline_identity();
         let bill = get_baseline_bill("1234");
         let payee = bill.payee.clone();
+        let now = util::date::now().timestamp() as u64;
 
         ctx.bill_store
             .expect_save_bill_to_cache()
@@ -3400,7 +3405,6 @@ pub mod tests {
         ctx.bill_blockchain_store
             .expect_get_chain()
             .returning(move |_| {
-                let now = util::date::now().timestamp() as u64;
                 let mut chain = get_genesis_chain(Some(bill.clone()));
 
                 // add req to accept block
@@ -3435,7 +3439,7 @@ pub mod tests {
                 BillAction::RejectAcceptance,
                 &IdentityPublicData::new(identity.identity).unwrap(),
                 &identity.key_pair,
-                1731593928,
+                now + 2,
             )
             .await;
         assert!(res.is_ok());
@@ -3499,6 +3503,7 @@ pub mod tests {
         let bill = get_baseline_bill("1234");
         ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
         let payee = bill.payee.clone();
+        let now = util::date::now().timestamp() as u64;
 
         ctx.bill_store
             .expect_save_bill_to_cache()
@@ -3506,7 +3511,6 @@ pub mod tests {
         ctx.bill_blockchain_store
             .expect_get_chain()
             .returning(move |_| {
-                let now = util::date::now().timestamp() as u64;
                 let mut chain = get_genesis_chain(Some(bill.clone()));
 
                 // add req to pay
@@ -3542,7 +3546,7 @@ pub mod tests {
                 BillAction::RejectPayment,
                 &IdentityPublicData::new(identity.identity).unwrap(),
                 &identity.key_pair,
-                1731593928,
+                now + 1,
             )
             .await;
         assert!(res.is_ok());
@@ -3558,6 +3562,7 @@ pub mod tests {
         let identity = get_baseline_identity();
         let bill = get_baseline_bill("1234");
         let payee = bill.payee.clone();
+        let now = util::date::now().timestamp() as u64;
 
         ctx.bill_store
             .expect_save_bill_to_cache()
@@ -3565,7 +3570,6 @@ pub mod tests {
         ctx.bill_blockchain_store
             .expect_get_chain()
             .returning(move |_| {
-                let now = util::date::now().timestamp() as u64;
                 let mut chain = get_genesis_chain(Some(bill.clone()));
 
                 // add req to pay
@@ -3606,7 +3610,7 @@ pub mod tests {
                 BillAction::RejectPaymentForRecourse,
                 &IdentityPublicData::new(identity.identity).unwrap(),
                 &identity.key_pair,
-                1731593928,
+                now + 1,
             )
             .await;
         assert!(res.is_ok());
@@ -3990,7 +3994,11 @@ pub mod tests {
             rejected_to_pay: false,
         };
 
-        assert!(service.check_requests_for_expiration(&bill_payment, 1731593928));
+        assert!(
+            service
+                .check_requests_for_expiration(&bill_payment, 1731593928)
+                .unwrap()
+        );
 
         let mut bill_acceptance = get_baseline_cached_bill("1234".to_string());
         bill_acceptance.status.acceptance = BillAcceptanceStatus {
@@ -4001,7 +4009,11 @@ pub mod tests {
             rejected_to_accept: false,
         };
 
-        assert!(service.check_requests_for_expiration(&bill_acceptance, 1731593928));
+        assert!(
+            service
+                .check_requests_for_expiration(&bill_acceptance, 1731593928)
+                .unwrap()
+        );
 
         let mut bill_sell = get_baseline_cached_bill("1234".to_string());
         bill_sell.status.sell = BillSellStatus {
@@ -4012,7 +4024,11 @@ pub mod tests {
             rejected_offer_to_sell: false,
         };
 
-        assert!(service.check_requests_for_expiration(&bill_sell, 1731593928));
+        assert!(
+            service
+                .check_requests_for_expiration(&bill_sell, 1731593928)
+                .unwrap()
+        );
 
         let mut bill_recourse = get_baseline_cached_bill("1234".to_string());
         bill_recourse.status.recourse = BillRecourseStatus {
@@ -4023,6 +4039,10 @@ pub mod tests {
             rejected_request_to_recourse: false,
         };
 
-        assert!(service.check_requests_for_expiration(&bill_recourse, 1731593928));
+        assert!(
+            service
+                .check_requests_for_expiration(&bill_recourse, 1731593928)
+                .unwrap()
+        );
     }
 }

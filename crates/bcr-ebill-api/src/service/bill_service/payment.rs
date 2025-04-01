@@ -1,22 +1,17 @@
 use super::Result;
 use super::service::BillService;
-use crate::{
-    service::bill_service::{BillAction, BillServiceApi},
-    util,
-};
+use crate::service::bill_service::{BillAction, BillServiceApi};
 use bcr_ebill_core::{
-    bill::validation::get_deadline_base_for_req_to_pay,
     blockchain::{
         Blockchain,
         bill::{BillOpCode, OfferToSellWaitingForPayment, RecourseWaitingForPayment},
     },
     company::{Company, CompanyKeys},
-    constants::PAYMENT_DEADLINE_SECONDS,
     contact::IdentityPublicData,
     identity::{Identity, IdentityWithAll},
     util::BcrKeys,
 };
-use log::{debug, error, info};
+use log::{debug, info};
 use std::collections::HashMap;
 
 impl BillService {
@@ -24,7 +19,6 @@ impl BillService {
         &self,
         bill_id: &str,
         identity: &Identity,
-        now: u64,
     ) -> Result<()> {
         info!("Checking bill payment for {bill_id}");
         let chain = self.blockchain_store.get_chain(bill_id).await?;
@@ -34,21 +28,9 @@ impl BillService {
             .get_last_version_bill(&chain, &bill_keys, identity, &contacts)
             .await?;
 
-        if let Some(req_to_pay) =
-            chain.get_last_version_block_with_op_code(BillOpCode::RequestToPay)
-        {
-            let deadline_base = get_deadline_base_for_req_to_pay(req_to_pay, &bill)?;
-            // deadline has expired - don't need to check payment
-            if util::date::check_if_deadline_has_passed(
-                deadline_base,
-                now,
-                PAYMENT_DEADLINE_SECONDS,
-            ) {
-                info!("Payment deadline for bill {bill_id} expired - not checking");
-                return Ok(());
-            }
-        } else {
-            error!("No req to pay block found for bill {bill_id} - not checking payment");
+        if chain.block_with_operation_code_exists(BillOpCode::RequestRecourse) {
+            // if the bill is in recourse, we don't have to check payment anymore
+            debug!("bill {bill_id} is in recourse - not checking for payment");
             return Ok(());
         }
 

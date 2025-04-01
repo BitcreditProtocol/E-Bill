@@ -193,6 +193,22 @@ fn load_keypair(private_key: &str) -> Result<Keypair> {
 
 // -------------------- Aggregated Signatures --------------------------
 
+/// Returns the combined public key for the given public keys
+pub fn combine_pub_keys(pub_keys: &[String]) -> Result<String> {
+    if pub_keys.len() < 2 {
+        return Err(Error::TooFewKeys);
+    }
+
+    let public_keys: Vec<PublicKey> = pub_keys
+        .iter()
+        .map(|pk| PublicKey::from_str(pk).map_err(|e| e.into()))
+        .collect::<Result<Vec<PublicKey>>>()?;
+
+    let combined_key = PublicKey::combine_keys(&public_keys.iter().collect::<Vec<&PublicKey>>())?;
+
+    Ok(combined_key.to_string())
+}
+
 /// Returns the aggregated public key for the given private keys
 pub fn get_aggregated_public_key(private_keys: &[String]) -> Result<String> {
     if private_keys.len() < 2 {
@@ -568,15 +584,49 @@ mod tests {
         let public_key = get_aggregated_public_key(&keys).unwrap();
         let signature = aggregated_signature(&hash, &keys).unwrap();
 
-        let combined_pub_key = keypair1
-            .inner
-            .public_key()
-            .combine(&keypair3.inner.public_key())
-            .unwrap()
-            .to_string();
+        let combined_pub_key =
+            combine_pub_keys(&[keypair1.get_public_key(), keypair3.get_public_key()]).unwrap();
+        let combined_correct_pub_key =
+            combine_pub_keys(&[keypair1.get_public_key(), keypair2.get_public_key()]).unwrap();
         assert_ne!(public_key, combined_pub_key);
+        assert_eq!(public_key, combined_correct_pub_key);
         assert!(verify(&hash, &signature, &combined_pub_key).is_ok());
+        assert!(verify(&hash, &signature, &combined_correct_pub_key).is_ok());
         assert!(!verify(&hash, &signature, &combined_pub_key).unwrap());
+    }
+
+    #[test]
+    fn test_combine_pub_keys_baseline() {
+        let keypair1 = BcrKeys::new();
+        let keypair2 = BcrKeys::new();
+        let keypair3 = BcrKeys::new();
+        let combined_pub_key = combine_pub_keys(&[
+            keypair1.get_public_key(),
+            keypair2.get_public_key(),
+            keypair3.get_public_key(),
+        ])
+        .unwrap();
+        let combined_pub_key_diff_order = combine_pub_keys(&[
+            keypair2.get_public_key(),
+            keypair1.get_public_key(),
+            keypair3.get_public_key(),
+        ])
+        .unwrap();
+        // when combining public keys, the order isn't important
+        assert_eq!(combined_pub_key, combined_pub_key_diff_order);
+    }
+
+    #[test]
+    fn test_combine_pub_keys_too_few() {
+        let keypair1 = BcrKeys::new();
+        let combined_pub_key = combine_pub_keys(&[keypair1.get_public_key()]);
+        assert!(combined_pub_key.is_err());
+    }
+
+    #[test]
+    fn test_combine_pub_keys_invalid_key() {
+        let combined_pub_key = combine_pub_keys(&["nonsense".to_string()]);
+        assert!(combined_pub_key.is_err());
     }
 
     #[test]

@@ -34,6 +34,10 @@ pub enum Error {
     #[error("Block is invalid")]
     BlockInvalid,
 
+    /// If certain block's signature does not match the signer in the block data
+    #[error("Block's signature does not match the signer")]
+    BlockSignatureDoesNotMatchSigner,
+
     /// If an invalid operation is passed to a function (e.g. a non-reject op)
     #[error("Invalid operation")]
     InvalidOperation,
@@ -104,9 +108,16 @@ pub trait Block {
         if self.previous_hash() != previous_block.hash() {
             warn!("block with id: {} has wrong previous hash", self.id());
             return false;
+        } else if self.timestamp() < previous_block.timestamp() {
+            warn!(
+                "block with id: {} has a timestamp lower than the previous block: {}",
+                self.id(),
+                previous_block.timestamp()
+            );
+            return false;
         } else if self.id() != previous_block.id() + 1 {
             warn!(
-                "block with id: {} is not the next block after the latest: {}",
+                "block with id: {} is not the next block after the previous block: {}",
                 self.id(),
                 previous_block.id()
             );

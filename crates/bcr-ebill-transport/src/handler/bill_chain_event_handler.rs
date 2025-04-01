@@ -131,6 +131,10 @@ impl BillChainEventHandler {
         let mut block_added = false;
         let mut chain = existing;
         let block_height = chain.get_latest_block().id;
+        let bill_keys = self.bill_store.get_keys(bill_id).await.map_err(|e| {
+            error!("Could not process received blocks for {bill_id} because the bill keys could not be fetched");
+            Error::Persistence(e.to_string())
+        })?;
         debug!("adding {} bill blocks for bill {bill_id}", blocks.len());
         for block in blocks {
             // if we already have the block, we skip it
@@ -138,12 +142,23 @@ impl BillChainEventHandler {
                 info!("Skipping block with id {} as we already have it", block.id);
                 continue;
             }
+            // first, do cheap integrity checks
             if !chain.try_add_block(block.clone()) {
                 error!("Received invalid block for bill {bill_id}");
                 return Err(Error::Blockchain(
                     "Received invalid block for bill".to_string(),
                 ));
             }
+            // then, verify signature and signer of the block and get signer
+            let _signer = match block.verify_and_get_signer(&bill_keys) {
+                Ok(signer) => signer,
+                Err(e) => {
+                    error!(
+                        "Received invalid block for bill {bill_id} - could not verify signature from block data signer"
+                    );
+                    return Err(Error::Blockchain(e.to_string()));
+                }
+            };
             self.save_block(bill_id, &block).await?;
             block_added = true;
         }
@@ -170,19 +185,37 @@ impl BillChainEventHandler {
         blocks: Vec<BillBlock>,
         keys: &BillKeys,
     ) -> Result<(String, BillBlockchain)> {
+        // cheap integrity checks first
         match BillBlockchain::new_from_blocks(blocks) {
-            Ok(chain) if chain.is_chain_valid() => match chain.get_first_version_bill(keys) {
-                Ok(bill) => Ok((bill.id, chain)),
-                Err(e) => {
-                    error!(
-                        "Failed to get first version bill from newly received chain: {}",
-                        e
-                    );
-                    Err(Error::Crypto(format!(
-                        "Failed to decrypt new bill chain with given keys: {e}"
-                    )))
+            Ok(chain) if chain.is_chain_valid() => {
+                match chain.get_first_version_bill(keys) {
+                    Ok(bill) => {
+                        // then, verify signature and signer of each block and get signer
+                        for block in chain.blocks().iter() {
+                            let _signer = match block.verify_and_get_signer(keys) {
+                                Ok(signer) => signer,
+                                Err(e) => {
+                                    error!(
+                                        "Received invalid block for bill {} - could not verify signature from block data signer",
+                                        &bill.id
+                                    );
+                                    return Err(Error::Blockchain(e.to_string()));
+                                }
+                            };
+                        }
+                        Ok((bill.id, chain))
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to get first version bill from newly received chain: {}",
+                            e
+                        );
+                        Err(Error::Crypto(format!(
+                            "Failed to decrypt new bill chain with given keys: {e}"
+                        )))
+                    }
                 }
-            },
+            }
             _ => {
                 error!("Newly received chain is not valid");
                 Err(Error::Blockchain(
@@ -319,7 +352,8 @@ mod tests {
     async fn test_creates_new_chain_for_new_chain_event() {
         let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let drawer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, Some(&drawer), None);
         let chain = get_genesis_chain(Some(bill.clone()));
         let keys = get_bill_keys();
 
@@ -369,6 +403,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_fails_to_create_new_chain_for_new_chain_event_if_block_signing_check_fails() {
+        let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        // drawer has a different key than signer, signing check will fail
+        let mut drawer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        drawer.node_id = BcrKeys::new().get_public_key();
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, Some(&drawer), None);
+        let chain = get_genesis_chain(Some(bill.clone()));
+        let keys = get_bill_keys();
+
+        let (notification_store, push_service, mut bill_chain_store, mut bill_store) =
+            create_mocks();
+
+        bill_chain_store
+            .expect_get_chain()
+            .with(eq("bill"))
+            .times(1)
+            .returning(move |_| Err(bcr_ebill_persistence::Error::NoBillBlock));
+        bill_chain_store
+            .expect_add_block()
+            .with(eq("bill"), eq(chain.blocks()[0].clone()))
+            .never();
+
+        bill_store
+            .expect_save_keys()
+            .with(eq("bill"), always())
+            .never();
+
+        let handler = BillChainEventHandler::new(
+            Arc::new(notification_store),
+            Arc::new(push_service),
+            Arc::new(bill_chain_store),
+            Arc::new(bill_store),
+        );
+        let event = Event::new(
+            EventType::Bill,
+            "node_id",
+            BillChainEventPayload {
+                bill_id: "bill".to_string(),
+                event_type: BillEventType::BillBlock,
+                blocks: chain.blocks().clone(),
+                keys: Some(keys.clone()),
+                sum: Some(0),
+                action_type: None,
+            },
+        );
+
+        handler
+            .handle_event(event.try_into().expect("Envelope from event"), "node_id")
+            .await
+            .expect("Event should be handled");
+    }
+
+    #[tokio::test]
     async fn test_adds_block_for_existing_chain_event() {
         let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
@@ -385,13 +473,13 @@ mod tests {
                     .unwrap()
                     .into(),
                 signatory: None,
-                signing_timestamp: 1000,
+                signing_timestamp: chain.get_latest_block().timestamp + 1000,
                 signing_address: empty_address(),
             },
             &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
-            Some(&BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap()),
+            None,
             &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
-            1000,
+            chain.get_latest_block().timestamp + 1000,
         )
         .unwrap();
 
@@ -402,6 +490,12 @@ mod tests {
         bill_store
             .expect_invalidate_bill_in_cache()
             .returning(|_| Ok(()));
+        bill_store.expect_get_keys().returning(|_| {
+            Ok(BillKeys {
+                private_key: TEST_PRIVATE_KEY_SECP.to_owned(),
+                public_key: TEST_PUB_KEY_SECP.to_owned(),
+            })
+        });
         bill_chain_store
             .expect_get_chain()
             .with(eq("bill"))
@@ -413,6 +507,79 @@ mod tests {
             .with(eq("bill"), eq(block.clone()))
             .times(1)
             .returning(move |_, _| Ok(()));
+
+        let handler = BillChainEventHandler::new(
+            Arc::new(notification_store),
+            Arc::new(push_service),
+            Arc::new(bill_chain_store),
+            Arc::new(bill_store),
+        );
+        let event = Event::new(
+            EventType::Bill,
+            "node_id",
+            BillChainEventPayload {
+                bill_id: "bill".to_string(),
+                event_type: BillEventType::BillBlock,
+                blocks: vec![block.clone()],
+                keys: None,
+                sum: Some(0),
+                action_type: None,
+            },
+        );
+
+        handler
+            .handle_event(event.try_into().expect("Envelope from event"), "node_id")
+            .await
+            .expect("Event should be handled");
+    }
+
+    #[tokio::test]
+    async fn test_fails_to_add_block_for_invalidly_signed_blocks() {
+        let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let endorsee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        // endorser is different than block signer - signature won't be able to be validated
+        let mut endorser = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        endorser.node_id = BcrKeys::new().get_public_key();
+        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let chain = get_genesis_chain(Some(bill.clone()));
+
+        let block = BillBlock::create_block_for_endorse(
+            "bill".to_string(),
+            chain.get_latest_block(),
+            &BillEndorseBlockData {
+                endorsee: endorsee.clone().into(),
+                // endorsed by payee
+                endorser: endorser.clone().into(),
+                signatory: None,
+                signing_timestamp: chain.get_latest_block().timestamp + 1000,
+                signing_address: empty_address(),
+            },
+            &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
+            None,
+            &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
+            chain.get_latest_block().timestamp + 1000,
+        )
+        .unwrap();
+
+        let (notification_store, push_service, mut bill_chain_store, mut bill_store) =
+            create_mocks();
+
+        let chain_clone = chain.clone();
+        bill_store.expect_get_keys().returning(|_| {
+            Ok(BillKeys {
+                private_key: TEST_PRIVATE_KEY_SECP.to_owned(),
+                public_key: TEST_PUB_KEY_SECP.to_owned(),
+            })
+        });
+        bill_chain_store
+            .expect_get_chain()
+            .with(eq("bill"))
+            .times(1)
+            .returning(move |_| Ok(chain_clone.clone()));
+
+        // block is not added
+        bill_chain_store.expect_add_block().never();
 
         let handler = BillChainEventHandler::new(
             Arc::new(notification_store),
@@ -457,13 +624,13 @@ mod tests {
                     .unwrap()
                     .into(),
                 signatory: None,
-                signing_timestamp: 1000,
+                signing_timestamp: chain.get_latest_block().timestamp + 1000,
                 signing_address: empty_address(),
             },
             &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
-            Some(&BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap()),
+            None,
             &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
-            1000,
+            chain.get_latest_block().timestamp + 1000,
         )
         .unwrap();
 
