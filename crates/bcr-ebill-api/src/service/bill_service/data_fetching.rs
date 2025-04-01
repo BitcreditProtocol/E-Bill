@@ -1,6 +1,7 @@
+use crate::util;
+
 use super::service::BillService;
 use super::{Error, Result};
-use crate::util;
 use bcr_ebill_core::constants::RECOURSE_DEADLINE_SECONDS;
 use bcr_ebill_core::contact::Contact;
 use bcr_ebill_core::{
@@ -8,7 +9,7 @@ use bcr_ebill_core::{
         BillAcceptanceStatus, BillCurrentWaitingState, BillData, BillKeys, BillParticipants,
         BillPaymentStatus, BillRecourseStatus, BillSellStatus, BillStatus,
         BillWaitingForPaymentState, BillWaitingForRecourseState, BillWaitingForSellState,
-        BitcreditBill, BitcreditBillResult, LightSignedBy, PastEndorsee,
+        BitcreditBill, BitcreditBillResult,
     },
     blockchain::{
         Blockchain,
@@ -20,9 +21,9 @@ use bcr_ebill_core::{
         },
     },
     constants::{ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS},
-    contact::{ContactType, IdentityPublicData, LightIdentityPublicData},
+    contact::{ContactType, IdentityPublicData},
     identity::{Identity, IdentityWithAll},
-    util::BcrKeys,
+    util::{BcrKeys, currency},
 };
 use log::{debug, error};
 use std::collections::HashMap;
@@ -395,7 +396,7 @@ impl BillService {
                         seller,
                         buyer,
                         currency: payment_info.currency,
-                        sum: util::currency::sum_to_string(payment_info.sum),
+                        sum: currency::sum_to_string(payment_info.sum),
                         link_to_pay,
                         address_to_pay,
                         mempool_link_for_address_to_pay,
@@ -439,7 +440,7 @@ impl BillService {
                             payer: bill.drawee.clone(),
                             payee: holder.clone(),
                             currency: bill.currency.clone(),
-                            sum: util::currency::sum_to_string(bill.sum),
+                            sum: currency::sum_to_string(bill.sum),
                             link_to_pay,
                             address_to_pay,
                             mempool_link_for_address_to_pay,
@@ -491,7 +492,7 @@ impl BillService {
                             recourser,
                             recoursee,
                             currency: payment_info.currency,
-                            sum: util::currency::sum_to_string(payment_info.sum),
+                            sum: currency::sum_to_string(payment_info.sum),
                             link_to_pay,
                             address_to_pay,
                             mempool_link_for_address_to_pay,
@@ -560,7 +561,7 @@ impl BillService {
             country_of_payment: bill.country_of_payment,
             city_of_payment: bill.city_of_payment,
             currency: bill.currency,
-            sum: util::currency::sum_to_string(bill.sum),
+            sum: currency::sum_to_string(bill.sum),
             files: bill.files,
             active_notification: None,
         };
@@ -825,86 +826,5 @@ impl BillService {
 
         bill.data.active_notification = active_notification;
         Ok(bill)
-    }
-
-    pub(super) fn get_past_endorsees_for_bill(
-        &self,
-        chain: &BillBlockchain,
-        bill_keys: &BillKeys,
-        current_identity_node_id: &str,
-    ) -> Result<Vec<PastEndorsee>> {
-        let mut result: HashMap<String, PastEndorsee> = HashMap::new();
-
-        let mut found_last_endorsing_block_for_node = false;
-        for block in chain.blocks().iter().rev() {
-            // we ignore recourse blocks, since we're only interested in previous endorsees before
-            // recourse
-            if block.op_code == BillOpCode::Recourse {
-                continue;
-            }
-            if let Ok(Some(holder_from_block)) = block.get_holder_from_block(bill_keys) {
-                // first, we search for the last non-recourse block in which we became holder
-                if holder_from_block.holder.node_id == *current_identity_node_id
-                    && !found_last_endorsing_block_for_node
-                {
-                    found_last_endorsing_block_for_node = true;
-                }
-
-                // we add the holders after ourselves, if they're not in the list already
-                if found_last_endorsing_block_for_node
-                    && holder_from_block.holder.node_id != *current_identity_node_id
-                {
-                    result
-                        .entry(holder_from_block.holder.node_id.clone())
-                        .or_insert(PastEndorsee {
-                            pay_to_the_order_of: holder_from_block.holder.clone().into(),
-                            signed: LightSignedBy {
-                                data: holder_from_block.signer.clone().into(),
-                                signatory: holder_from_block.signatory.map(|s| {
-                                    LightIdentityPublicData {
-                                        t: ContactType::Person,
-                                        name: s.name,
-                                        node_id: s.node_id,
-                                    }
-                                }),
-                            },
-                            signing_timestamp: block.timestamp,
-                            signing_address: holder_from_block.signer.postal_address,
-                        });
-                }
-            }
-        }
-
-        let first_version_bill = chain.get_first_version_bill(bill_keys)?;
-        // If the drawer is not the drawee, the drawer is the first holder, if the drawer is the
-        // payee, they are already in the list
-        if first_version_bill.drawer.node_id != first_version_bill.drawee.node_id {
-            result
-                .entry(first_version_bill.drawer.node_id.clone())
-                .or_insert(PastEndorsee {
-                    pay_to_the_order_of: first_version_bill.drawer.clone().into(),
-                    signed: LightSignedBy {
-                        data: first_version_bill.drawer.clone().into(),
-                        signatory: first_version_bill
-                            .signatory
-                            .map(|s| LightIdentityPublicData {
-                                t: ContactType::Person,
-                                name: s.name,
-                                node_id: s.node_id,
-                            }),
-                    },
-                    signing_timestamp: first_version_bill.signing_timestamp,
-                    signing_address: first_version_bill.drawer.postal_address,
-                });
-        }
-
-        // remove ourselves from the list
-        result.remove(current_identity_node_id);
-
-        // sort by signing timestamp descending
-        let mut list: Vec<PastEndorsee> = result.into_values().collect();
-        list.sort_by(|a, b| b.signing_timestamp.cmp(&a.signing_timestamp));
-
-        Ok(list)
     }
 }

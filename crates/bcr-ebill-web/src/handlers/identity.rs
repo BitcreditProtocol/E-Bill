@@ -8,10 +8,11 @@ use crate::data::{
 };
 use crate::service_context::ServiceContext;
 use bcr_ebill_api::data::{OptionalPostalAddress, identity::IdentityType};
+use bcr_ebill_api::external;
 use bcr_ebill_api::service::Error;
 use bcr_ebill_api::util::date::{format_date_string, now};
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
-use bcr_ebill_api::{external, util};
+use bcr_ebill_api::util::{ValidationError, validate_file_upload_id};
 use log::info;
 use rocket::form::Form;
 use rocket::http::ContentType;
@@ -39,9 +40,7 @@ pub async fn get_file(
         None => None,
         Some(t) => ContentType::parse_flexible(&t),
     }
-    .ok_or(Error::Validation(String::from(
-        "Content Type of the requested file could not be determined",
-    )))?;
+    .ok_or(Error::Validation(ValidationError::InvalidContentType))?;
 
     Ok((content_type, file_bytes))
 }
@@ -104,8 +103,8 @@ pub async fn create_identity(
     let identity = identity_payload.into_inner();
     let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
 
-    util::file::validate_file_upload_id(identity.profile_picture_file_upload_id.as_deref())?;
-    util::file::validate_file_upload_id(identity.identity_document_file_upload_id.as_deref())?;
+    validate_file_upload_id(identity.profile_picture_file_upload_id.as_deref())?;
+    validate_file_upload_id(identity.identity_document_file_upload_id.as_deref())?;
 
     state
         .identity_service
@@ -142,12 +141,8 @@ pub async fn change_identity(
 ) -> Result<Json<SuccessResponse>> {
     let identity_payload = identity_payload.into_inner();
 
-    util::file::validate_file_upload_id(
-        identity_payload.profile_picture_file_upload_id.as_deref(),
-    )?;
-    util::file::validate_file_upload_id(
-        identity_payload.identity_document_file_upload_id.as_deref(),
-    )?;
+    validate_file_upload_id(identity_payload.profile_picture_file_upload_id.as_deref())?;
+    validate_file_upload_id(identity_payload.identity_document_file_upload_id.as_deref())?;
 
     if identity_payload.name.is_none()
         && identity_payload.email.is_none()
@@ -237,10 +232,7 @@ pub async fn switch(
     }
 
     // otherwise, return an error
-    Err(Error::Validation(format!(
-        "The provided node_id: {node_id} is not a valid company id, or personal node_id"
-    ))
-    .into())
+    Err(Error::Validation(ValidationError::UnknownNodeId(node_id.to_owned())).into())
 }
 
 #[utoipa::path(

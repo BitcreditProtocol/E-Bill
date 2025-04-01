@@ -5,9 +5,10 @@ use super::block::{
 };
 use super::{BillOpCode, RecourseWaitingForPayment};
 use super::{OfferToSellWaitingForPayment, RecoursePaymentInfo};
-use crate::bill::BillKeys;
+use crate::bill::{BillKeys, LightSignedBy, PastEndorsee};
 use crate::blockchain::{Block, Blockchain, Error};
 use crate::constants::{PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS};
+use crate::contact::{ContactType, LightIdentityPublicData};
 use crate::util::{self, BcrKeys};
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -244,6 +245,91 @@ impl BillBlockchain {
             }
         }
         Ok(nodes)
+    }
+
+    pub fn get_past_endorsees_for_bill(
+        &self,
+        bill_keys: &BillKeys,
+        current_identity_node_id: &str,
+    ) -> Result<Vec<PastEndorsee>> {
+        let mut result: HashMap<String, PastEndorsee> = HashMap::new();
+
+        let mut found_last_endorsing_block_for_node = false;
+        // we ignore recourse blocks, since we're only interested in previous endorsees before
+        // recourse
+        let holders = self
+            .blocks()
+            .iter()
+            .rev()
+            .filter(|block| block.op_code != BillOpCode::Recourse)
+            .filter_map(|block| {
+                block
+                    .get_holder_from_block(bill_keys)
+                    .unwrap_or(None)
+                    .map(|holder| (block.timestamp, holder))
+            });
+        for (timestamp, holder) in holders {
+            // first, we search for the last non-recourse block in which we became holder
+            if holder.holder.node_id == *current_identity_node_id
+                && !found_last_endorsing_block_for_node
+            {
+                found_last_endorsing_block_for_node = true;
+                continue;
+            }
+
+            // we add the holders before ourselves, if they're not in the list already
+            if found_last_endorsing_block_for_node
+                && holder.holder.node_id != *current_identity_node_id
+            {
+                result
+                    .entry(holder.holder.node_id.clone())
+                    .or_insert(PastEndorsee {
+                        pay_to_the_order_of: holder.holder.clone().into(),
+                        signed: LightSignedBy {
+                            data: holder.signer.clone().into(),
+                            signatory: holder.signatory.map(|s| LightIdentityPublicData {
+                                t: ContactType::Person,
+                                name: s.name,
+                                node_id: s.node_id,
+                            }),
+                        },
+                        signing_timestamp: timestamp,
+                        signing_address: holder.signer.postal_address,
+                    });
+            }
+        }
+
+        let first_version_bill = self.get_first_version_bill(bill_keys)?;
+        // If the drawer is not the drawee, the drawer is the first holder, if the drawer is the
+        // payee, they are already in the list
+        if first_version_bill.drawer.node_id != first_version_bill.drawee.node_id {
+            result
+                .entry(first_version_bill.drawer.node_id.clone())
+                .or_insert(PastEndorsee {
+                    pay_to_the_order_of: first_version_bill.drawer.clone().into(),
+                    signed: LightSignedBy {
+                        data: first_version_bill.drawer.clone().into(),
+                        signatory: first_version_bill
+                            .signatory
+                            .map(|s| LightIdentityPublicData {
+                                t: ContactType::Person,
+                                name: s.name,
+                                node_id: s.node_id,
+                            }),
+                    },
+                    signing_timestamp: first_version_bill.signing_timestamp,
+                    signing_address: first_version_bill.drawer.postal_address,
+                });
+        }
+
+        // remove ourselves from the list
+        result.remove(current_identity_node_id);
+
+        // sort by signing timestamp descending
+        let mut list: Vec<PastEndorsee> = result.into_values().collect();
+        list.sort_by(|a, b| b.signing_timestamp.cmp(&a.signing_timestamp));
+
+        Ok(list)
     }
 }
 

@@ -1,25 +1,28 @@
 use async_trait::async_trait;
-use bcr_ebill_api::data::{
-    File, GeneralSearchFilterItemType, GeneralSearchResult, OptionalPostalAddress, PostalAddress,
-    UploadFileResult,
-    bill::{
-        BillAcceptanceStatus, BillCombinedBitcoinKey, BillCurrentWaitingState, BillData,
-        BillParticipants, BillPaymentStatus, BillRecourseStatus, BillSellStatus, BillStatus,
-        BillWaitingForPaymentState, BillWaitingForRecourseState, BillWaitingForSellState,
-        BillsFilterRole, BitcreditBillResult, Endorsement, LightBitcreditBillResult, LightSignedBy,
-        PastEndorsee,
-    },
-    company::Company,
-    contact::{
-        Contact, ContactType, IdentityPublicData, LightIdentityPublicData,
-        LightIdentityPublicDataWithAddress,
-    },
-    identity::{Identity, IdentityType},
-    notification::{Notification, NotificationType},
-};
 use bcr_ebill_api::service::Error;
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
 use bcr_ebill_api::util::{BcrKeys, date::DateTimeUtc};
+use bcr_ebill_api::{
+    data::{
+        File, GeneralSearchFilterItemType, GeneralSearchResult, OptionalPostalAddress,
+        PostalAddress, UploadFileResult,
+        bill::{
+            BillAcceptanceStatus, BillCombinedBitcoinKey, BillCurrentWaitingState, BillData,
+            BillParticipants, BillPaymentStatus, BillRecourseStatus, BillSellStatus, BillStatus,
+            BillWaitingForPaymentState, BillWaitingForRecourseState, BillWaitingForSellState,
+            BillsFilterRole, BitcreditBillResult, Endorsement, LightBitcreditBillResult,
+            LightSignedBy, PastEndorsee,
+        },
+        company::Company,
+        contact::{
+            Contact, ContactType, IdentityPublicData, LightIdentityPublicData,
+            LightIdentityPublicDataWithAddress,
+        },
+        identity::{Identity, IdentityType},
+        notification::{Notification, NotificationType},
+    },
+    util::ValidationError,
+};
 use rocket::FromForm;
 use rocket::fs::TempFile;
 use serde::{Deserialize, Serialize};
@@ -677,9 +680,7 @@ impl TryFrom<u64> for ContactTypeWeb {
         match value {
             0 => Ok(ContactTypeWeb::Person),
             1 => Ok(ContactTypeWeb::Company),
-            _ => Err(Error::Validation(format!(
-                "Invalid contact type found: {value}"
-            ))),
+            _ => Err(Error::Validation(ValidationError::InvalidContactType)),
         }
     }
 }

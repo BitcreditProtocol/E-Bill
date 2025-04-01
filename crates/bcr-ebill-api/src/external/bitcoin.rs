@@ -1,6 +1,6 @@
-use crate::{get_config, util};
+use crate::get_config;
 use async_trait::async_trait;
-use bcr_ebill_core::ServiceTraitBounds;
+use bcr_ebill_core::{ServiceTraitBounds, util};
 use bitcoin::{Network, secp256k1::Scalar};
 use log::debug;
 use serde::Deserialize;

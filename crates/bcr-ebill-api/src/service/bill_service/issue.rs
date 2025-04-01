@@ -2,7 +2,7 @@ use super::{BillAction, BillServiceApi, Result, error::Error, service::BillServi
 use crate::util;
 use bcr_ebill_core::{
     File,
-    bill::{BillKeys, BillType, BitcreditBill},
+    bill::{BillKeys, BillType, BitcreditBill, validation::validate_bill_issue},
     blockchain::{
         Blockchain,
         bill::{BillBlockchain, block::BillIssueBlockData},
@@ -35,7 +35,7 @@ impl BillService {
         timestamp: u64,
     ) -> Result<BitcreditBill> {
         debug!("issuing bill with type {t}");
-        let (sum, bill_type) = self.validate_bill_issue(
+        let (sum, bill_type) = validate_bill_issue(
             &sum,
             &file_upload_ids,
             &issue_date,
@@ -51,9 +51,7 @@ impl BillService {
                 let public_data_drawee = match self.contact_store.get(&drawee).await {
                     Ok(Some(drawee)) => drawee.into(),
                     Ok(None) | Err(_) => {
-                        return Err(Error::Validation(String::from(
-                            "Can not get drawee identity from contacts.",
-                        )));
+                        return Err(Error::DraweeNotInContacts);
                     }
                 };
 
@@ -68,9 +66,7 @@ impl BillService {
                 let public_data_payee = match self.contact_store.get(&payee).await {
                     Ok(Some(drawee)) => drawee.into(),
                     Ok(None) | Err(_) => {
-                        return Err(Error::Validation(String::from(
-                            "Can not get payee identity from contacts.",
-                        )));
+                        return Err(Error::PayeeNotInContacts);
                     }
                 };
 
@@ -81,18 +77,14 @@ impl BillService {
                 let public_data_drawee = match self.contact_store.get(&drawee).await {
                     Ok(Some(drawee)) => drawee.into(),
                     Ok(None) | Err(_) => {
-                        return Err(Error::Validation(String::from(
-                            "Can not get drawee identity from contacts.",
-                        )));
+                        return Err(Error::DraweeNotInContacts);
                     }
                 };
 
                 let public_data_payee = match self.contact_store.get(&payee).await {
                     Ok(Some(drawee)) => drawee.into(),
                     Ok(None) | Err(_) => {
-                        return Err(Error::Validation(String::from(
-                            "Can not get payee identity from contacts.",
-                        )));
+                        return Err(Error::PayeeNotInContacts);
                     }
                 };
 

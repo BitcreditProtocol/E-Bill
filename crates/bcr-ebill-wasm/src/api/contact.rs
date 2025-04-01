@@ -5,8 +5,9 @@ use crate::data::{BinaryFileResponse, FromWeb, IntoWeb, UploadFile};
 use crate::{Result, context::get_ctx};
 use bcr_ebill_api::data::contact::ContactType;
 use bcr_ebill_api::data::{OptionalPostalAddress, PostalAddress};
+use bcr_ebill_api::service;
 use bcr_ebill_api::util::file::{UploadFileHandler, detect_content_type_for_bytes};
-use bcr_ebill_api::{service, util};
+use bcr_ebill_api::util::{ValidationError, validate_file_upload_id};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -36,10 +37,9 @@ impl Contact {
             .await
             .map_err(|_| service::Error::NotFound)?;
 
-        let content_type =
-            detect_content_type_for_bytes(&file_bytes).ok_or(service::Error::Validation(
-                String::from("Content Type of the requested file could not be determined"),
-            ))?;
+        let content_type = detect_content_type_for_bytes(&file_bytes).ok_or(
+            service::Error::Validation(ValidationError::InvalidContentType),
+        )?;
 
         let res = serde_wasm_bindgen::to_value(&BinaryFileResponse {
             data: file_bytes,
@@ -103,10 +103,8 @@ impl Contact {
         #[wasm_bindgen(unchecked_param_type = "NewContactPayload")] payload: JsValue,
     ) -> Result<JsValue> {
         let contact_payload: NewContactPayload = serde_wasm_bindgen::from_value(payload)?;
-        util::file::validate_file_upload_id(contact_payload.avatar_file_upload_id.as_deref())?;
-        util::file::validate_file_upload_id(
-            contact_payload.proof_document_file_upload_id.as_deref(),
-        )?;
+        validate_file_upload_id(contact_payload.avatar_file_upload_id.as_deref())?;
+        validate_file_upload_id(contact_payload.proof_document_file_upload_id.as_deref())?;
 
         let contact = get_ctx()
             .contact_service
@@ -134,10 +132,8 @@ impl Contact {
         #[wasm_bindgen(unchecked_param_type = "EditContactPayload")] payload: JsValue,
     ) -> Result<()> {
         let contact_payload: EditContactPayload = serde_wasm_bindgen::from_value(payload)?;
-        util::file::validate_file_upload_id(contact_payload.avatar_file_upload_id.as_deref())?;
-        util::file::validate_file_upload_id(
-            contact_payload.proof_document_file_upload_id.as_deref(),
-        )?;
+        validate_file_upload_id(contact_payload.avatar_file_upload_id.as_deref())?;
+        validate_file_upload_id(contact_payload.proof_document_file_upload_id.as_deref())?;
         get_ctx()
             .contact_service
             .update_contact(

@@ -3,7 +3,7 @@ use crate::data::{
     File,
     bill::{
         BillCombinedBitcoinKey, BillKeys, BillsBalanceOverview, BillsFilterRole, BitcreditBill,
-        BitcreditBillResult, Endorsement, LightBitcreditBillResult, PastEndorsee, RecourseReason,
+        BitcreditBillResult, Endorsement, LightBitcreditBillResult, PastEndorsee,
     },
     contact::IdentityPublicData,
     identity::Identity,
@@ -11,6 +11,7 @@ use crate::data::{
 use crate::util::BcrKeys;
 use async_trait::async_trait;
 use bcr_ebill_core::ServiceTraitBounds;
+use bcr_ebill_core::bill::BillAction;
 
 pub use error::Error;
 #[cfg(test)]
@@ -28,24 +29,6 @@ mod propagation;
 pub mod service;
 #[cfg(test)]
 pub mod test_utils;
-mod validation;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BillAction {
-    Accept,
-    RequestToPay(String), // currency
-    RequestAcceptance,
-    RequestRecourse(IdentityPublicData, RecourseReason), // recoursee, recourse reason
-    Recourse(IdentityPublicData, u64, String),           // recoursee, sum, currency
-    Mint(IdentityPublicData, u64, String),               // mint, sum, currency
-    OfferToSell(IdentityPublicData, u64, String),        // buyer, sum, currency
-    Sell(IdentityPublicData, u64, String, String),       // buyer, sum, currency, payment_address
-    Endorse(IdentityPublicData),                         // endorsee
-    RejectAcceptance,
-    RejectPayment,
-    RejectBuying,
-    RejectPaymentForRecourse,
-}
 
 #[cfg(test)]
 impl ServiceTraitBounds for MockBillServiceApi {}
@@ -189,7 +172,11 @@ pub mod tests {
         util,
     };
     use bcr_ebill_core::{
-        bill::{BillAcceptanceStatus, BillPaymentStatus, BillRecourseStatus, BillSellStatus},
+        ValidationError,
+        bill::{
+            BillAcceptanceStatus, BillPaymentStatus, BillRecourseStatus, BillSellStatus,
+            RecourseReason,
+        },
         blockchain::{
             Blockchain,
             bill::{
@@ -2671,7 +2658,7 @@ pub mod tests {
         match res {
             Ok(_) => panic!("expected an error"),
             Err(e) => match e {
-                Error::BillIsOfferedToSellAndWaitingForPayment => (),
+                Error::Validation(ValidationError::BillIsOfferedToSellAndWaitingForPayment) => (),
                 _ => panic!("expected a different error"),
             },
         };

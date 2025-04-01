@@ -1,6 +1,8 @@
 use super::Result;
 use bcr_ebill_api::{
-    data::GeneralSearchFilterItemType, service::Error, util::file::detect_content_type_for_bytes,
+    data::GeneralSearchFilterItemType,
+    service::Error,
+    util::{ValidationError, file::detect_content_type_for_bytes},
 };
 use wasm_bindgen::prelude::*;
 
@@ -50,9 +52,7 @@ impl General {
     #[wasm_bindgen(unchecked_return_type = "BinaryFileResponse")]
     pub async fn temp_file(&self, file_upload_id: &str) -> Result<JsValue> {
         if file_upload_id.is_empty() {
-            return Err(
-                Error::Validation(format!("Invalid file upload id: {}", file_upload_id)).into(),
-            );
+            return Err(Error::Validation(ValidationError::InvalidFileUploadId).into());
         }
         match get_ctx()
             .file_upload_service
@@ -60,10 +60,8 @@ impl General {
             .await
         {
             Ok(Some((file_name, file_bytes))) => {
-                let content_type =
-                    detect_content_type_for_bytes(&file_bytes).ok_or(Error::Validation(
-                        String::from("Content Type of the requested file could not be determined"),
-                    ))?;
+                let content_type = detect_content_type_for_bytes(&file_bytes)
+                    .ok_or(Error::Validation(ValidationError::InvalidContentType))?;
 
                 let res = serde_wasm_bindgen::to_value(&BinaryFileResponse {
                     data: file_bytes,
@@ -79,9 +77,7 @@ impl General {
     #[wasm_bindgen(unchecked_return_type = "OverviewResponse")]
     pub async fn overview(&self, currency: &str) -> Result<JsValue> {
         if !VALID_CURRENCIES.contains(&currency) {
-            return Err(
-                Error::Validation(format!("Currency with code '{}' not found", currency)).into(),
-            );
+            return Err(Error::Validation(ValidationError::InvalidCurrency).into());
         }
         let result = get_ctx()
             .bill_service

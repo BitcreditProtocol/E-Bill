@@ -19,4 +19,8 @@ pub enum Error {
     /// all errors originating from the bcr API notification service layer
     #[error("Bill Service error: {0}")]
     NotificationService(#[from] bcr_ebill_transport::Error),
+
+    /// all errors originating from validation
+    #[error("Validation error: {0}")]
+    Validation(#[from] bcr_ebill_api::util::ValidationError),
 }

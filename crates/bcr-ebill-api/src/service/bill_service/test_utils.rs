@@ -224,6 +224,7 @@ pub fn get_service(mut ctx: MockBillContext) -> BillService {
     ctx.bill_store
         .expect_save_bill_to_cache()
         .returning(|_, _| Ok(()));
+    ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
     ctx.identity_store
         .expect_get()
         .returning(|| Ok(get_baseline_identity().identity));

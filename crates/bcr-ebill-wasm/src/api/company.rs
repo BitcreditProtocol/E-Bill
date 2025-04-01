@@ -4,8 +4,9 @@ use bcr_ebill_api::{
     external,
     service::Error,
     util::{
-        self,
+        ValidationError,
         file::{UploadFileHandler, detect_content_type_for_bytes},
+        validate_file_upload_id,
     },
 };
 use wasm_bindgen::prelude::*;
@@ -48,9 +49,8 @@ impl Company {
             .map_err(|_| Error::NotFound)?;
         get_ctx().contact_service.get_contact(id).await?; // check if contact exists
 
-        let content_type = detect_content_type_for_bytes(&file_bytes).ok_or(Error::Validation(
-            String::from("Content Type of the requested file could not be determined"),
-        ))?;
+        let content_type = detect_content_type_for_bytes(&file_bytes)
+            .ok_or(Error::Validation(ValidationError::InvalidContentType))?;
 
         let res = serde_wasm_bindgen::to_value(&BinaryFileResponse {
             data: file_bytes,
@@ -119,8 +119,8 @@ impl Company {
         let company_payload: CreateCompanyPayload = serde_wasm_bindgen::from_value(payload)?;
         let timestamp = external::time::TimeApi::get_atomic_time().await.timestamp;
 
-        util::file::validate_file_upload_id(company_payload.logo_file_upload_id.as_deref())?;
-        util::file::validate_file_upload_id(
+        validate_file_upload_id(company_payload.logo_file_upload_id.as_deref())?;
+        validate_file_upload_id(
             company_payload
                 .proof_of_registration_file_upload_id
                 .as_deref(),
@@ -152,8 +152,8 @@ impl Company {
         #[wasm_bindgen(unchecked_param_type = "EditCompanyPayload")] payload: JsValue,
     ) -> Result<()> {
         let company_payload: EditCompanyPayload = serde_wasm_bindgen::from_value(payload)?;
-        util::file::validate_file_upload_id(company_payload.logo_file_upload_id.as_deref())?;
-        util::file::validate_file_upload_id(
+        validate_file_upload_id(company_payload.logo_file_upload_id.as_deref())?;
+        validate_file_upload_id(
             company_payload
                 .proof_of_registration_file_upload_id
                 .as_deref(),

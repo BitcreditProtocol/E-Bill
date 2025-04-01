@@ -85,7 +85,7 @@ pub async fn get_temp_file(
 ) -> Result<(ContentType, Vec<u8>)> {
     if file_upload_id.is_empty() {
         return Err(
-            Error::Validation(format!("Invalid file upload id: {}", file_upload_id)).into(),
+            Error::Validation(bcr_ebill_api::util::ValidationError::InvalidFileUploadId).into(),
         );
     }
     match state
@@ -98,9 +98,9 @@ pub async fn get_temp_file(
                 None => None,
                 Some(t) => ContentType::parse_flexible(&t),
             }
-            .ok_or(Error::Validation(String::from(
-                "Content Type of the requested file could not be determined",
-            )))?;
+            .ok_or(Error::Validation(
+                bcr_ebill_api::util::ValidationError::InvalidContentType,
+            ))?;
             Ok((content_type, file_bytes))
         }
         _ => Err(Error::NotFound.into()),
@@ -114,7 +114,7 @@ pub async fn overview(
 ) -> Result<Json<OverviewResponse>> {
     if !VALID_CURRENCIES.contains(&currency) {
         return Err(
-            Error::Validation(format!("Currency with code '{}' not found", currency)).into(),
+            Error::Validation(bcr_ebill_api::util::ValidationError::InvalidCurrency).into(),
         );
     }
     let result = state
@@ -177,6 +177,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for crate::error::Error {
             crate::error::Error::Service(e) => ServiceError(e).respond_to(req),
             crate::error::Error::BillService(e) => BillServiceError(e).respond_to(req),
             crate::error::Error::NotificationService(e) => ServiceError(e.into()).respond_to(req),
+            crate::error::Error::Validation(e) => ValidationError(e).respond_to(req),
         }
     }
 }
@@ -206,7 +207,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for ServiceError {
             }
             Error::NotificationService(_) => Status::InternalServerError.respond_to(req),
             Error::BillService(e) => BillServiceError(e).respond_to(req),
-            Error::Validation(msg) => build_validation_response(msg),
+            Error::Validation(e) => ValidationError(e).respond_to(req),
             // If an external API errors, we can only tell the caller that something went wrong on
             // our end
             Error::ExternalApi(e) => {
@@ -240,34 +241,14 @@ pub struct BillServiceError(bill_service::Error);
 impl<'r, 'o: 'r> Responder<'r, 'o> for BillServiceError {
     fn respond_to(self, req: &rocket::Request) -> rocket::response::Result<'o> {
         match self.0 {
-            bill_service::Error::RequestAlreadyExpired
-            | bill_service::Error::BillAlreadyAccepted
-            | bill_service::Error::BillWasNotOfferedToSell
-            | bill_service::Error::BillWasNotRequestedToPay
-            | bill_service::Error::BillWasNotRequestedToAccept
-            | bill_service::Error::BillWasNotRequestedToRecourse
-            | bill_service::Error::BillIsNotOfferToSellWaitingForPayment
-            | bill_service::Error::BillIsOfferedToSellAndWaitingForPayment
-            | bill_service::Error::BillIsRequestedToPay
-            | bill_service::Error::BillIsInRecourseAndWaitingForPayment
-            | bill_service::Error::BillRequestToAcceptDidNotExpireAndWasNotRejected
-            | bill_service::Error::BillRequestToPayDidNotExpireAndWasNotRejected
-            | bill_service::Error::BillIsNotRequestedToRecourseAndWaitingForPayment
-            | bill_service::Error::BillSellDataInvalid
-            | bill_service::Error::BillAlreadyPaid
-            | bill_service::Error::BillNotAccepted
-            | bill_service::Error::BillAlreadyRequestedToAccept
-            | bill_service::Error::BillIsRequestedToPayAndWaitingForPayment
-            | bill_service::Error::BillRecourseDataInvalid
-            | bill_service::Error::RecourseeNotPastHolder
-            | bill_service::Error::CallerIsNotDrawee
-            | bill_service::Error::CallerIsNotBuyer
-            | bill_service::Error::CallerIsNotRecoursee
-            | bill_service::Error::RequestAlreadyRejected
-            | bill_service::Error::CallerIsNotHolder
-            | bill_service::Error::NoFileForFileUploadId
-            | bill_service::Error::InvalidOperation
-            | bill_service::Error::InvalidBillType => {
+            bill_service::Error::NoFileForFileUploadId
+            | bill_service::Error::DraweeNotInContacts
+            | bill_service::Error::BuyerNotInContacts
+            | bill_service::Error::EndorseeNotInContacts
+            | bill_service::Error::MintNotInContacts
+            | bill_service::Error::RecourseeNotInContacts
+            | bill_service::Error::PayeeNotInContacts
+            | bill_service::Error::InvalidOperation => {
                 let body =
                     ErrorResponse::new("bad_request", self.0.to_string(), 400).to_json_string();
                 Response::build()
@@ -276,7 +257,9 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for BillServiceError {
                     .sized_body(body.len(), Cursor::new(body))
                     .ok()
             }
-            bill_service::Error::Validation(msg) => build_validation_response(msg),
+            bill_service::Error::Validation(validation_err) => {
+                ValidationError(validation_err).respond_to(req)
+            }
             bill_service::Error::NotFound => {
                 let body =
                     ErrorResponse::new("not_found", "not found".to_string(), 404).to_json_string();
@@ -314,12 +297,69 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for BillServiceError {
     }
 }
 
-fn build_validation_response<'o>(msg: String) -> rocket::response::Result<'o> {
-    let err_resp = ErrorResponse::new("validation_error", msg, 400);
-    let body = err_resp.to_json_string();
-    Response::build()
-        .status(Status::BadRequest)
-        .header(ContentType::JSON)
-        .sized_body(body.len(), Cursor::new(body))
-        .ok()
+pub struct ValidationError(bcr_ebill_api::util::ValidationError);
+
+impl<'r, 'o: 'r> Responder<'r, 'o> for ValidationError {
+    fn respond_to(self, req: &rocket::Request) -> rocket::response::Result<'o> {
+        match self.0 {
+            bcr_ebill_api::util::ValidationError::RequestAlreadyExpired
+                | bcr_ebill_api::util::ValidationError::InvalidSum
+                | bcr_ebill_api::util::ValidationError::InvalidCurrency
+                | bcr_ebill_api::util::ValidationError::InvalidDate
+                | bcr_ebill_api::util::ValidationError::InvalidFileUploadId
+                | bcr_ebill_api::util::ValidationError::InvalidBillType
+                | bcr_ebill_api::util::ValidationError::InvalidContentType
+                | bcr_ebill_api::util::ValidationError::InvalidContactType
+                | bcr_ebill_api::util::ValidationError::DraweeCantBePayee
+                | bcr_ebill_api::util::ValidationError::BillAlreadyAccepted
+                | bcr_ebill_api::util::ValidationError::BillWasNotOfferedToSell
+                | bcr_ebill_api::util::ValidationError::BillWasNotRequestedToPay
+                | bcr_ebill_api::util::ValidationError::BillWasNotRequestedToAccept
+                | bcr_ebill_api::util::ValidationError::BillWasNotRequestedToRecourse
+                | bcr_ebill_api::util::ValidationError::BillIsNotOfferToSellWaitingForPayment
+                | bcr_ebill_api::util::ValidationError::BillIsOfferedToSellAndWaitingForPayment
+                | bcr_ebill_api::util::ValidationError::BillIsRequestedToPay
+                | bcr_ebill_api::util::ValidationError::BillIsInRecourseAndWaitingForPayment
+                | bcr_ebill_api::util::ValidationError::BillRequestToAcceptDidNotExpireAndWasNotRejected
+                | bcr_ebill_api::util::ValidationError::BillRequestToPayDidNotExpireAndWasNotRejected
+                | bcr_ebill_api::util::ValidationError::BillIsNotRequestedToRecourseAndWaitingForPayment
+                | bcr_ebill_api::util::ValidationError::BillSellDataInvalid
+                | bcr_ebill_api::util::ValidationError::BillAlreadyPaid
+                | bcr_ebill_api::util::ValidationError::BillNotAccepted
+                | bcr_ebill_api::util::ValidationError::BillAlreadyRequestedToAccept
+                | bcr_ebill_api::util::ValidationError::BillIsRequestedToPayAndWaitingForPayment
+                | bcr_ebill_api::util::ValidationError::BillRecourseDataInvalid
+                | bcr_ebill_api::util::ValidationError::RecourseeNotPastHolder
+                | bcr_ebill_api::util::ValidationError::CallerIsNotDrawee
+                | bcr_ebill_api::util::ValidationError::CallerIsNotBuyer
+                | bcr_ebill_api::util::ValidationError::CallerIsNotRecoursee
+                | bcr_ebill_api::util::ValidationError::RequestAlreadyRejected
+                | bcr_ebill_api::util::ValidationError::BackupNotSupported
+                | bcr_ebill_api::util::ValidationError::UnknownNodeId(_)
+                | bcr_ebill_api::util::ValidationError::InvalidFileName(_)
+                | bcr_ebill_api::util::ValidationError::FileIsTooBig(_)
+                | bcr_ebill_api::util::ValidationError::InvalidSecp256k1Key(_)
+                | bcr_ebill_api::util::ValidationError::NotASignatory(_)
+                | bcr_ebill_api::util::ValidationError::SignatoryAlreadySignatory(_)
+                | bcr_ebill_api::util::ValidationError::SignatoryNotInContacts(_)
+                | bcr_ebill_api::util::ValidationError::CantRemoveLastSignatory
+                | bcr_ebill_api::util::ValidationError::DrawerIsNotBillIssuer
+                | bcr_ebill_api::util::ValidationError::CallerMustBeSignatory
+                | bcr_ebill_api::util::ValidationError::CallerIsNotHolder
+
+                => {
+                    let body =
+                        ErrorResponse::new("bad_request", self.0.to_string(), 400).to_json_string();
+                    Response::build()
+                        .status(Status::BadRequest)
+                        .header(ContentType::JSON)
+                        .sized_body(body.len(), Cursor::new(body))
+                        .ok()
+                },
+            bcr_ebill_api::util::ValidationError::Blockchain(e) => {
+                error!("{e}");
+                Status::InternalServerError.respond_to(req)
+            }
+        }
+    }
 }

@@ -39,6 +39,7 @@ impl BillService {
         let bill_id = bill.id.clone();
         let signing_keys = self.get_bill_signing_keys(signer_public_data, signer_keys, identity);
         let previous_block = blockchain.get_latest_block();
+
         let block = match bill_action {
             BillAction::Accept => {
                 BillBlock::create_block_for_accept(

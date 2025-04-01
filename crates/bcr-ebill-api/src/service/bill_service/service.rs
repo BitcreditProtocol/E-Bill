@@ -25,11 +25,13 @@ use crate::util::BcrKeys;
 use crate::{external, util};
 use async_trait::async_trait;
 use bcr_ebill_core::ServiceTraitBounds;
+use bcr_ebill_core::bill::validation::validate_bill_action;
 use bcr_ebill_core::constants::{
     ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS,
 };
 use bcr_ebill_core::contact::Contact;
 use bcr_ebill_core::notification::ActionType;
+use bcr_ebill_core::util::currency;
 use bcr_ebill_transport::NotificationServiceApi;
 use log::{debug, error, info};
 use std::collections::{HashMap, HashSet};
@@ -231,7 +233,7 @@ impl BillServiceApi for BillService {
         let mut contingent_sum = 0;
 
         for bill in bills {
-            if let Ok(sum) = util::currency::parse_sum(&bill.data.sum) {
+            if let Ok(sum) = currency::parse_sum(&bill.data.sum) {
                 if let Some(bill_role) = bill.get_bill_role_for_node_id(current_identity_node_id) {
                     match bill_role {
                         BillRole::Payee => payee_sum += sum,
@@ -244,13 +246,13 @@ impl BillServiceApi for BillService {
 
         Ok(BillsBalanceOverview {
             payee: BillsBalance {
-                sum: util::currency::sum_to_string(payee_sum),
+                sum: currency::sum_to_string(payee_sum),
             },
             payer: BillsBalance {
-                sum: util::currency::sum_to_string(payer_sum),
+                sum: currency::sum_to_string(payer_sum),
             },
             contingent: BillsBalance {
-                sum: util::currency::sum_to_string(contingent_sum),
+                sum: currency::sum_to_string(contingent_sum),
             },
         })
     }
@@ -555,15 +557,17 @@ impl BillServiceApi for BillService {
         let bill = self
             .get_last_version_bill(&blockchain, &bill_keys, &identity.identity, &contacts)
             .await?;
+        let is_paid = self.store.is_paid(bill_id).await?;
 
         // validate
-        self.validate_bill_action(
+        validate_bill_action(
             &blockchain,
             &bill,
             &bill_keys,
             timestamp,
             &signer_public_data.node_id,
             &bill_action,
+            is_paid,
         )
         .await?;
 
@@ -698,7 +702,8 @@ impl BillServiceApi for BillService {
             return Err(Error::NotFound);
         }
 
-        self.get_past_endorsees_for_bill(&chain, &bill_keys, current_identity_node_id)
+        let res = chain.get_past_endorsees_for_bill(&bill_keys, current_identity_node_id)?;
+        Ok(res)
     }
 
     async fn get_endorsements(
