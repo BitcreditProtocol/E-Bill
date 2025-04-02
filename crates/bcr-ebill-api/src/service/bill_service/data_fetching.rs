@@ -2,6 +2,7 @@ use crate::util;
 
 use super::service::BillService;
 use super::{Error, Result};
+use bcr_ebill_core::bill::validation::get_deadline_base_for_req_to_pay;
 use bcr_ebill_core::constants::RECOURSE_DEADLINE_SECONDS;
 use bcr_ebill_core::contact::Contact;
 use bcr_ebill_core::{
@@ -236,10 +237,12 @@ impl BillService {
             if chain.block_with_operation_code_exists(BillOpCode::RejectToPay) {
                 rejected_to_pay = true;
             }
+            let deadline_base =
+                get_deadline_base_for_req_to_pay(req_to_pay_block.timestamp, &bill.maturity_date)?;
             if !paid
                 && !rejected_to_pay
                 && util::date::check_if_deadline_has_passed(
-                    req_to_pay_block.timestamp,
+                    deadline_base,
                     current_timestamp,
                     PAYMENT_DEADLINE_SECONDS,
                 )
@@ -409,14 +412,8 @@ impl BillService {
                 if paid {
                     // it's paid - we're not waiting anymore
                     None
-                } else if util::date::check_if_deadline_has_passed(
-                    last_block.timestamp,
-                    current_timestamp,
-                    PAYMENT_DEADLINE_SECONDS,
-                ) {
+                } else if request_to_pay_timed_out {
                     // it timed out, we're not waiting anymore
-                    request_to_pay_timed_out = true;
-                    requested_to_pay = true;
                     None
                 } else {
                     // we're waiting, collect data
@@ -579,7 +576,7 @@ impl BillService {
         &self,
         bill: &BitcreditBillResult,
         current_timestamp: u64,
-    ) -> bool {
+    ) -> Result<bool> {
         let mut invalidate_and_recalculate = false;
         let acceptance = &bill.status.acceptance;
         if acceptance.requested_to_accept && !acceptance.accepted && !acceptance.rejected_to_accept
@@ -598,8 +595,12 @@ impl BillService {
         let payment = &bill.status.payment;
         if payment.requested_to_pay && !payment.paid && !payment.rejected_to_pay {
             if let Some(time_of_request_to_pay) = payment.time_of_request_to_pay {
-                if util::date::check_if_deadline_has_passed(
+                let deadline_base = get_deadline_base_for_req_to_pay(
                     time_of_request_to_pay,
+                    &bill.data.maturity_date,
+                )?;
+                if util::date::check_if_deadline_has_passed(
+                    deadline_base,
                     current_timestamp,
                     PAYMENT_DEADLINE_SECONDS,
                 ) {
@@ -638,7 +639,7 @@ impl BillService {
                 }
             }
         }
-        invalidate_and_recalculate
+        Ok(invalidate_and_recalculate)
     }
 
     pub(super) async fn extend_bill_identities_from_contacts_or_identity(
@@ -787,7 +788,7 @@ impl BillService {
 
                 // check requests for being expired - if an active req to
                 // accept/pay/recourse/sell is expired, we need to recalculate the bill
-                if self.check_requests_for_expiration(&bill, current_timestamp) {
+                if self.check_requests_for_expiration(&bill, current_timestamp)? {
                     debug!(
                         "Bill cache hit, but needs to recalculate because of request deadline {bill_id} - recalculating"
                     );

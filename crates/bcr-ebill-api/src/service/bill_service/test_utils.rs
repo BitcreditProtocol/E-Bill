@@ -146,11 +146,11 @@ pub fn get_baseline_bill(bill_id: &str) -> BitcreditBill {
 pub fn get_genesis_chain(bill: Option<BitcreditBill>) -> BillBlockchain {
     let bill = bill.unwrap_or(get_baseline_bill("some id"));
     BillBlockchain::new(
-        &BillIssueBlockData::from(bill, None, 1731593928),
+        &BillIssueBlockData::from(bill, None, 1731593920),
         get_baseline_identity().key_pair,
         None,
         BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
-        1731593928,
+        1731593920,
     )
     .unwrap()
 }

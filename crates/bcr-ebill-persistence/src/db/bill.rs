@@ -1105,13 +1105,17 @@ pub mod tests {
         let store = get_store(db.clone()).await;
         let bill_id = "1234";
         let first_block_request_to_accept = get_first_block(bill_id);
+        let first_block_ts = first_block_request_to_accept.timestamp;
         chain_store
             .add_block(bill_id, &first_block_request_to_accept)
             .await
             .expect("block could not be added");
 
-        let second_block_request_to_accept =
-            request_to_accept_block(bill_id, 1000, &first_block_request_to_accept);
+        let second_block_request_to_accept = request_to_accept_block(
+            bill_id,
+            first_block_ts + 1000,
+            &first_block_request_to_accept,
+        );
 
         chain_store
             .add_block(bill_id, &second_block_request_to_accept)
@@ -1124,8 +1128,11 @@ pub mod tests {
             .add_block(bill_id_pay, &first_block_request_to_pay)
             .await
             .expect("block could not be added");
-        let second_block_request_to_pay =
-            request_to_pay_block(bill_id_pay, 1500, &first_block_request_to_pay);
+        let second_block_request_to_pay = request_to_pay_block(
+            bill_id_pay,
+            first_block_ts + 1500,
+            &first_block_request_to_pay,
+        );
 
         chain_store
             .add_block(bill_id_pay, &second_block_request_to_pay)
@@ -1143,7 +1150,7 @@ pub mod tests {
 
         // should return none as all are to old
         let res = store
-            .get_bill_ids_with_op_codes_since(all, 2000)
+            .get_bill_ids_with_op_codes_since(all, first_block_ts + 2000)
             .await
             .expect("could not get bill ids");
         assert_eq!(res, Vec::<String>::new());
@@ -1185,7 +1192,7 @@ pub mod tests {
             &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
             None,
             &BcrKeys::from_private_key(&get_bill_keys().private_key).unwrap(),
-            1000,
+            ts,
         )
         .expect("block could not be created")
     }
@@ -1209,7 +1216,7 @@ pub mod tests {
             &BcrKeys::from_private_key(TEST_PRIVATE_KEY_SECP).unwrap(),
             None,
             &BcrKeys::from_private_key(&get_bill_keys().private_key).unwrap(),
-            1000,
+            ts,
         )
         .expect("block could not be created")
     }

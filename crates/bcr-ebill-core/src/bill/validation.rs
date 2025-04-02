@@ -3,8 +3,8 @@ use crate::{
     blockchain::{
         Block, Blockchain,
         bill::{
-            BillBlock, BillBlockchain, BillOpCode, OfferToSellWaitingForPayment,
-            RecourseWaitingForPayment, block::BillRequestRecourseBlockData,
+            BillBlockchain, BillOpCode, OfferToSellWaitingForPayment, RecourseWaitingForPayment,
+            block::BillRequestRecourseBlockData,
         },
     },
     constants::{ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS},
@@ -159,7 +159,10 @@ pub async fn validate_bill_action(
                         }
 
                         // only if the request to pay expired or was rejected
-                        let deadline_base = get_deadline_base_for_req_to_pay(req_to_pay, bill)?;
+                        let deadline_base = get_deadline_base_for_req_to_pay(
+                            req_to_pay.timestamp,
+                            &bill.maturity_date,
+                        )?;
                         if !util::date::check_if_deadline_has_passed(
                             deadline_base,
                             timestamp,
@@ -309,7 +312,8 @@ pub async fn validate_bill_action(
             if let Some(req_to_pay) =
                 blockchain.get_last_version_block_with_op_code(BillOpCode::RequestToPay)
             {
-                let deadline_base = get_deadline_base_for_req_to_pay(req_to_pay, bill)?;
+                let deadline_base =
+                    get_deadline_base_for_req_to_pay(req_to_pay.timestamp, &bill.maturity_date)?;
                 if util::date::check_if_deadline_has_passed(
                     deadline_base,
                     timestamp,
@@ -361,11 +365,10 @@ pub async fn validate_bill_action(
 /// maturity date, we take the end of the day of the maturity date, otherwise the req to pay
 /// timestamp
 pub fn get_deadline_base_for_req_to_pay(
-    req_to_pay: &BillBlock,
-    bill: &BitcreditBill,
+    req_to_pay_ts: u64,
+    bill_maturity_date: &str,
 ) -> Result<u64> {
-    let req_to_pay_ts = req_to_pay.timestamp;
-    let maturity_date = util::date::date_string_to_timestamp(&bill.maturity_date, None)?;
+    let maturity_date = util::date::date_string_to_timestamp(bill_maturity_date, None)?;
     let maturity_date_end_of_day = util::date::end_of_day_as_timestamp(maturity_date);
     let mut deadline_base = req_to_pay_ts;
     // requested to pay after maturity date - deadline base is req to pay
@@ -429,7 +432,8 @@ async fn bill_waiting_for_req_to_pay(
         if let Some(req_to_pay) =
             blockchain.get_last_version_block_with_op_code(BillOpCode::RequestToPay)
         {
-            let deadline_base = get_deadline_base_for_req_to_pay(req_to_pay, bill)?;
+            let deadline_base =
+                get_deadline_base_for_req_to_pay(req_to_pay.timestamp, &bill.maturity_date)?;
             if !is_paid
                 && !util::date::check_if_deadline_has_passed(
                     deadline_base,
