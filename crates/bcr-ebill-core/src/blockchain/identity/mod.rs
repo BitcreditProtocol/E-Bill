@@ -161,6 +161,10 @@ impl Block for IdentityBlock {
         &self.public_key
     }
 
+    fn validate(&self) -> bool {
+        true
+    }
+
     fn get_block_data_to_hash(&self) -> Self::BlockDataToHash {
         IdentityBlockDataToHash {
             id: self.id(),

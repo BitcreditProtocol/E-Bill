@@ -270,10 +270,10 @@ mod tests {
     async fn test_add_block() {
         let store = get_store().await;
         let block = CompanyBlock::create_block_for_create(
-            "some_id".to_string(),
+            TEST_PUB_KEY_SECP.to_string(),
             "genesis hash".to_string(),
             &Company {
-                id: "some_id".to_string(),
+                id: TEST_PUB_KEY_SECP.to_string(),
                 name: "Hayek Ltd".to_string(),
                 country_of_registration: Some("AT".to_string()),
                 city_of_registration: Some("Vienna".to_string()),
@@ -291,13 +291,13 @@ mod tests {
             1731593928,
         )
         .unwrap();
-        store.add_block("some_id", &block).await.unwrap();
-        let last_block = store.get_latest_block("some_id").await;
+        store.add_block(TEST_PUB_KEY_SECP, &block).await.unwrap();
+        let last_block = store.get_latest_block(TEST_PUB_KEY_SECP).await;
         assert!(last_block.is_ok());
         assert_eq!(last_block.as_ref().unwrap().id, 1);
 
         let block2 = CompanyBlock::create_block_for_update(
-            "some_id".to_string(),
+            TEST_PUB_KEY_SECP.to_string(),
             &block,
             &CompanyUpdateBlockData {
                 name: None,
@@ -315,8 +315,8 @@ mod tests {
             1731593928,
         )
         .unwrap();
-        store.add_block("some_id", &block2).await.unwrap();
-        let last_block = store.get_latest_block("some_id").await;
+        store.add_block(TEST_PUB_KEY_SECP, &block2).await.unwrap();
+        let last_block = store.get_latest_block(TEST_PUB_KEY_SECP).await;
         assert!(last_block.is_ok());
         assert_eq!(last_block.as_ref().unwrap().id, 2);
     }
@@ -325,10 +325,10 @@ mod tests {
     async fn test_remove_blockchain() {
         let store = get_store().await;
         let block = CompanyBlock::create_block_for_create(
-            "some_id".to_string(),
+            TEST_PUB_KEY_SECP.to_string(),
             "genesis hash".to_string(),
             &Company {
-                id: "some_id".to_string(),
+                id: TEST_PUB_KEY_SECP.to_string(),
                 name: "Hayek Ltd".to_string(),
                 country_of_registration: Some("AT".to_string()),
                 city_of_registration: Some("Vienna".to_string()),
@@ -346,8 +346,8 @@ mod tests {
             1731593928,
         )
         .unwrap();
-        store.add_block("some_id", &block).await.unwrap();
-        let result = store.remove("some_id").await;
+        store.add_block(TEST_PUB_KEY_SECP, &block).await.unwrap();
+        let result = store.remove(TEST_PUB_KEY_SECP).await;
         assert!(result.is_ok());
     }
 }

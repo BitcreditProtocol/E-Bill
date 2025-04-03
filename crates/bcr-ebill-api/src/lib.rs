@@ -3,7 +3,7 @@ use bitcoin::Network;
 use std::sync::OnceLock;
 
 mod blockchain;
-mod constants;
+pub mod constants;
 pub mod data;
 pub mod external;
 mod persistence;

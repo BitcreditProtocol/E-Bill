@@ -1,3 +1,4 @@
+use crate::CONFIG;
 use crate::data::{
     BalanceResponse, CurrenciesResponse, CurrencyResponse, FromWeb, GeneralSearchFilterPayload,
     GeneralSearchResponse, IntoWeb, OverviewBalanceResponse, OverviewResponse, StatusResponse,
@@ -5,10 +6,10 @@ use crate::data::{
 };
 use crate::router::ErrorResponse;
 use crate::service_context::ServiceContext;
-use crate::{CONFIG, constants::VALID_CURRENCIES};
 use bcr_ebill_api::{
     data::GeneralSearchFilterItemType,
     service::{Error, bill_service},
+    util::VALID_CURRENCIES,
     util::file::detect_content_type_for_bytes,
 };
 use bill::get_current_identity_node_id;
@@ -303,8 +304,10 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for ValidationError {
     fn respond_to(self, req: &rocket::Request) -> rocket::response::Result<'o> {
         match self.0 {
             bcr_ebill_api::util::ValidationError::RequestAlreadyExpired
+                | bcr_ebill_api::util::ValidationError::FieldEmpty(_)
                 | bcr_ebill_api::util::ValidationError::InvalidSum
                 | bcr_ebill_api::util::ValidationError::InvalidCurrency
+                | bcr_ebill_api::util::ValidationError::InvalidPaymentAddress
                 | bcr_ebill_api::util::ValidationError::InvalidDate
                 | bcr_ebill_api::util::ValidationError::InvalidFileUploadId
                 | bcr_ebill_api::util::ValidationError::InvalidBillType
