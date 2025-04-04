@@ -1,3 +1,12 @@
+# 0.3.3
+
+* Add block data validation
+* Add bill action validation for incoming blocks
+* Add signer verification for incoming blocks
+* Add recourse reason to `RequestRecourse` block data
+    * (breaks existing persisted bills, if they had a request recourse block)
+* Move bill validation logic to `bcr-ebill-core`
+
 # 0.3.2
 
 * Fixed `request_to_accept` calling the correct action

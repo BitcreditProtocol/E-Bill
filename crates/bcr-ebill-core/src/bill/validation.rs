@@ -11,7 +11,7 @@ use crate::{
     util,
 };
 
-use super::{BillAction, BillKeys, BillType, BitcreditBill, RecourseReason};
+use super::{BillAction, BillKeys, BillType, RecourseReason};
 
 /// Generic result type
 pub type Result<T> = std::result::Result<T, ValidationError>;
@@ -47,18 +47,21 @@ pub fn validate_bill_issue(
     Ok((sum, bill_type))
 }
 
-pub async fn validate_bill_action(
+pub fn validate_bill_action(
     blockchain: &BillBlockchain,
-    bill: &BitcreditBill,
+    drawee_node_id: &str,
+    payee_node_id: &str,
+    endorsee_node_id: Option<&str>,
+    maturity_date: &str,
     bill_keys: &BillKeys,
     timestamp: u64,
     signer_node_id: &str,
     bill_action: &BillAction,
     is_paid: bool,
 ) -> Result<()> {
-    let holder_node_id = match bill.endorsee {
-        None => &bill.payee.node_id,
-        Some(ref endorsee) => &endorsee.node_id,
+    let holder_node_id = match endorsee_node_id {
+        None => payee_node_id,
+        Some(endorsee) => endorsee,
     };
 
     // If the bill was paid, no further actions are allowed
@@ -68,18 +71,18 @@ pub async fn validate_bill_action(
 
     match bill_action {
         BillAction::Accept => {
-            bill_is_blocked(blockchain, bill, bill_keys, timestamp, is_paid).await?;
+            bill_is_blocked(blockchain, maturity_date, bill_keys, timestamp, is_paid)?;
             // not already accepted
             if blockchain.block_with_operation_code_exists(BillOpCode::Accept) {
                 return Err(ValidationError::BillAlreadyAccepted);
             }
             // signer is drawee
-            if !bill.drawee.node_id.eq(signer_node_id) {
+            if !drawee_node_id.eq(signer_node_id) {
                 return Err(ValidationError::CallerIsNotDrawee);
             }
         }
         BillAction::RequestAcceptance => {
-            bill_is_blocked(blockchain, bill, bill_keys, timestamp, is_paid).await?;
+            bill_is_blocked(blockchain, maturity_date, bill_keys, timestamp, is_paid)?;
             // not already accepted
             if blockchain.block_with_operation_code_exists(BillOpCode::Accept) {
                 return Err(ValidationError::BillAlreadyAccepted);
@@ -89,24 +92,23 @@ pub async fn validate_bill_action(
                 return Err(ValidationError::BillAlreadyRequestedToAccept);
             }
             // the caller has to be the bill holder
-            if signer_node_id != *holder_node_id {
+            if signer_node_id != holder_node_id {
                 return Err(ValidationError::CallerIsNotHolder);
             }
         }
         BillAction::RequestToPay(_) => {
-            bill_is_blocked(blockchain, bill, bill_keys, timestamp, is_paid).await?;
+            bill_is_blocked(blockchain, maturity_date, bill_keys, timestamp, is_paid)?;
             // not already requested to pay
             if blockchain.block_with_operation_code_exists(BillOpCode::RequestToPay) {
                 return Err(ValidationError::BillWasRequestedToPay);
             }
             // maturity date must have started
-            let maturity_date_start =
-                util::date::date_string_to_timestamp(&bill.maturity_date, None)?;
+            let maturity_date_start = util::date::date_string_to_timestamp(maturity_date, None)?;
             if timestamp < maturity_date_start {
                 return Err(ValidationError::BillRequestedToPayBeforeMaturityDate);
             }
             // the caller has to be the bill holder
-            if signer_node_id != *holder_node_id {
+            if signer_node_id != holder_node_id {
                 return Err(ValidationError::CallerIsNotHolder);
             }
         }
@@ -122,9 +124,9 @@ pub async fn validate_bill_action(
             }
 
             // not blocked
-            bill_is_blocked(blockchain, bill, bill_keys, timestamp, is_paid).await?;
+            bill_is_blocked(blockchain, maturity_date, bill_keys, timestamp, is_paid)?;
             // the caller has to be the bill holder
-            if signer_node_id != *holder_node_id {
+            if signer_node_id != holder_node_id {
                 return Err(ValidationError::CallerIsNotHolder);
             }
 
@@ -159,10 +161,8 @@ pub async fn validate_bill_action(
                         }
 
                         // only if the request to pay expired or was rejected
-                        let deadline_base = get_deadline_base_for_req_to_pay(
-                            req_to_pay.timestamp,
-                            &bill.maturity_date,
-                        )?;
+                        let deadline_base =
+                            get_deadline_base_for_req_to_pay(req_to_pay.timestamp, maturity_date)?;
                         if !util::date::check_if_deadline_has_passed(
                             deadline_base,
                             timestamp,
@@ -182,7 +182,7 @@ pub async fn validate_bill_action(
         }
         BillAction::Recourse(recoursee, sum, currency) => {
             // not waiting for req to pay
-            bill_waiting_for_req_to_pay(blockchain, bill, timestamp, is_paid).await?;
+            bill_waiting_for_req_to_pay(blockchain, maturity_date, timestamp, is_paid)?;
             // not waiting for offer to sell
             bill_waiting_for_offer_to_sell(blockchain, bill_keys, timestamp)?;
 
@@ -198,7 +198,7 @@ pub async fn validate_bill_action(
                 }
 
                 // the caller has to be the bill holder
-                if signer_node_id != *holder_node_id {
+                if signer_node_id != holder_node_id {
                     return Err(ValidationError::CallerIsNotHolder);
                 }
             } else {
@@ -206,20 +206,20 @@ pub async fn validate_bill_action(
             }
         }
         BillAction::Mint(_, _, _) => {
-            bill_is_blocked(blockchain, bill, bill_keys, timestamp, is_paid).await?;
+            bill_is_blocked(blockchain, maturity_date, bill_keys, timestamp, is_paid)?;
             // the bill has to have been accepted
             if !blockchain.block_with_operation_code_exists(BillOpCode::Accept) {
                 return Err(ValidationError::BillNotAccepted);
             }
             // the caller has to be the bill holder
-            if signer_node_id != *holder_node_id {
+            if signer_node_id != holder_node_id {
                 return Err(ValidationError::CallerIsNotHolder);
             }
         }
         BillAction::OfferToSell(_, _, _) => {
-            bill_is_blocked(blockchain, bill, bill_keys, timestamp, is_paid).await?;
+            bill_is_blocked(blockchain, maturity_date, bill_keys, timestamp, is_paid)?;
             // the caller has to be the bill holder
-            if signer_node_id != *holder_node_id {
+            if signer_node_id != holder_node_id {
                 return Err(ValidationError::CallerIsNotHolder);
             }
         }
@@ -227,7 +227,7 @@ pub async fn validate_bill_action(
             // not in recourse
             bill_waiting_for_recourse_payment(blockchain, bill_keys, timestamp)?;
             // not waiting for req to pay
-            bill_waiting_for_req_to_pay(blockchain, bill, timestamp, is_paid).await?;
+            bill_waiting_for_req_to_pay(blockchain, maturity_date, timestamp, is_paid)?;
 
             if let Ok(OfferToSellWaitingForPayment::Yes(payment_info)) =
                 blockchain.is_last_offer_to_sell_block_waiting_for_payment(bill_keys, timestamp)
@@ -241,7 +241,7 @@ pub async fn validate_bill_action(
                     return Err(ValidationError::BillSellDataInvalid);
                 }
                 // the caller has to be the bill holder
-                if signer_node_id != *holder_node_id {
+                if signer_node_id != holder_node_id {
                     return Err(ValidationError::CallerIsNotHolder);
                 }
             } else {
@@ -249,9 +249,9 @@ pub async fn validate_bill_action(
             }
         }
         BillAction::Endorse(_) => {
-            bill_is_blocked(blockchain, bill, bill_keys, timestamp, is_paid).await?;
+            bill_is_blocked(blockchain, maturity_date, bill_keys, timestamp, is_paid)?;
             // the caller has to be the bill holder
-            if signer_node_id != *holder_node_id {
+            if signer_node_id != holder_node_id {
                 return Err(ValidationError::CallerIsNotHolder);
             }
         }
@@ -260,9 +260,9 @@ pub async fn validate_bill_action(
             if BillOpCode::RejectToAccept == *blockchain.get_latest_block().op_code() {
                 return Err(ValidationError::RequestAlreadyRejected);
             }
-            bill_is_blocked(blockchain, bill, bill_keys, timestamp, is_paid).await?;
+            bill_is_blocked(blockchain, maturity_date, bill_keys, timestamp, is_paid)?;
             // caller has to be the drawee
-            if signer_node_id != bill.drawee.node_id {
+            if signer_node_id != drawee_node_id {
                 return Err(ValidationError::CallerIsNotDrawee);
             }
             // there is not allowed to be an accept block
@@ -278,7 +278,7 @@ pub async fn validate_bill_action(
             // not in recourse
             bill_waiting_for_recourse_payment(blockchain, bill_keys, timestamp)?;
             // not waiting for req to pay
-            bill_waiting_for_req_to_pay(blockchain, bill, timestamp, is_paid).await?;
+            bill_waiting_for_req_to_pay(blockchain, maturity_date, timestamp, is_paid)?;
             // there has to be a offer to sell block that is not expired
             if let OfferToSellWaitingForPayment::Yes(payment_info) =
                 blockchain.is_last_offer_to_sell_block_waiting_for_payment(bill_keys, timestamp)?
@@ -301,7 +301,7 @@ pub async fn validate_bill_action(
             // not in recourse
             bill_waiting_for_recourse_payment(blockchain, bill_keys, timestamp)?;
             // caller has to be the drawee
-            if signer_node_id != bill.drawee.node_id {
+            if signer_node_id != drawee_node_id {
                 return Err(ValidationError::CallerIsNotDrawee);
             }
             // bill is not paid already
@@ -313,7 +313,7 @@ pub async fn validate_bill_action(
                 blockchain.get_last_version_block_with_op_code(BillOpCode::RequestToPay)
             {
                 let deadline_base =
-                    get_deadline_base_for_req_to_pay(req_to_pay.timestamp, &bill.maturity_date)?;
+                    get_deadline_base_for_req_to_pay(req_to_pay.timestamp, maturity_date)?;
                 if util::date::check_if_deadline_has_passed(
                     deadline_base,
                     timestamp,
@@ -380,15 +380,15 @@ pub fn get_deadline_base_for_req_to_pay(
     Ok(deadline_base)
 }
 
-async fn bill_is_blocked(
+fn bill_is_blocked(
     blockchain: &BillBlockchain,
-    bill: &BitcreditBill,
+    maturity_date: &str,
     bill_keys: &BillKeys,
     timestamp: u64,
     is_paid: bool,
 ) -> Result<()> {
     // not waiting for req to pay
-    bill_waiting_for_req_to_pay(blockchain, bill, timestamp, is_paid).await?;
+    bill_waiting_for_req_to_pay(blockchain, maturity_date, timestamp, is_paid)?;
     // not offered to sell
     bill_waiting_for_offer_to_sell(blockchain, bill_keys, timestamp)?;
     // not in recourse
@@ -422,9 +422,9 @@ fn bill_waiting_for_recourse_payment(
     Ok(())
 }
 
-async fn bill_waiting_for_req_to_pay(
+fn bill_waiting_for_req_to_pay(
     blockchain: &BillBlockchain,
-    bill: &BitcreditBill,
+    maturity_date: &str,
     timestamp: u64,
     is_paid: bool,
 ) -> Result<()> {
@@ -433,7 +433,7 @@ async fn bill_waiting_for_req_to_pay(
             blockchain.get_last_version_block_with_op_code(BillOpCode::RequestToPay)
         {
             let deadline_base =
-                get_deadline_base_for_req_to_pay(req_to_pay.timestamp, &bill.maturity_date)?;
+                get_deadline_base_for_req_to_pay(req_to_pay.timestamp, maturity_date)?;
             if !is_paid
                 && !util::date::check_if_deadline_has_passed(
                     deadline_base,

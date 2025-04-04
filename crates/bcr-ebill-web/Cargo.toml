@@ -34,7 +34,5 @@ zip = "=2.5.0"
 bcr-ebill-api = { path = "../bcr-ebill-api" }
 bcr-ebill-transport = { path = "../bcr-ebill-transport" }
 
-[patch.crates-io]
-
 [features]
 embedded-db = ["bcr-ebill-api/embedded-db"]

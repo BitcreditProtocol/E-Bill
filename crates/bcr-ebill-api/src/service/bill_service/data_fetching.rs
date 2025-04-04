@@ -16,9 +16,7 @@ use bcr_ebill_core::{
         Blockchain,
         bill::{
             BillBlockchain, BillOpCode, OfferToSellWaitingForPayment, RecourseWaitingForPayment,
-            block::{
-                BillEndorseBlockData, BillMintBlockData, BillSellBlockData, BillSignatoryBlockData,
-            },
+            block::BillSignatoryBlockData,
         },
     },
     constants::{ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS},
@@ -45,100 +43,19 @@ impl BillService {
         contacts: &HashMap<String, Contact>,
     ) -> Result<BitcreditBill> {
         let bill_first_version = chain.get_first_version_bill(bill_keys)?;
+        let bill_parties = chain.get_bill_parties(bill_keys, &bill_first_version)?;
 
-        // check endorsing blocks
-        let last_version_block_endorse = if let Some(endorse_block_encrypted) =
-            chain.get_last_version_block_with_op_code(BillOpCode::Endorse)
-        {
-            Some((
-                endorse_block_encrypted
-                    .get_decrypted_block_bytes::<BillEndorseBlockData>(bill_keys)?,
-                endorse_block_encrypted.id,
-            ))
-        } else {
-            None
-        };
-        let last_version_block_mint = if let Some(mint_block_encrypted) =
-            chain.get_last_version_block_with_op_code(BillOpCode::Mint)
-        {
-            Some((
-                mint_block_encrypted.get_decrypted_block_bytes::<BillMintBlockData>(bill_keys)?,
-                mint_block_encrypted.id,
-            ))
-        } else {
-            None
-        };
-        let last_version_block_sell = if let Some(sell_block_encrypted) =
-            chain.get_last_version_block_with_op_code(BillOpCode::Sell)
-        {
-            Some((
-                sell_block_encrypted.get_decrypted_block_bytes::<BillSellBlockData>(bill_keys)?,
-                sell_block_encrypted.id,
-            ))
-        } else {
-            None
-        };
-
-        // If the last block is endorse, the endorsee is the holder
-        // If the last block is mint, the mint is the holder
-        // If the last block is sell, the buyer is the holder
-        let last_endorsee = match (
-            last_version_block_endorse,
-            last_version_block_mint,
-            last_version_block_sell,
-        ) {
-            (None, None, None) => None,
-            (Some((endorse_block, _)), None, None) => Some(endorse_block.endorsee),
-            (None, Some((mint_block, _)), None) => Some(mint_block.endorsee),
-            (None, None, Some((sell_block, _))) => Some(sell_block.buyer),
-            (Some((endorse_block, endorse_block_id)), Some((mint_block, mint_block_id)), None) => {
-                if endorse_block_id > mint_block_id {
-                    Some(endorse_block.endorsee)
-                } else {
-                    Some(mint_block.endorsee)
-                }
-            }
-            (Some((endorse_block, endorse_block_id)), None, Some((sell_block, sell_block_id))) => {
-                if endorse_block_id > sell_block_id {
-                    Some(endorse_block.endorsee)
-                } else {
-                    Some(sell_block.buyer)
-                }
-            }
-            (None, Some((mint_block, mint_block_id)), Some((sell_block, sell_block_id))) => {
-                if sell_block_id > mint_block_id {
-                    Some(sell_block.buyer)
-                } else {
-                    Some(mint_block.endorsee)
-                }
-            }
-            (
-                Some((endorse_block, endorse_block_id)),
-                Some((mint_block, mint_block_id)),
-                Some((sell_block, sell_block_id)),
-            ) => {
-                if endorse_block_id > mint_block_id && endorse_block_id > sell_block_id {
-                    Some(endorse_block.endorsee)
-                } else if mint_block_id > sell_block_id {
-                    Some(mint_block.endorsee)
-                } else {
-                    Some(sell_block.buyer)
-                }
-            }
-        };
-
-        let payee = bill_first_version.payee;
-
+        let payee = bill_parties.payee;
         let drawee_contact = self
             .extend_bill_chain_identity_data_from_contacts_or_identity(
-                bill_first_version.drawee,
+                bill_parties.drawee,
                 identity,
                 contacts,
             )
             .await;
         let drawer_contact = self
             .extend_bill_chain_identity_data_from_contacts_or_identity(
-                bill_first_version.drawer,
+                bill_parties.drawer,
                 identity,
                 contacts,
             )
@@ -146,7 +63,7 @@ impl BillService {
         let payee_contact = self
             .extend_bill_chain_identity_data_from_contacts_or_identity(payee, identity, contacts)
             .await;
-        let endorsee_contact = match last_endorsee {
+        let endorsee_contact = match bill_parties.endorsee {
             Some(endorsee) => {
                 let endorsee_contact = self
                     .extend_bill_chain_identity_data_from_contacts_or_identity(
