@@ -340,7 +340,7 @@ mod tests {
         blockchain::bill::{block::BillOfferToSellBlockData, tests::get_baseline_identity},
         contact::IdentityPublicData,
         tests::tests::{
-            TEST_PRIVATE_KEY_SECP, empty_bitcredit_bill, get_bill_keys,
+            TEST_BILL_ID, TEST_PRIVATE_KEY_SECP, empty_bitcredit_bill, get_bill_keys,
             identity_public_data_only_node_id,
         },
     };
@@ -354,7 +354,7 @@ mod tests {
         let seller = identity_public_data_only_node_id(seller_node_id);
 
         BillBlock::create_block_for_offer_to_sell(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             previous_block,
             &BillOfferToSellBlockData {
                 buyer: buyer.clone().into(),

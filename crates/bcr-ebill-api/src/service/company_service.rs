@@ -1089,7 +1089,7 @@ pub mod tests {
         );
         let res = service
             .edit_company(
-                "some_id",
+                TEST_PUB_KEY_SECP,
                 Some("name".to_string()),
                 Some("company@example.com".to_string()),
                 empty_optional_address(),
@@ -1317,7 +1317,7 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .add_signatory("some_id", signatory_node_id, 1731593928)
+            .add_signatory(TEST_PUB_KEY_SECP, signatory_node_id, 1731593928)
             .await;
         assert!(res.is_ok());
     }
@@ -1359,7 +1359,7 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .add_signatory("some_id", signatory_node_id, 1731593928)
+            .add_signatory(TEST_PUB_KEY_SECP, signatory_node_id, 1731593928)
             .await;
         assert!(res.is_err());
     }
@@ -1394,7 +1394,11 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .add_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
+            .add_signatory(
+                TEST_PUB_KEY_SECP,
+                "new_signatory_node_id".to_string(),
+                1731593928,
+            )
             .await;
         assert!(res.is_err());
     }
@@ -1426,7 +1430,11 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .add_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
+            .add_signatory(
+                TEST_PUB_KEY_SECP,
+                "new_signatory_node_id".to_string(),
+                1731593928,
+            )
             .await;
         assert!(res.is_err());
     }
@@ -1472,7 +1480,7 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .add_signatory("some_id", TEST_NODE_ID_SECP.to_string(), 1731593928)
+            .add_signatory(TEST_PUB_KEY_SECP, TEST_NODE_ID_SECP.to_string(), 1731593928)
             .await;
         assert!(res.is_err());
     }
@@ -1521,7 +1529,7 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .add_signatory("some_id", TEST_NODE_ID_SECP.to_string(), 1731593928)
+            .add_signatory(TEST_PUB_KEY_SECP, TEST_NODE_ID_SECP.to_string(), 1731593928)
             .await;
         assert!(res.is_err());
     }
@@ -1584,7 +1592,11 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
+            .remove_signatory(
+                TEST_PUB_KEY_SECP,
+                "new_signatory_node_id".to_string(),
+                1731593928,
+            )
             .await;
         assert!(res.is_ok());
     }
@@ -1616,7 +1628,11 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
+            .remove_signatory(
+                TEST_PUB_KEY_SECP,
+                "new_signatory_node_id".to_string(),
+                1731593928,
+            )
             .await;
         assert!(res.is_err());
     }
@@ -1688,7 +1704,7 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .remove_signatory("some_id", keys.get_public_key(), 1731593928)
+            .remove_signatory(TEST_PUB_KEY_SECP, keys.get_public_key(), 1731593928)
             .await;
         assert!(res.is_ok());
     }
@@ -1730,7 +1746,11 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
+            .remove_signatory(
+                TEST_PUB_KEY_SECP,
+                "new_signatory_node_id".to_string(),
+                1731593928,
+            )
             .await;
         assert!(res.is_err());
     }
@@ -1770,7 +1790,11 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
+            .remove_signatory(
+                TEST_PUB_KEY_SECP,
+                "new_signatory_node_id".to_string(),
+                1731593928,
+            )
             .await;
         assert!(res.is_err());
     }
@@ -1817,7 +1841,11 @@ pub mod tests {
             company_chain_store,
         );
         let res = service
-            .remove_signatory("some_id", "new_signatory_node_id".to_string(), 1731593928)
+            .remove_signatory(
+                TEST_PUB_KEY_SECP,
+                "new_signatory_node_id".to_string(),
+                1731593928,
+            )
             .await;
         assert!(res.is_err());
     }
@@ -1937,7 +1965,7 @@ pub mod tests {
 
         assert!(
             service
-                .open_and_decrypt_file("test", "test", TEST_PRIVATE_KEY_SECP)
+                .open_and_decrypt_file(TEST_PUB_KEY_SECP, "test", TEST_PRIVATE_KEY_SECP)
                 .await
                 .is_err()
         );
@@ -1979,7 +2007,7 @@ pub mod tests {
             company_chain_store,
         );
 
-        let res = service.list_signatories("1234").await;
+        let res = service.list_signatories(TEST_PUB_KEY_SECP).await;
         assert!(res.is_ok());
         assert_eq!(res.as_ref().unwrap().len(), 1);
     }

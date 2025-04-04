@@ -20,6 +20,10 @@ pub fn validate_file_upload_id(file_upload_id: Option<&str>) -> Result<(), Valid
     Ok(())
 }
 
+pub fn is_blank(value: &Option<String>) -> bool {
+    matches!(value, Some(s) if s.trim().is_empty())
+}
+
 pub fn get_uuid_v4() -> Uuid {
     Uuid::new_v4()
 }

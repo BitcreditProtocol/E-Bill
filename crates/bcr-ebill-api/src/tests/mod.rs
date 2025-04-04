@@ -325,10 +325,10 @@ pub mod tests {
 
     pub fn empty_address() -> PostalAddress {
         PostalAddress {
-            country: "".to_string(),
-            city: "".to_string(),
+            country: "AT".to_string(),
+            city: "Vienna".to_string(),
             zip: None,
-            address: "".to_string(),
+            address: "Some Address 1".to_string(),
         }
     }
 
@@ -344,8 +344,8 @@ pub mod tests {
     pub fn empty_identity() -> Identity {
         Identity {
             node_id: "".to_string(),
-            name: "".to_string(),
-            email: "".to_string(),
+            name: "some name".to_string(),
+            email: "some@example.com".to_string(),
             postal_address: empty_optional_address(),
             date_of_birth: None,
             country_of_birth: None,
@@ -361,7 +361,7 @@ pub mod tests {
         IdentityPublicData {
             t: ContactType::Person,
             node_id: "".to_string(),
-            name: "".to_string(),
+            name: "some@example.com".to_string(),
             postal_address: empty_address(),
             email: None,
             nostr_relay: None,
@@ -372,7 +372,7 @@ pub mod tests {
         IdentityPublicData {
             t: ContactType::Person,
             node_id,
-            name: "".to_string(),
+            name: "some name".to_string(),
             postal_address: empty_address(),
             email: None,
             nostr_relay: None,
@@ -382,25 +382,27 @@ pub mod tests {
     pub fn empty_bitcredit_bill() -> BitcreditBill {
         BitcreditBill {
             id: "".to_string(),
-            country_of_issuing: "".to_string(),
-            city_of_issuing: "".to_string(),
+            country_of_issuing: "AT".to_string(),
+            city_of_issuing: "Vienna".to_string(),
             drawee: empty_identity_public_data(),
             drawer: empty_identity_public_data(),
             payee: empty_identity_public_data(),
             endorsee: None,
-            currency: "".to_string(),
-            sum: 0,
-            maturity_date: "".to_string(),
-            issue_date: "".to_string(),
-            city_of_payment: "".to_string(),
-            country_of_payment: "".to_string(),
-            language: "".to_string(),
+            currency: "sat".to_string(),
+            sum: 5000,
+            maturity_date: "2099-11-12".to_string(),
+            issue_date: "2099-08-12".to_string(),
+            city_of_payment: "Vienna".to_string(),
+            country_of_payment: "AT".to_string(),
+            language: "DE".to_string(),
             files: vec![],
         }
     }
 
     pub const TEST_PUB_KEY_SECP: &str =
         "02295fb5f4eeb2f21e01eaf3a2d9a3be10f39db870d28f02146130317973a40ac0";
+
+    pub const TEST_BILL_ID: &str = "KmtMUia3ezhshD9EyzvpT62DUPLr66M5LESy6j8ErCtv1USUDtoTA8JkXnCCGEtZxp41aKne5wVcCjoaFbjDqD4aFk";
 
     pub const TEST_PRIVATE_KEY_SECP: &str =
         "d1ff7427912d3b81743d3b67ffa1e65df2156d3dab257316cbc8d0f35eeeabe9";

@@ -353,7 +353,7 @@ mod tests {
         let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let drawer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, Some(&drawer), None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, Some(&drawer), None);
         let chain = get_genesis_chain(Some(bill.clone()));
         let keys = get_bill_keys();
 
@@ -362,18 +362,18 @@ mod tests {
 
         bill_chain_store
             .expect_get_chain()
-            .with(eq("bill"))
+            .with(eq(TEST_BILL_ID))
             .times(1)
             .returning(move |_| Err(bcr_ebill_persistence::Error::NoBillBlock));
         bill_chain_store
             .expect_add_block()
-            .with(eq("bill"), eq(chain.blocks()[0].clone()))
+            .with(eq(TEST_BILL_ID), eq(chain.blocks()[0].clone()))
             .times(1)
             .returning(move |_, _| Ok(()));
 
         bill_store
             .expect_save_keys()
-            .with(eq("bill"), always())
+            .with(eq(TEST_BILL_ID), always())
             .times(1)
             .returning(move |_, _| Ok(()));
 
@@ -387,7 +387,7 @@ mod tests {
             EventType::Bill,
             "node_id",
             BillChainEventPayload {
-                bill_id: "bill".to_string(),
+                bill_id: TEST_BILL_ID.to_string(),
                 event_type: BillEventType::BillBlock,
                 blocks: chain.blocks().clone(),
                 keys: Some(keys.clone()),
@@ -409,7 +409,7 @@ mod tests {
         // drawer has a different key than signer, signing check will fail
         let mut drawer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         drawer.node_id = BcrKeys::new().get_public_key();
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, Some(&drawer), None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, Some(&drawer), None);
         let chain = get_genesis_chain(Some(bill.clone()));
         let keys = get_bill_keys();
 
@@ -418,17 +418,17 @@ mod tests {
 
         bill_chain_store
             .expect_get_chain()
-            .with(eq("bill"))
+            .with(eq(TEST_BILL_ID))
             .times(1)
             .returning(move |_| Err(bcr_ebill_persistence::Error::NoBillBlock));
         bill_chain_store
             .expect_add_block()
-            .with(eq("bill"), eq(chain.blocks()[0].clone()))
+            .with(eq(TEST_BILL_ID), eq(chain.blocks()[0].clone()))
             .never();
 
         bill_store
             .expect_save_keys()
-            .with(eq("bill"), always())
+            .with(eq(TEST_BILL_ID), always())
             .never();
 
         let handler = BillChainEventHandler::new(
@@ -441,7 +441,7 @@ mod tests {
             EventType::Bill,
             "node_id",
             BillChainEventPayload {
-                bill_id: "bill".to_string(),
+                bill_id: TEST_BILL_ID.to_string(),
                 event_type: BillEventType::BillBlock,
                 blocks: chain.blocks().clone(),
                 keys: Some(keys.clone()),
@@ -461,10 +461,10 @@ mod tests {
         let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let endorsee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let chain = get_genesis_chain(Some(bill.clone()));
         let block = BillBlock::create_block_for_endorse(
-            "bill".to_string(),
+            TEST_BILL_ID.to_string(),
             chain.get_latest_block(),
             &BillEndorseBlockData {
                 endorsee: endorsee.clone().into(),
@@ -498,13 +498,13 @@ mod tests {
         });
         bill_chain_store
             .expect_get_chain()
-            .with(eq("bill"))
+            .with(eq(TEST_BILL_ID))
             .times(1)
             .returning(move |_| Ok(chain_clone.clone()));
 
         bill_chain_store
             .expect_add_block()
-            .with(eq("bill"), eq(block.clone()))
+            .with(eq(TEST_BILL_ID), eq(block.clone()))
             .times(1)
             .returning(move |_, _| Ok(()));
 
@@ -518,7 +518,7 @@ mod tests {
             EventType::Bill,
             "node_id",
             BillChainEventPayload {
-                bill_id: "bill".to_string(),
+                bill_id: TEST_BILL_ID.to_string(),
                 event_type: BillEventType::BillBlock,
                 blocks: vec![block.clone()],
                 keys: None,
@@ -541,11 +541,11 @@ mod tests {
         // endorser is different than block signer - signature won't be able to be validated
         let mut endorser = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         endorser.node_id = BcrKeys::new().get_public_key();
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let chain = get_genesis_chain(Some(bill.clone()));
 
         let block = BillBlock::create_block_for_endorse(
-            "bill".to_string(),
+            TEST_BILL_ID.to_string(),
             chain.get_latest_block(),
             &BillEndorseBlockData {
                 endorsee: endorsee.clone().into(),
@@ -574,7 +574,7 @@ mod tests {
         });
         bill_chain_store
             .expect_get_chain()
-            .with(eq("bill"))
+            .with(eq(TEST_BILL_ID))
             .times(1)
             .returning(move |_| Ok(chain_clone.clone()));
 
@@ -591,7 +591,7 @@ mod tests {
             EventType::Bill,
             "node_id",
             BillChainEventPayload {
-                bill_id: "bill".to_string(),
+                bill_id: TEST_BILL_ID.to_string(),
                 event_type: BillEventType::BillBlock,
                 blocks: vec![block.clone()],
                 keys: None,
@@ -611,11 +611,11 @@ mod tests {
         let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let endorsee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let chain = get_genesis_chain(Some(bill.clone()));
 
         let block = BillBlock::create_block_for_endorse(
-            "bill".to_string(),
+            TEST_BILL_ID.to_string(),
             chain.get_latest_block(),
             &BillEndorseBlockData {
                 endorsee: endorsee.clone().into(),
@@ -638,7 +638,7 @@ mod tests {
 
         bill_chain_store
             .expect_get_chain()
-            .with(eq("bill"))
+            .with(eq(TEST_BILL_ID))
             .times(1)
             .returning(move |_| Err(bcr_ebill_persistence::Error::NoBillBlock));
 
@@ -654,7 +654,7 @@ mod tests {
             EventType::Bill,
             "node_id",
             BillChainEventPayload {
-                bill_id: "bill".to_string(),
+                bill_id: TEST_BILL_ID.to_string(),
                 event_type: BillEventType::BillBlock,
                 blocks: vec![block.clone()],
                 keys: None,
@@ -800,19 +800,19 @@ mod tests {
     fn empty_bitcredit_bill() -> BitcreditBill {
         BitcreditBill {
             id: "".to_string(),
-            country_of_issuing: "".to_string(),
-            city_of_issuing: "".to_string(),
+            country_of_issuing: "AT".to_string(),
+            city_of_issuing: "Vienna".to_string(),
             drawee: empty_identity_public_data(),
             drawer: empty_identity_public_data(),
             payee: empty_identity_public_data(),
             endorsee: None,
-            currency: "".to_string(),
-            sum: 0,
-            maturity_date: "".to_string(),
-            issue_date: "".to_string(),
-            city_of_payment: "".to_string(),
-            country_of_payment: "".to_string(),
-            language: "".to_string(),
+            currency: "sat".to_string(),
+            sum: 500,
+            maturity_date: "2099-11-12".to_string(),
+            issue_date: "2099-08-12".to_string(),
+            city_of_payment: "Vienna".to_string(),
+            country_of_payment: "AT".to_string(),
+            language: "DE".to_string(),
             files: vec![],
         }
     }
@@ -841,7 +841,7 @@ mod tests {
         IdentityPublicData {
             t: ContactType::Person,
             node_id: "".to_string(),
-            name: "".to_string(),
+            name: "some name".to_string(),
             postal_address: empty_address(),
             email: None,
             nostr_relay: None,
@@ -849,17 +849,17 @@ mod tests {
     }
     fn empty_address() -> PostalAddress {
         PostalAddress {
-            country: "".to_string(),
-            city: "".to_string(),
+            country: "AT".to_string(),
+            city: "Vienna".to_string(),
             zip: None,
-            address: "".to_string(),
+            address: "Some address".to_string(),
         }
     }
     fn empty_identity() -> Identity {
         Identity {
             node_id: "".to_string(),
-            name: "".to_string(),
-            email: "".to_string(),
+            name: "some name".to_string(),
+            email: "some@example.com".to_string(),
             postal_address: empty_optional_address(),
             date_of_birth: None,
             country_of_birth: None,
@@ -885,6 +885,8 @@ mod tests {
 
     pub const TEST_PUB_KEY_SECP: &str =
         "02295fb5f4eeb2f21e01eaf3a2d9a3be10f39db870d28f02146130317973a40ac0";
+
+    pub const TEST_BILL_ID: &str = "KmtMUia3ezhshD9EyzvpT62DUPLr66M5LESy6j8ErCtv1USUDtoTA8JkXnCCGEtZxp41aKne5wVcCjoaFbjDqD4aFk";
 
     fn create_mocks() -> (
         MockNotificationStore,

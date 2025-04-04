@@ -895,14 +895,18 @@ pub mod tests {
     #[tokio::test]
     async fn test_paid() {
         let store = get_store(get_db().await).await;
-        let res = store.set_to_paid("1234", "1234paymentaddress").await;
+        let res = store
+            .set_to_paid("1234", "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk")
+            .await;
         assert!(res.is_ok());
         let get_res = store.is_paid("1234").await;
         assert!(get_res.is_ok());
         assert!(get_res.as_ref().unwrap());
 
         // save again
-        let res_again = store.set_to_paid("1234", "1234paymentaddress").await;
+        let res_again = store
+            .set_to_paid("1234", "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk")
+            .await;
         assert!(res_again.is_ok());
         let get_res_again = store.is_paid("1234").await;
         assert!(get_res_again.is_ok());
@@ -960,7 +964,7 @@ pub mod tests {
 
         // add the bill to paid, expect it not to be returned afterwards
         store
-            .set_to_paid("1234", "1234paymentaddress")
+            .set_to_paid("1234", "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk")
             .await
             .unwrap();
 
@@ -995,7 +999,7 @@ pub mod tests {
                 buyer: identity_public_data_only_node_id(BcrKeys::new().get_public_key()).into(),
                 currency: "sat".to_string(),
                 sum: 15000,
-                payment_address: "1234paymentaddress".to_string(),
+                payment_address: "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk".to_string(),
                 signatory: None,
                 signing_timestamp: now,
                 signing_address: empty_address(),
@@ -1029,7 +1033,7 @@ pub mod tests {
                             .into(),
                         currency: "sat".to_string(),
                         sum: 15000,
-                        payment_address: "1234paymentaddress".to_string(),
+                        payment_address: "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk".to_string(),
                         signatory: None,
                         signing_timestamp: now,
                         signing_address: empty_address(),
@@ -1079,7 +1083,7 @@ pub mod tests {
                 buyer: identity_public_data_only_node_id(BcrKeys::new().get_public_key()).into(),
                 currency: "sat".to_string(),
                 sum: 15000,
-                payment_address: "1234paymentaddress".to_string(),
+                payment_address: "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk".to_string(),
                 signatory: None,
                 signing_timestamp: now_minus_one_month,
                 signing_address: empty_address(),
