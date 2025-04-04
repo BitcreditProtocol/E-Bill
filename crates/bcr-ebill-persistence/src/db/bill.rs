@@ -789,8 +789,8 @@ pub mod tests {
             BillBlock, BillOpCode,
             block::{
                 BillIssueBlockData, BillOfferToSellBlockData, BillRecourseBlockData,
-                BillRequestRecourseBlockData, BillRequestToAcceptBlockData,
-                BillRequestToPayBlockData, BillSellBlockData,
+                BillRecourseReasonBlockData, BillRequestRecourseBlockData,
+                BillRequestToAcceptBlockData, BillRequestToPayBlockData, BillSellBlockData,
             },
         },
     };
@@ -1252,6 +1252,7 @@ pub mod tests {
                     .into(),
                 currency: "sat".to_string(),
                 sum: 15000,
+                recourse_reason: BillRecourseReasonBlockData::Pay,
                 signatory: None,
                 signing_timestamp: now,
                 signing_address: empty_address(),
@@ -1336,6 +1337,7 @@ pub mod tests {
                 recoursee: identity_public_data_only_node_id(BcrKeys::new().get_public_key())
                     .into(),
                 currency: "sat".to_string(),
+                recourse_reason: BillRecourseReasonBlockData::Pay,
                 sum: 15000,
                 signatory: None,
                 signing_timestamp: now_minus_one_month,

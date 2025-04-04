@@ -1,7 +1,8 @@
 use super::super::Result;
 use super::PaymentInfo;
 use super::block::{
-    BillBlock, BillIssueBlockData, BillOfferToSellBlockData, BillRequestRecourseBlockData,
+    BillBlock, BillEndorseBlockData, BillIdentityBlockData, BillIssueBlockData, BillMintBlockData,
+    BillOfferToSellBlockData, BillRequestRecourseBlockData, BillSellBlockData,
 };
 use super::{BillOpCode, RecourseWaitingForPayment};
 use super::{OfferToSellWaitingForPayment, RecoursePaymentInfo};
@@ -13,6 +14,14 @@ use crate::util::{self, BcrKeys};
 use borsh_derive::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+#[derive(Debug, Clone)]
+pub struct BillParties {
+    pub drawee: BillIdentityBlockData,
+    pub drawer: BillIdentityBlockData,
+    pub payee: BillIdentityBlockData,
+    pub endorsee: Option<BillIdentityBlockData>,
+}
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone)]
 pub struct BillBlockchain {
@@ -330,6 +339,100 @@ impl BillBlockchain {
         list.sort_by(|a, b| b.signing_timestamp.cmp(&a.signing_timestamp));
 
         Ok(list)
+    }
+
+    /// Returns the latest bill parties (drawer, drawee, payee, endorsee)
+    pub fn get_bill_parties(
+        &self,
+        bill_keys: &BillKeys,
+        bill_first_version: &BillIssueBlockData,
+    ) -> Result<BillParties> {
+        // check endorsing blocks
+        let last_version_block_endorse = if let Some(endorse_block_encrypted) =
+            self.get_last_version_block_with_op_code(BillOpCode::Endorse)
+        {
+            Some((
+                endorse_block_encrypted
+                    .get_decrypted_block_bytes::<BillEndorseBlockData>(bill_keys)?,
+                endorse_block_encrypted.id,
+            ))
+        } else {
+            None
+        };
+        let last_version_block_mint = if let Some(mint_block_encrypted) =
+            self.get_last_version_block_with_op_code(BillOpCode::Mint)
+        {
+            Some((
+                mint_block_encrypted.get_decrypted_block_bytes::<BillMintBlockData>(bill_keys)?,
+                mint_block_encrypted.id,
+            ))
+        } else {
+            None
+        };
+        let last_version_block_sell = if let Some(sell_block_encrypted) =
+            self.get_last_version_block_with_op_code(BillOpCode::Sell)
+        {
+            Some((
+                sell_block_encrypted.get_decrypted_block_bytes::<BillSellBlockData>(bill_keys)?,
+                sell_block_encrypted.id,
+            ))
+        } else {
+            None
+        };
+
+        // If the last block is endorse, the endorsee is the holder
+        // If the last block is mint, the mint is the holder
+        // If the last block is sell, the buyer is the holder
+        let last_endorsee = match (
+            last_version_block_endorse,
+            last_version_block_mint,
+            last_version_block_sell,
+        ) {
+            (None, None, None) => None,
+            (Some((endorse_block, _)), None, None) => Some(endorse_block.endorsee),
+            (None, Some((mint_block, _)), None) => Some(mint_block.endorsee),
+            (None, None, Some((sell_block, _))) => Some(sell_block.buyer),
+            (Some((endorse_block, endorse_block_id)), Some((mint_block, mint_block_id)), None) => {
+                if endorse_block_id > mint_block_id {
+                    Some(endorse_block.endorsee)
+                } else {
+                    Some(mint_block.endorsee)
+                }
+            }
+            (Some((endorse_block, endorse_block_id)), None, Some((sell_block, sell_block_id))) => {
+                if endorse_block_id > sell_block_id {
+                    Some(endorse_block.endorsee)
+                } else {
+                    Some(sell_block.buyer)
+                }
+            }
+            (None, Some((mint_block, mint_block_id)), Some((sell_block, sell_block_id))) => {
+                if sell_block_id > mint_block_id {
+                    Some(sell_block.buyer)
+                } else {
+                    Some(mint_block.endorsee)
+                }
+            }
+            (
+                Some((endorse_block, endorse_block_id)),
+                Some((mint_block, mint_block_id)),
+                Some((sell_block, sell_block_id)),
+            ) => {
+                if endorse_block_id > mint_block_id && endorse_block_id > sell_block_id {
+                    Some(endorse_block.endorsee)
+                } else if mint_block_id > sell_block_id {
+                    Some(mint_block.endorsee)
+                } else {
+                    Some(sell_block.buyer)
+                }
+            }
+        };
+        Ok(BillParties {
+            drawee: bill_first_version.drawee.to_owned(),
+            drawer: bill_first_version.drawer.to_owned(),
+            payee: bill_first_version.payee.to_owned(),
+            endorsee: last_endorsee,
+        })
     }
 }
 

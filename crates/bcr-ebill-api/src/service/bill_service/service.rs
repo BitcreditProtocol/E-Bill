@@ -562,14 +562,16 @@ impl BillServiceApi for BillService {
         // validate
         validate_bill_action(
             &blockchain,
-            &bill,
+            &bill.drawee.node_id,
+            &bill.payee.node_id,
+            bill.endorsee.clone().map(|e| e.node_id).as_deref(),
+            &bill.maturity_date,
             &bill_keys,
             timestamp,
             &signer_public_data.node_id,
             &bill_action,
             is_paid,
-        )
-        .await?;
+        )?;
 
         // create and sign blocks
         self.create_blocks_for_bill_action(

@@ -7,8 +7,8 @@ use bcr_ebill_core::{
             BillBlock, BillBlockchain,
             block::{
                 BillAcceptBlockData, BillEndorseBlockData, BillMintBlockData,
-                BillOfferToSellBlockData, BillRecourseBlockData, BillRejectBlockData,
-                BillRequestRecourseBlockData, BillRequestToAcceptBlockData,
+                BillOfferToSellBlockData, BillRecourseBlockData, BillRecourseReasonBlockData,
+                BillRejectBlockData, BillRequestRecourseBlockData, BillRequestToAcceptBlockData,
                 BillRequestToPayBlockData, BillSellBlockData,
             },
         },
@@ -98,15 +98,22 @@ impl BillService {
                 )?
             }
             BillAction::RequestRecourse(recoursee, recourse_reason) => {
-                let (sum, currency) = match *recourse_reason {
-                    RecourseReason::Accept => (bill.sum, bill.currency.clone()),
-                    RecourseReason::Pay(sum, ref currency) => (sum, currency.to_owned()),
+                let (sum, currency, reason) = match *recourse_reason {
+                    RecourseReason::Accept => (
+                        bill.sum,
+                        bill.currency.clone(),
+                        BillRecourseReasonBlockData::Accept,
+                    ),
+                    RecourseReason::Pay(sum, ref currency) => {
+                        (sum, currency.to_owned(), BillRecourseReasonBlockData::Pay)
+                    }
                 };
                 let block_data = BillRequestRecourseBlockData {
                     recourser: signer_public_data.clone().into(),
                     recoursee: recoursee.clone().into(),
                     sum,
                     currency: currency.to_owned(),
+                    recourse_reason: reason,
                     signatory: signing_keys.signatory_identity,
                     signing_timestamp: timestamp,
                     signing_address: signer_public_data.postal_address.clone(),
