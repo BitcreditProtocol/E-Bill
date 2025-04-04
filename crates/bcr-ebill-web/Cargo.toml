@@ -29,8 +29,12 @@ utoipa = { git = "https://github.com/juhaku/utoipa/", rev = "1d32f0524a8680d7953
 ], default-features = false }
 # version = "9" - temporary until downstream semver breakage in zip2 is fixed
 utoipa-swagger-ui = { git = "https://github.com/juhaku/utoipa/", rev = "1d32f0524a8680d79537ae92aa9ced6ba9d2b630", package = "utoipa-swagger-ui", features = ["rocket"], default-features = false }
+# temporary until downstream semver breakage in zip2 is fixed
+zip = "=2.5.0"
 bcr-ebill-api = { path = "../bcr-ebill-api" }
 bcr-ebill-transport = { path = "../bcr-ebill-transport" }
+
+[patch.crates-io]
 
 [features]
 embedded-db = ["bcr-ebill-api/embedded-db"]
