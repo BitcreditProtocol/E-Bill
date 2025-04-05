@@ -1,4 +1,5 @@
 use bcr_ebill_core::{
+    Validate,
     bill::{BillKeys, BitcreditBill, RecourseReason},
     blockchain::{
         self, Blockchain,
@@ -42,77 +43,87 @@ impl BillService {
 
         let block = match bill_action {
             BillAction::Accept => {
+                let block_data = BillAcceptBlockData {
+                    accepter: signer_public_data.clone().into(),
+                    signatory: signing_keys.signatory_identity,
+                    signing_timestamp: timestamp,
+                    signing_address: signer_public_data.postal_address.clone(),
+                };
+                block_data.validate()?;
                 BillBlock::create_block_for_accept(
                     bill_id.to_owned(),
                     previous_block,
-                    &BillAcceptBlockData {
-                        accepter: signer_public_data.clone().into(),
-                        signatory: signing_keys.signatory_identity,
-                        signing_timestamp: timestamp,
-                        signing_address: signer_public_data.postal_address.clone(),
-                    },
+                    &block_data,
                     &signing_keys.signatory_keys,
                     signing_keys.company_keys.as_ref(), // company keys
                     &BcrKeys::from_private_key(&bill_keys.private_key)?,
                     timestamp,
                 )?
             }
-            BillAction::RequestAcceptance => BillBlock::create_block_for_request_to_accept(
-                bill_id.to_owned(),
-                previous_block,
-                &BillRequestToAcceptBlockData {
+            BillAction::RequestAcceptance => {
+                let block_data = BillRequestToAcceptBlockData {
                     requester: signer_public_data.clone().into(),
                     signatory: signing_keys.signatory_identity,
                     signing_timestamp: timestamp,
                     signing_address: signer_public_data.postal_address.clone(),
-                },
-                &signing_keys.signatory_keys,
-                signing_keys.company_keys.as_ref(),
-                &BcrKeys::from_private_key(&bill_keys.private_key)?,
-                timestamp,
-            )?,
-            BillAction::RequestToPay(currency) => BillBlock::create_block_for_request_to_pay(
-                bill_id.to_owned(),
-                previous_block,
-                &BillRequestToPayBlockData {
-                    requester: signer_public_data.clone().into(),
-                    currency: currency.to_owned(),
-                    signatory: signing_keys.signatory_identity,
-                    signing_timestamp: timestamp,
-                    signing_address: signer_public_data.postal_address.clone(),
-                },
-                &signing_keys.signatory_keys,
-                signing_keys.company_keys.as_ref(),
-                &BcrKeys::from_private_key(&bill_keys.private_key)?,
-                timestamp,
-            )?,
-            BillAction::RequestRecourse(recoursee, recourse_reason) => {
-                let (sum, currency) = match *recourse_reason {
-                    RecourseReason::Accept => (bill.sum, bill.currency.clone()),
-                    RecourseReason::Pay(sum, ref currency) => (sum, currency.to_owned()),
                 };
-                BillBlock::create_block_for_request_recourse(
+                block_data.validate()?;
+                BillBlock::create_block_for_request_to_accept(
                     bill_id.to_owned(),
                     previous_block,
-                    &BillRequestRecourseBlockData {
-                        recourser: signer_public_data.clone().into(),
-                        recoursee: recoursee.clone().into(),
-                        sum,
-                        currency: currency.to_owned(),
-                        signatory: signing_keys.signatory_identity,
-                        signing_timestamp: timestamp,
-                        signing_address: signer_public_data.postal_address.clone(),
-                    },
+                    &block_data,
                     &signing_keys.signatory_keys,
                     signing_keys.company_keys.as_ref(),
                     &BcrKeys::from_private_key(&bill_keys.private_key)?,
                     timestamp,
                 )?
             }
-            BillAction::Recourse(recoursee, sum, currency) => BillBlock::create_block_for_recourse(
-                bill_id.to_owned(),
-                previous_block,
-                &BillRecourseBlockData {
+            BillAction::RequestToPay(currency) => {
+                let block_data = BillRequestToPayBlockData {
+                    requester: signer_public_data.clone().into(),
+                    currency: currency.to_owned(),
+                    signatory: signing_keys.signatory_identity,
+                    signing_timestamp: timestamp,
+                    signing_address: signer_public_data.postal_address.clone(),
+                };
+                block_data.validate()?;
+                BillBlock::create_block_for_request_to_pay(
+                    bill_id.to_owned(),
+                    previous_block,
+                    &block_data,
+                    &signing_keys.signatory_keys,
+                    signing_keys.company_keys.as_ref(),
+                    &BcrKeys::from_private_key(&bill_keys.private_key)?,
+                    timestamp,
+                )?
+            }
+            BillAction::RequestRecourse(recoursee, recourse_reason) => {
+                let (sum, currency) = match *recourse_reason {
+                    RecourseReason::Accept => (bill.sum, bill.currency.clone()),
+                    RecourseReason::Pay(sum, ref currency) => (sum, currency.to_owned()),
+                };
+                let block_data = BillRequestRecourseBlockData {
+                    recourser: signer_public_data.clone().into(),
+                    recoursee: recoursee.clone().into(),
+                    sum,
+                    currency: currency.to_owned(),
+                    signatory: signing_keys.signatory_identity,
+                    signing_timestamp: timestamp,
+                    signing_address: signer_public_data.postal_address.clone(),
+                };
+                block_data.validate()?;
+                BillBlock::create_block_for_request_recourse(
+                    bill_id.to_owned(),
+                    previous_block,
+                    &block_data,
+                    &signing_keys.signatory_keys,
+                    signing_keys.company_keys.as_ref(),
+                    &BcrKeys::from_private_key(&bill_keys.private_key)?,
+                    timestamp,
+                )?
+            }
+            BillAction::Recourse(recoursee, sum, currency) => {
+                let block_data = BillRecourseBlockData {
                     recourser: signer_public_data.clone().into(),
                     recoursee: recoursee.clone().into(),
                     sum: *sum,
@@ -120,16 +131,20 @@ impl BillService {
                     signatory: signing_keys.signatory_identity,
                     signing_timestamp: timestamp,
                     signing_address: signer_public_data.postal_address.clone(),
-                },
-                &signing_keys.signatory_keys,
-                signing_keys.company_keys.as_ref(),
-                &BcrKeys::from_private_key(&bill_keys.private_key)?,
-                timestamp,
-            )?,
-            BillAction::Mint(mint, sum, currency) => BillBlock::create_block_for_mint(
-                bill_id.to_owned(),
-                previous_block,
-                &BillMintBlockData {
+                };
+                block_data.validate()?;
+                BillBlock::create_block_for_recourse(
+                    bill_id.to_owned(),
+                    previous_block,
+                    &block_data,
+                    &signing_keys.signatory_keys,
+                    signing_keys.company_keys.as_ref(),
+                    &BcrKeys::from_private_key(&bill_keys.private_key)?,
+                    timestamp,
+                )?
+            }
+            BillAction::Mint(mint, sum, currency) => {
+                let block_data = BillMintBlockData {
                     endorser: signer_public_data.clone().into(),
                     endorsee: mint.clone().into(),
                     currency: currency.to_owned(),
@@ -137,29 +152,37 @@ impl BillService {
                     signatory: signing_keys.signatory_identity,
                     signing_timestamp: timestamp,
                     signing_address: signer_public_data.postal_address.clone(),
-                },
-                &signing_keys.signatory_keys,
-                signing_keys.company_keys.as_ref(),
-                &BcrKeys::from_private_key(&bill_keys.private_key)?,
-                timestamp,
-            )?,
+                };
+                block_data.validate()?;
+                BillBlock::create_block_for_mint(
+                    bill_id.to_owned(),
+                    previous_block,
+                    &block_data,
+                    &signing_keys.signatory_keys,
+                    signing_keys.company_keys.as_ref(),
+                    &BcrKeys::from_private_key(&bill_keys.private_key)?,
+                    timestamp,
+                )?
+            }
             BillAction::OfferToSell(buyer, sum, currency) => {
                 let address_to_pay = self
                     .bitcoin_client
                     .get_address_to_pay(&bill_keys.public_key, &signer_public_data.node_id)?;
+                let block_data = BillOfferToSellBlockData {
+                    seller: signer_public_data.clone().into(),
+                    buyer: buyer.clone().into(),
+                    currency: currency.to_owned(),
+                    sum: *sum,
+                    payment_address: address_to_pay,
+                    signatory: signing_keys.signatory_identity,
+                    signing_timestamp: timestamp,
+                    signing_address: signer_public_data.postal_address.clone(),
+                };
+                block_data.validate()?;
                 BillBlock::create_block_for_offer_to_sell(
                     bill_id.to_owned(),
                     previous_block,
-                    &BillOfferToSellBlockData {
-                        seller: signer_public_data.clone().into(),
-                        buyer: buyer.clone().into(),
-                        currency: currency.to_owned(),
-                        sum: *sum,
-                        payment_address: address_to_pay,
-                        signatory: signing_keys.signatory_identity,
-                        signing_timestamp: timestamp,
-                        signing_address: signer_public_data.postal_address.clone(),
-                    },
+                    &block_data,
                     &signing_keys.signatory_keys,
                     signing_keys.company_keys.as_ref(),
                     &BcrKeys::from_private_key(&bill_keys.private_key)?,
@@ -167,92 +190,112 @@ impl BillService {
                 )?
             }
             BillAction::Sell(buyer, sum, currency, payment_address) => {
+                let block_data = BillSellBlockData {
+                    seller: signer_public_data.clone().into(),
+                    buyer: buyer.clone().into(),
+                    currency: currency.to_owned(),
+                    sum: *sum,
+                    payment_address: payment_address.to_owned(),
+                    signatory: signing_keys.signatory_identity,
+                    signing_timestamp: timestamp,
+                    signing_address: signer_public_data.postal_address.clone(),
+                };
+                block_data.validate()?;
                 BillBlock::create_block_for_sell(
                     bill_id.to_owned(),
                     previous_block,
-                    &BillSellBlockData {
-                        seller: signer_public_data.clone().into(),
-                        buyer: buyer.clone().into(),
-                        currency: currency.to_owned(),
-                        sum: *sum,
-                        payment_address: payment_address.to_owned(),
-                        signatory: signing_keys.signatory_identity,
-                        signing_timestamp: timestamp,
-                        signing_address: signer_public_data.postal_address.clone(),
-                    },
+                    &block_data,
                     &signing_keys.signatory_keys,
                     signing_keys.company_keys.as_ref(),
                     &BcrKeys::from_private_key(&bill_keys.private_key)?,
                     timestamp,
                 )?
             }
-            BillAction::Endorse(endorsee) => BillBlock::create_block_for_endorse(
-                bill_id.to_owned(),
-                previous_block,
-                &BillEndorseBlockData {
+            BillAction::Endorse(endorsee) => {
+                let block_data = BillEndorseBlockData {
                     endorser: signer_public_data.clone().into(),
                     endorsee: endorsee.clone().into(),
                     signatory: signing_keys.signatory_identity,
                     signing_timestamp: timestamp,
                     signing_address: signer_public_data.postal_address.clone(),
-                },
-                &signing_keys.signatory_keys,
-                signing_keys.company_keys.as_ref(),
-                &BcrKeys::from_private_key(&bill_keys.private_key)?,
-                timestamp,
-            )?,
-            BillAction::RejectAcceptance => BillBlock::create_block_for_reject_to_accept(
-                bill_id.to_owned(),
-                previous_block,
-                &BillRejectBlockData {
+                };
+                block_data.validate()?;
+                BillBlock::create_block_for_endorse(
+                    bill_id.to_owned(),
+                    previous_block,
+                    &block_data,
+                    &signing_keys.signatory_keys,
+                    signing_keys.company_keys.as_ref(),
+                    &BcrKeys::from_private_key(&bill_keys.private_key)?,
+                    timestamp,
+                )?
+            }
+            BillAction::RejectAcceptance => {
+                let block_data = BillRejectBlockData {
                     rejecter: signer_public_data.clone().into(),
                     signatory: signing_keys.signatory_identity,
                     signing_timestamp: timestamp,
                     signing_address: signer_public_data.postal_address.clone(),
-                },
-                &signing_keys.signatory_keys,
-                signing_keys.company_keys.as_ref(),
-                &BcrKeys::from_private_key(&bill_keys.private_key)?,
-                timestamp,
-            )?,
-            BillAction::RejectBuying => BillBlock::create_block_for_reject_to_buy(
-                bill_id.to_owned(),
-                previous_block,
-                &BillRejectBlockData {
+                };
+                block_data.validate()?;
+                BillBlock::create_block_for_reject_to_accept(
+                    bill_id.to_owned(),
+                    previous_block,
+                    &block_data,
+                    &signing_keys.signatory_keys,
+                    signing_keys.company_keys.as_ref(),
+                    &BcrKeys::from_private_key(&bill_keys.private_key)?,
+                    timestamp,
+                )?
+            }
+            BillAction::RejectBuying => {
+                let block_data = BillRejectBlockData {
                     rejecter: signer_public_data.clone().into(),
                     signatory: signing_keys.signatory_identity,
                     signing_timestamp: timestamp,
                     signing_address: signer_public_data.postal_address.clone(),
-                },
-                &signing_keys.signatory_keys,
-                signing_keys.company_keys.as_ref(),
-                &BcrKeys::from_private_key(&bill_keys.private_key)?,
-                timestamp,
-            )?,
-            BillAction::RejectPayment => BillBlock::create_block_for_reject_to_pay(
-                bill_id.to_owned(),
-                previous_block,
-                &BillRejectBlockData {
+                };
+                block_data.validate()?;
+                BillBlock::create_block_for_reject_to_buy(
+                    bill_id.to_owned(),
+                    previous_block,
+                    &block_data,
+                    &signing_keys.signatory_keys,
+                    signing_keys.company_keys.as_ref(),
+                    &BcrKeys::from_private_key(&bill_keys.private_key)?,
+                    timestamp,
+                )?
+            }
+            BillAction::RejectPayment => {
+                let block_data = BillRejectBlockData {
                     rejecter: signer_public_data.clone().into(),
                     signatory: signing_keys.signatory_identity,
                     signing_timestamp: timestamp,
                     signing_address: signer_public_data.postal_address.clone(),
-                },
-                &signing_keys.signatory_keys,
-                signing_keys.company_keys.as_ref(),
-                &BcrKeys::from_private_key(&bill_keys.private_key)?,
-                timestamp,
-            )?,
+                };
+                block_data.validate()?;
+                BillBlock::create_block_for_reject_to_pay(
+                    bill_id.to_owned(),
+                    previous_block,
+                    &block_data,
+                    &signing_keys.signatory_keys,
+                    signing_keys.company_keys.as_ref(),
+                    &BcrKeys::from_private_key(&bill_keys.private_key)?,
+                    timestamp,
+                )?
+            }
             BillAction::RejectPaymentForRecourse => {
+                let block_data = BillRejectBlockData {
+                    rejecter: signer_public_data.clone().into(),
+                    signatory: signing_keys.signatory_identity,
+                    signing_timestamp: timestamp,
+                    signing_address: signer_public_data.postal_address.clone(),
+                };
+                block_data.validate()?;
                 BillBlock::create_block_for_reject_to_pay_recourse(
                     bill_id.to_owned(),
                     previous_block,
-                    &BillRejectBlockData {
-                        rejecter: signer_public_data.clone().into(),
-                        signatory: signing_keys.signatory_identity,
-                        signing_timestamp: timestamp,
-                        signing_address: signer_public_data.postal_address.clone(),
-                    },
+                    &block_data,
                     &signing_keys.signatory_keys,
                     signing_keys.company_keys.as_ref(),
                     &BcrKeys::from_private_key(&bill_keys.private_key)?,

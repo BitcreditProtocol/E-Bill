@@ -5,6 +5,7 @@ use contact::Contact;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use thiserror::Error;
+use util::is_blank;
 
 pub mod bill;
 pub mod blockchain;
@@ -25,6 +26,10 @@ pub trait ServiceTraitBounds: Send + Sync {}
 #[cfg(target_arch = "wasm32")]
 pub trait ServiceTraitBounds {}
 
+pub trait Validate {
+    fn validate(&self) -> Result<(), ValidationError>;
+}
+
 #[derive(
     BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default,
 )]
@@ -33,6 +38,27 @@ pub struct PostalAddress {
     pub city: String,
     pub zip: Option<String>,
     pub address: String,
+}
+
+impl Validate for PostalAddress {
+    fn validate(&self) -> Result<(), ValidationError> {
+        if self.country.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::Country));
+        }
+
+        if self.city.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::City));
+        }
+
+        if is_blank(&self.zip) {
+            return Err(ValidationError::FieldEmpty(Field::Zip));
+        }
+
+        if self.address.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::Address));
+        }
+        Ok(())
+    }
 }
 
 impl fmt::Display for PostalAddress {
@@ -58,6 +84,27 @@ pub struct OptionalPostalAddress {
     pub city: Option<String>,
     pub zip: Option<String>,
     pub address: Option<String>,
+}
+
+impl Validate for OptionalPostalAddress {
+    fn validate(&self) -> Result<(), ValidationError> {
+        if is_blank(&self.country) {
+            return Err(ValidationError::FieldEmpty(Field::Country));
+        }
+
+        if is_blank(&self.city) {
+            return Err(ValidationError::FieldEmpty(Field::City));
+        }
+
+        if is_blank(&self.zip) {
+            return Err(ValidationError::FieldEmpty(Field::Zip));
+        }
+
+        if is_blank(&self.address) {
+            return Err(ValidationError::FieldEmpty(Field::Address));
+        }
+        Ok(())
+    }
 }
 
 impl OptionalPostalAddress {
@@ -103,9 +150,28 @@ pub struct UploadFileResult {
     pub file_upload_id: String,
 }
 
+#[derive(Debug)]
+pub enum Field {
+    Country,
+    City,
+    Zip,
+    Address,
+    Name,
+    Id,
+    CountryOfIssuing,
+    CityOfIssuing,
+    CountryOfPayment,
+    CityOfPayment,
+    Language,
+}
+
 /// Generic validation error type
 #[derive(Debug, Error)]
 pub enum ValidationError {
+    /// error returned if a field that is not allowed to be empty is empty
+    #[error("Field {0:?} can't be empty")]
+    FieldEmpty(Field),
+
     /// error returned if the sum was invalid
     #[error("invalid sum")]
     InvalidSum,
@@ -117,6 +183,10 @@ pub enum ValidationError {
     /// error returned if the currency was invalid
     #[error("invalid currency")]
     InvalidCurrency,
+
+    /// error returned if the bitcoin address
+    #[error("invalid payment address")]
+    InvalidPaymentAddress,
 
     /// error returned if the file upload id was invalid
     #[error("invalid file upload id")]
@@ -296,5 +366,11 @@ pub enum ValidationError {
 
     /// errors that stem from interacting with a blockchain
     #[error("Blockchain error: {0}")]
-    Blockchain(#[from] blockchain::Error),
+    Blockchain(String),
+}
+
+impl From<crate::blockchain::Error> for ValidationError {
+    fn from(e: crate::blockchain::Error) -> Self {
+        ValidationError::Blockchain(format!("Blockchain error: {}", e))
+    }
 }

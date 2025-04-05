@@ -162,6 +162,10 @@ impl Block for CompanyBlock {
         &self.public_key
     }
 
+    fn validate(&self) -> bool {
+        util::crypto::validate_pub_key(&self.company_id).is_ok()
+    }
+
     fn get_block_data_to_hash(&self) -> Self::BlockDataToHash {
         CompanyBlockDataToHash {
             company_id: self.company_id.clone(),

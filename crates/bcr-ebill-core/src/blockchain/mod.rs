@@ -1,7 +1,7 @@
 use thiserror::Error;
 
-use crate::util;
 use crate::util::crypto;
+use crate::{ValidationError, util};
 use borsh::{BorshSerialize, to_vec};
 use log::{error, warn};
 use std::string::FromUtf8Error;
@@ -33,6 +33,14 @@ pub enum Error {
     /// If certain block is not valid and can't be added
     #[error("Block is invalid")]
     BlockInvalid,
+
+    /// If certain block data is not valid
+    #[error("Block data is invalid: {0}")]
+    BlockDataInvalid(#[from] ValidationError),
+
+    /// If certain block's signature does not match the signer in the block data
+    #[error("Block's signature does not match the signer")]
+    BlockSignatureDoesNotMatchSigner,
 
     /// If an invalid operation is passed to a function (e.g. a non-reject op)
     #[error("Invalid operation")]
@@ -69,6 +77,7 @@ pub trait Block {
     fn data(&self) -> &str;
     fn signature(&self) -> &str;
     fn public_key(&self) -> &str;
+    fn validate(&self) -> bool;
     fn get_block_data_to_hash(&self) -> Self::BlockDataToHash;
 
     /// Calculates the hash over the data to hash for this block
@@ -95,7 +104,7 @@ pub trait Block {
                 error!("Error while verifying block id {}: {e}", self.id());
                 false
             }
-            Ok(res) => res,
+            Ok(res) => res && self.validate(),
         }
     }
 
@@ -104,9 +113,16 @@ pub trait Block {
         if self.previous_hash() != previous_block.hash() {
             warn!("block with id: {} has wrong previous hash", self.id());
             return false;
+        } else if self.timestamp() < previous_block.timestamp() {
+            warn!(
+                "block with id: {} has a timestamp lower than the previous block: {}",
+                self.id(),
+                previous_block.timestamp()
+            );
+            return false;
         } else if self.id() != previous_block.id() + 1 {
             warn!(
-                "block with id: {} is not the next block after the latest: {}",
+                "block with id: {} is not the next block after the previous block: {}",
                 self.id(),
                 previous_block.id()
             );

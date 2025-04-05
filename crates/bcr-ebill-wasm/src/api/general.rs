@@ -2,13 +2,12 @@ use super::Result;
 use bcr_ebill_api::{
     data::GeneralSearchFilterItemType,
     service::Error,
-    util::{ValidationError, file::detect_content_type_for_bytes},
+    util::{VALID_CURRENCIES, ValidationError, file::detect_content_type_for_bytes},
 };
 use wasm_bindgen::prelude::*;
 
 use crate::{
     api::identity::get_current_identity_node_id,
-    constants::VALID_CURRENCIES,
     context::get_ctx,
     data::{
         BalanceResponse, BinaryFileResponse, CurrenciesResponse, CurrencyResponse, FromWeb,

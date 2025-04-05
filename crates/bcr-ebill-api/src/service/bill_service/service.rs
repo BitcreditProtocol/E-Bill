@@ -347,7 +347,7 @@ impl BillServiceApi for BillService {
 
             // check requests for being expired - if an active req to
             // accept/pay/recourse/sell is expired, we need to recalculate the bill
-            if self.check_requests_for_expiration(bill, current_timestamp) {
+            if self.check_requests_for_expiration(bill, current_timestamp)? {
                 debug!(
                     "Bill cache hit, but needs to recalculate because of request deadline {} - recalculating",
                     &bill.id
@@ -613,10 +613,9 @@ impl BillServiceApi for BillService {
     async fn check_bills_payment(&self) -> Result<()> {
         let identity = self.identity_store.get().await?;
         let bill_ids_waiting_for_payment = self.store.get_bill_ids_waiting_for_payment().await?;
-        let now = external::time::TimeApi::get_atomic_time().await.timestamp;
 
         for bill_id in bill_ids_waiting_for_payment {
-            if let Err(e) = self.check_bill_payment(&bill_id, &identity, now).await {
+            if let Err(e) = self.check_bill_payment(&bill_id, &identity).await {
                 error!("Checking bill payment for {bill_id} failed: {e}");
             }
         }

@@ -551,8 +551,8 @@ mod tests {
     use super::*;
     use crate::tests::tests::{
         MockBillChainStoreApiMock, MockBillStoreApiMock, MockNostrEventOffsetStoreApiMock,
-        MockNostrQueuedMessageStore, MockNotificationStoreApiMock, TEST_PRIVATE_KEY_SECP,
-        TEST_PUB_KEY_SECP,
+        MockNostrQueuedMessageStore, MockNotificationStoreApiMock, TEST_BILL_ID,
+        TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP,
     };
 
     fn check_chain_payload(event: &EventEnvelope, bill_event_type: BillEventType) -> bool {
@@ -566,7 +566,7 @@ mod tests {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let buyer = get_identity_public_data("buyer", "buyer@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;
@@ -684,7 +684,7 @@ mod tests {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let buyer = get_identity_public_data("buyer", "buyer@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;
@@ -847,7 +847,7 @@ mod tests {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let buyer = get_identity_public_data("buyer", "buyer@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;
@@ -949,7 +949,7 @@ mod tests {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let buyer = get_identity_public_data("buyer", "buyer@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;
@@ -1020,7 +1020,7 @@ mod tests {
         // given a payer and payee with a new bill
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let chain = get_genesis_chain(Some(bill.clone()));
 
         let mut mock_contact_service = MockContactServiceApi::new();
@@ -1133,7 +1133,7 @@ mod tests {
         // given a payer and payee with a new bill
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let chain = get_genesis_chain(Some(bill.clone()));
         let (service, event) = setup_chain_expectation(
             vec![
@@ -1162,7 +1162,7 @@ mod tests {
     async fn test_send_bill_is_accepted_event() {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;
@@ -1208,7 +1208,7 @@ mod tests {
     async fn test_send_request_to_accept_event() {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;
@@ -1254,7 +1254,7 @@ mod tests {
     async fn test_send_request_to_pay_event() {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;
@@ -1301,7 +1301,7 @@ mod tests {
     async fn test_send_bill_is_paid_event() {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let chain = get_genesis_chain(Some(bill.clone()));
         let (service, event) = setup_chain_expectation(
             vec![
@@ -1324,7 +1324,7 @@ mod tests {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let endorsee = get_identity_public_data("endorsee", "endorsee@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, Some(&endorsee));
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, Some(&endorsee));
         let chain = get_genesis_chain(Some(bill.clone()));
 
         let (service, event) = setup_chain_expectation(
@@ -1353,7 +1353,7 @@ mod tests {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let buyer = get_identity_public_data("buyer", "buyer@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;
@@ -1405,7 +1405,7 @@ mod tests {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let buyer = get_identity_public_data("buyer", "buyer@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;
@@ -1457,7 +1457,7 @@ mod tests {
         let payer = get_identity_public_data("drawee", "drawee@example.com", None);
         let payee = get_identity_public_data("payee", "payee@example.com", None);
         let recoursee = get_identity_public_data("recoursee", "recoursee@example.com", None);
-        let bill = get_test_bitcredit_bill("bill", &payer, &payee, None, None);
+        let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
         let timestamp = now().timestamp() as u64;
         let keys = get_baseline_identity().key_pair;

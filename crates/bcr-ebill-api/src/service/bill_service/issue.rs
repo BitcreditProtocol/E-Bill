@@ -1,7 +1,7 @@
 use super::{BillAction, BillServiceApi, Result, error::Error, service::BillService};
 use crate::util;
 use bcr_ebill_core::{
-    File,
+    File, Validate,
     bill::{BillKeys, BillType, BitcreditBill, validation::validate_bill_issue},
     blockchain::{
         Blockchain,
@@ -103,8 +103,6 @@ impl BillService {
             public_key: keys.get_public_key(),
         };
 
-        self.store.save_keys(&bill_id, &bill_keys).await?;
-
         let mut bill_files: Vec<File> = vec![];
         for file_upload_id in file_upload_ids.iter() {
             let (file_name, file_bytes) = &self
@@ -137,8 +135,13 @@ impl BillService {
         };
 
         let signing_keys = self.get_bill_signing_keys(&drawer_public_data, &drawer_keys, &identity);
+        let block_data =
+            BillIssueBlockData::from(bill.clone(), signing_keys.signatory_identity, timestamp);
+        block_data.validate()?;
+
+        self.store.save_keys(&bill_id, &bill_keys).await?;
         let chain = BillBlockchain::new(
-            &BillIssueBlockData::from(bill.clone(), signing_keys.signatory_identity, timestamp),
+            &block_data,
             signing_keys.signatory_keys,
             signing_keys.company_keys,
             keys.clone(),

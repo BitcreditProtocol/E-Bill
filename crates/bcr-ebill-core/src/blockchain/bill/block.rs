@@ -15,11 +15,13 @@ use crate::{
 
 use crate::contact::{LightIdentityPublicData, LightIdentityPublicDataWithAddress};
 use crate::identity::Identity;
-use crate::{File, PostalAddress};
+use crate::{Field, File, PostalAddress, Validate, ValidationError};
 use borsh::{from_slice, to_vec};
 use borsh_derive::{BorshDeserialize, BorshSerialize};
+use log::error;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::str::FromStr;
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct BillBlock {
@@ -53,6 +55,20 @@ pub struct BillRejectBlockData {
     pub signing_address: PostalAddress,
 }
 
+impl Validate for BillRejectBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.rejecter.validate()?;
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct BillIssueBlockData {
     pub id: String,
@@ -72,6 +88,52 @@ pub struct BillIssueBlockData {
     pub signatory: Option<BillSignatoryBlockData>,
     pub signing_timestamp: u64,
     pub signing_address: PostalAddress,
+}
+
+impl Validate for BillIssueBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        if self.id.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::Id));
+        }
+
+        if self.country_of_issuing.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::CountryOfIssuing));
+        }
+
+        if self.city_of_issuing.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::CityOfIssuing));
+        }
+
+        self.drawee.validate()?;
+        self.drawer.validate()?;
+        self.payee.validate()?;
+
+        util::currency::validate_currency(&self.currency)?;
+        util::currency::validate_sum(self.sum)?;
+
+        util::date::date_string_to_timestamp(&self.maturity_date, None)?;
+        util::date::date_string_to_timestamp(&self.issue_date, None)?;
+
+        if self.country_of_payment.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::CountryOfPayment));
+        }
+
+        if self.city_of_payment.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::CityOfPayment));
+        }
+
+        if self.language.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::Language));
+        }
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
 }
 
 impl BillIssueBlockData {
@@ -111,6 +173,20 @@ pub struct BillAcceptBlockData {
     pub signing_address: PostalAddress, // address of the accepter
 }
 
+impl Validate for BillAcceptBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.accepter.validate()?;
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct BillRequestToPayBlockData {
     pub requester: BillIdentityBlockData,
@@ -120,12 +196,42 @@ pub struct BillRequestToPayBlockData {
     pub signing_address: PostalAddress, // address of the requester
 }
 
+impl Validate for BillRequestToPayBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.requester.validate()?;
+
+        util::currency::validate_currency(&self.currency)?;
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct BillRequestToAcceptBlockData {
     pub requester: BillIdentityBlockData,
     pub signatory: Option<BillSignatoryBlockData>,
     pub signing_timestamp: u64,
     pub signing_address: PostalAddress, // address of the requester
+}
+
+impl Validate for BillRequestToAcceptBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.requester.validate()?;
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -137,6 +243,24 @@ pub struct BillMintBlockData {
     pub signatory: Option<BillSignatoryBlockData>,
     pub signing_timestamp: u64,
     pub signing_address: PostalAddress, // address of the endorser
+}
+
+impl Validate for BillMintBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.endorser.validate()?;
+        self.endorsee.validate()?;
+
+        util::currency::validate_currency(&self.currency)?;
+        util::currency::validate_sum(self.sum)?;
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -151,6 +275,28 @@ pub struct BillOfferToSellBlockData {
     pub signing_address: PostalAddress, // address of the seller
 }
 
+impl Validate for BillOfferToSellBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.seller.validate()?;
+        self.buyer.validate()?;
+
+        util::currency::validate_currency(&self.currency)?;
+        util::currency::validate_sum(self.sum)?;
+
+        if bitcoin::Address::from_str(&self.payment_address).is_err() {
+            return Err(ValidationError::InvalidPaymentAddress);
+        }
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct BillSellBlockData {
     pub seller: BillIdentityBlockData,
@@ -163,6 +309,28 @@ pub struct BillSellBlockData {
     pub signing_address: PostalAddress, // address of the seller
 }
 
+impl Validate for BillSellBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.seller.validate()?;
+        self.buyer.validate()?;
+
+        util::currency::validate_currency(&self.currency)?;
+        util::currency::validate_sum(self.sum)?;
+
+        if bitcoin::Address::from_str(&self.payment_address).is_err() {
+            return Err(ValidationError::InvalidPaymentAddress);
+        }
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct BillEndorseBlockData {
     pub endorser: BillIdentityBlockData,
@@ -170,6 +338,21 @@ pub struct BillEndorseBlockData {
     pub signatory: Option<BillSignatoryBlockData>,
     pub signing_timestamp: u64,
     pub signing_address: PostalAddress, // address of the endorser
+}
+
+impl Validate for BillEndorseBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.endorser.validate()?;
+        self.endorsee.validate()?;
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
@@ -183,6 +366,24 @@ pub struct BillRequestRecourseBlockData {
     pub signing_address: PostalAddress, // address of the endorser
 }
 
+impl Validate for BillRequestRecourseBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.recourser.validate()?;
+        self.recoursee.validate()?;
+
+        util::currency::validate_currency(&self.currency)?;
+        util::currency::validate_sum(self.sum)?;
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
 pub struct BillRecourseBlockData {
     pub recourser: BillIdentityBlockData,
@@ -194,6 +395,24 @@ pub struct BillRecourseBlockData {
     pub signing_address: PostalAddress, // address of the endorser
 }
 
+impl Validate for BillRecourseBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        self.recourser.validate()?;
+        self.recoursee.validate()?;
+
+        util::currency::validate_currency(&self.currency)?;
+        util::currency::validate_sum(self.sum)?;
+
+        if let Some(ref signatory) = self.signatory {
+            signatory.validate()?;
+        }
+
+        self.signing_address.validate()?;
+
+        Ok(())
+    }
+}
+
 /// Legal data for parties within a bill transaction
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq)]
 pub struct BillIdentityBlockData {
@@ -201,6 +420,21 @@ pub struct BillIdentityBlockData {
     pub node_id: String,
     pub name: String,
     pub postal_address: PostalAddress,
+}
+
+impl Validate for BillIdentityBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        if util::crypto::validate_pub_key(&self.node_id).is_err() {
+            return Err(ValidationError::InvalidSecp256k1Key(self.node_id.clone()));
+        }
+
+        if self.name.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::Name));
+        }
+
+        self.postal_address.validate()?;
+        Ok(())
+    }
 }
 
 impl From<IdentityPublicData> for BillIdentityBlockData {
@@ -240,6 +474,20 @@ impl From<BillIdentityBlockData> for LightIdentityPublicData {
 pub struct BillSignatoryBlockData {
     pub node_id: String,
     pub name: String,
+}
+
+impl Validate for BillSignatoryBlockData {
+    fn validate(&self) -> std::result::Result<(), ValidationError> {
+        if util::crypto::validate_pub_key(&self.node_id).is_err() {
+            return Err(ValidationError::InvalidSecp256k1Key(self.node_id.clone()));
+        }
+
+        if self.name.trim().is_empty() {
+            return Err(ValidationError::FieldEmpty(Field::Name));
+        }
+
+        Ok(())
+    }
 }
 
 impl From<Identity> for BillSignatoryBlockData {
@@ -293,6 +541,10 @@ impl Block for BillBlock {
 
     fn public_key(&self) -> &str {
         &self.public_key
+    }
+
+    fn validate(&self) -> bool {
+        bitcoin::base58::decode(&self.bill_id).is_ok()
     }
 
     fn get_block_data_to_hash(&self) -> Self::BlockDataToHash {
@@ -925,6 +1177,109 @@ impl BillBlock {
             _ => Ok(None),
         }
     }
+
+    /// Validates the block data and Verifies that the signer/signatory combo in the block is the one who signed the block and
+    /// returns the signer_node_id
+    pub fn verify_and_get_signer(&self, bill_keys: &BillKeys) -> Result<String> {
+        let (signer, signatory) = match self.op_code {
+            Issue => {
+                let data: BillIssueBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.drawer.node_id, data.signatory.map(|s| s.node_id))
+            }
+            Endorse => {
+                let data: BillEndorseBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.endorser.node_id, data.signatory.map(|s| s.node_id))
+            }
+            Mint => {
+                let data: BillMintBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.endorser.node_id, data.signatory.map(|s| s.node_id))
+            }
+            RequestToAccept => {
+                let data: BillRequestToAcceptBlockData =
+                    self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.requester.node_id, data.signatory.map(|s| s.node_id))
+            }
+            Accept => {
+                let data: BillAcceptBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.accepter.node_id, data.signatory.map(|s| s.node_id))
+            }
+            RequestToPay => {
+                let data: BillRequestToPayBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.requester.node_id, data.signatory.map(|s| s.node_id))
+            }
+            OfferToSell => {
+                let data: BillOfferToSellBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.seller.node_id, data.signatory.map(|s| s.node_id))
+            }
+            Sell => {
+                let data: BillSellBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.seller.node_id, data.signatory.map(|s| s.node_id))
+            }
+            RejectToAccept | RejectToBuy | RejectToPay | RejectToPayRecourse => {
+                let data: BillRejectBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.rejecter.node_id, data.signatory.map(|s| s.node_id))
+            }
+            RequestRecourse => {
+                let data: BillRequestRecourseBlockData =
+                    self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.recourser.node_id, data.signatory.map(|s| s.node_id))
+            }
+            Recourse => {
+                let data: BillRecourseBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (data.recourser.node_id, data.signatory.map(|s| s.node_id))
+            }
+        };
+        if !self.verify_signer(&signer, &signatory, bill_keys) {
+            return Err(Error::BlockSignatureDoesNotMatchSigner);
+        }
+
+        Ok(signer)
+    }
+
+    fn verify_signer(
+        &self,
+        signer: &str,
+        signatory: &Option<String>,
+        bill_keys: &BillKeys,
+    ) -> bool {
+        let mut keys: Vec<String> = vec![];
+        // if there is a company signatory, add that key first, since it's the identity key
+        if let Some(signatory) = signatory {
+            keys.push(signatory.to_owned());
+        }
+        // then, add the signer key
+        keys.push(signer.to_owned());
+        // finally, add the bill key
+        keys.push(bill_keys.public_key.to_owned());
+        let aggregated_public_key = match crypto::combine_pub_keys(&keys) {
+            Ok(res) => res,
+            Err(e) => {
+                error!(
+                    "Error while aggregating keys for block id {}: {e}",
+                    self.id()
+                );
+                return false;
+            }
+        };
+        match crypto::verify(self.hash(), self.signature(), &aggregated_public_key) {
+            Err(e) => {
+                error!("Error while verifying block id {}: {e}", self.id());
+                false
+            }
+            Ok(res) => res,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -933,14 +1288,14 @@ mod tests {
     use crate::{
         blockchain::bill::tests::get_baseline_identity,
         tests::tests::{
-            TEST_PRIVATE_KEY_SECP, empty_bitcredit_bill, empty_identity_public_data, get_bill_keys,
-            identity_public_data_only_node_id,
+            TEST_BILL_ID, TEST_PRIVATE_KEY_SECP, empty_bitcredit_bill, empty_identity_public_data,
+            get_bill_keys, identity_public_data_only_node_id,
         },
     };
 
     fn get_first_block() -> BillBlock {
         let mut bill = empty_bitcredit_bill();
-        bill.id = "some id".to_owned();
+        bill.id = TEST_BILL_ID.to_owned();
         let mut drawer = empty_identity_public_data();
         let node_id = BcrKeys::new().get_public_key();
         let mut payer = empty_identity_public_data();
@@ -953,7 +1308,7 @@ mod tests {
         bill.drawee = payer;
 
         BillBlock::create_block_for_issue(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             String::from("prevhash"),
             &BillIssueBlockData::from(bill, None, 1731593928),
             &get_baseline_identity().key_pair,
@@ -967,7 +1322,7 @@ mod tests {
     #[test]
     fn signature_can_be_verified() {
         let block = BillBlock::new(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             1,
             String::from("prevhash"),
             String::from("some_data"),
@@ -995,7 +1350,7 @@ mod tests {
         bill.drawee = payer;
 
         let block = BillBlock::create_block_for_issue(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             String::from("prevhash"),
             &BillIssueBlockData::from(bill, None, 1731593928),
             &BcrKeys::new(),
@@ -1019,7 +1374,7 @@ mod tests {
         let endorser =
             identity_public_data_only_node_id(get_baseline_identity().key_pair.get_public_key());
         let block = BillBlock::create_block_for_endorse(
-            "some id".to_owned(),
+            TEST_BILL_ID.to_owned(),
             &get_first_block(),
             &BillEndorseBlockData {
                 endorser: endorser.clone().into(),
@@ -1050,7 +1405,7 @@ mod tests {
         let minter_node_id = BcrKeys::new().get_public_key();
         minter.node_id = minter_node_id.clone();
         let block = BillBlock::create_block_for_mint(
-            "some id".to_owned(),
+            TEST_BILL_ID.to_owned(),
             &get_first_block(),
             &BillMintBlockData {
                 endorser: minter.clone().into(),
@@ -1081,7 +1436,7 @@ mod tests {
         requester.node_id = node_id.clone();
 
         let block = BillBlock::create_block_for_request_to_accept(
-            "some id".to_owned(),
+            TEST_BILL_ID.to_owned(),
             &get_first_block(),
             &BillRequestToAcceptBlockData {
                 requester: requester.clone().into(),
@@ -1114,7 +1469,7 @@ mod tests {
         };
 
         let block = BillBlock::create_block_for_accept(
-            "some id".to_owned(),
+            TEST_BILL_ID.to_owned(),
             &get_first_block(),
             &BillAcceptBlockData {
                 accepter: accepter.clone().into(),
@@ -1141,7 +1496,7 @@ mod tests {
         requester.node_id = node_id.clone();
 
         let block = BillBlock::create_block_for_request_to_pay(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             &get_first_block(),
             &BillRequestToPayBlockData {
                 requester: requester.clone().into(),
@@ -1170,14 +1525,14 @@ mod tests {
         let seller =
             identity_public_data_only_node_id(get_baseline_identity().key_pair.get_public_key());
         let block = BillBlock::create_block_for_offer_to_sell(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             &get_first_block(),
             &BillOfferToSellBlockData {
                 buyer: buyer.clone().into(),
                 seller: seller.clone().into(),
                 sum: 5000,
                 currency: "sat".to_string(),
-                payment_address: "1234".to_string(),
+                payment_address: "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk0".to_string(),
                 signatory: None,
                 signing_timestamp: 1731593928,
                 signing_address: seller.postal_address,
@@ -1203,14 +1558,14 @@ mod tests {
         let seller =
             identity_public_data_only_node_id(get_baseline_identity().key_pair.get_public_key());
         let block = BillBlock::create_block_for_sell(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             &get_first_block(),
             &BillSellBlockData {
                 buyer: buyer.clone().into(),
                 seller: seller.clone().into(),
                 sum: 5000,
                 currency: "sat".to_string(),
-                payment_address: "1234".to_string(),
+                payment_address: "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk0".to_string(),
                 signatory: Some(BillSignatoryBlockData {
                     node_id: buyer.node_id.clone(),
                     name: buyer.name.clone(),
@@ -1235,7 +1590,7 @@ mod tests {
     fn get_nodes_from_block_reject_to_accept() {
         let rejecter = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         let block = BillBlock::create_block_for_reject_to_accept(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             &get_first_block(),
             &BillRejectBlockData {
                 rejecter: rejecter.clone().into(),
@@ -1259,7 +1614,7 @@ mod tests {
     fn get_nodes_from_block_reject_to_pay() {
         let rejecter = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         let block = BillBlock::create_block_for_reject_to_pay(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             &get_first_block(),
             &BillRejectBlockData {
                 rejecter: rejecter.clone().into(),
@@ -1283,7 +1638,7 @@ mod tests {
     fn get_nodes_from_block_reject_to_buy() {
         let rejecter = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         let block = BillBlock::create_block_for_reject_to_buy(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             &get_first_block(),
             &BillRejectBlockData {
                 rejecter: rejecter.clone().into(),
@@ -1307,7 +1662,7 @@ mod tests {
     fn get_nodes_from_block_reject_to_pay_recourse() {
         let rejecter = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         let block = BillBlock::create_block_for_reject_to_pay_recourse(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             &get_first_block(),
             &BillRejectBlockData {
                 rejecter: rejecter.clone().into(),
@@ -1332,7 +1687,7 @@ mod tests {
         let recoursee = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         let recourser = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         let block = BillBlock::create_block_for_request_recourse(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             &get_first_block(),
             &BillRequestRecourseBlockData {
                 recourser: recourser.clone().into(),
@@ -1361,7 +1716,7 @@ mod tests {
         let recoursee = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         let recourser = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         let block = BillBlock::create_block_for_recourse(
-            "some id".to_string(),
+            TEST_BILL_ID.to_string(),
             &get_first_block(),
             &BillRecourseBlockData {
                 recourser: recourser.clone().into(),
@@ -1383,5 +1738,840 @@ mod tests {
         assert_eq!(res.as_ref().unwrap().len(), 2);
         assert!(res.as_ref().unwrap().contains(&recourser.node_id));
         assert!(res.as_ref().unwrap().contains(&recoursee.node_id));
+    }
+
+    #[test]
+    fn verify_and_get_signer_baseline() {
+        let bill_keys = BcrKeys::new();
+        let identity_keys = BcrKeys::new();
+        let bill_keys_obj = BillKeys {
+            private_key: bill_keys.get_private_key_string(),
+            public_key: bill_keys.get_public_key(),
+        };
+
+        let mut bill = empty_bitcredit_bill();
+        let signer = identity_public_data_only_node_id(identity_keys.get_public_key());
+        let other_party = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
+        bill.drawer = signer.clone();
+        bill.drawee = other_party.clone();
+        bill.payee = other_party.clone();
+
+        let issue_block = BillBlock::create_block_for_issue(
+            TEST_BILL_ID.to_string(),
+            String::from("genesis"),
+            &BillIssueBlockData::from(bill, None, 1731593928),
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let issue_result = issue_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(issue_result.is_ok());
+        assert_eq!(
+            issue_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let endorse_block = BillBlock::create_block_for_endorse(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillEndorseBlockData {
+                endorser: signer.clone().into(),
+                endorsee: other_party.clone().into(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let endorse_result = endorse_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(endorse_result.is_ok());
+        assert_eq!(
+            endorse_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let mint_block = BillBlock::create_block_for_mint(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillMintBlockData {
+                endorser: signer.clone().into(),
+                endorsee: other_party.clone().into(),
+                sum: 5000,
+                currency: "sat".to_string(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let mint_result = mint_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(mint_result.is_ok());
+        assert_eq!(
+            mint_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let req_to_accept_block = BillBlock::create_block_for_request_to_accept(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRequestToAcceptBlockData {
+                requester: signer.clone().into(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let req_to_accept_result = req_to_accept_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(req_to_accept_result.is_ok());
+        assert_eq!(
+            req_to_accept_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let req_to_pay_block = BillBlock::create_block_for_request_to_pay(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRequestToPayBlockData {
+                requester: signer.clone().into(),
+                currency: "sat".to_string(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let req_to_pay_result = req_to_pay_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(req_to_pay_result.is_ok());
+        assert_eq!(
+            req_to_pay_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let accept_block = BillBlock::create_block_for_accept(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillAcceptBlockData {
+                accepter: signer.clone().into(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let accept_result = accept_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(accept_result.is_ok());
+        assert_eq!(
+            accept_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let offer_to_sell_block = BillBlock::create_block_for_offer_to_sell(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillOfferToSellBlockData {
+                seller: signer.clone().into(),
+                buyer: other_party.clone().into(),
+                sum: 5000,
+                currency: "sat".to_string(),
+                payment_address: "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk0".to_string(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let offer_to_sell_result = offer_to_sell_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(offer_to_sell_result.is_ok());
+        assert_eq!(
+            offer_to_sell_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let sell_block = BillBlock::create_block_for_sell(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillSellBlockData {
+                seller: signer.clone().into(),
+                buyer: other_party.clone().into(),
+                sum: 5000,
+                currency: "sat".to_string(),
+                payment_address: "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk0".to_string(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let sell_result = sell_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(sell_result.is_ok());
+        assert_eq!(
+            sell_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let reject_to_accept_block = BillBlock::create_block_for_reject_to_accept(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRejectBlockData {
+                rejecter: signer.clone().into(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let reject_to_accept_result = reject_to_accept_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(reject_to_accept_result.is_ok());
+        assert_eq!(
+            reject_to_accept_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let reject_to_buy_block = BillBlock::create_block_for_reject_to_buy(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRejectBlockData {
+                rejecter: signer.clone().into(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let reject_to_buy_result = reject_to_buy_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(reject_to_buy_result.is_ok());
+        assert_eq!(
+            reject_to_buy_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let reject_to_pay_block = BillBlock::create_block_for_reject_to_pay(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRejectBlockData {
+                rejecter: signer.clone().into(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let reject_to_pay_result = reject_to_pay_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(reject_to_pay_result.is_ok());
+        assert_eq!(
+            reject_to_pay_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let reject_to_pay_recourse_block = BillBlock::create_block_for_reject_to_pay_recourse(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRejectBlockData {
+                rejecter: signer.clone().into(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let reject_to_pay_recourse_result =
+            reject_to_pay_recourse_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(reject_to_pay_recourse_result.is_ok());
+        assert_eq!(
+            reject_to_pay_recourse_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let request_recourse_block = BillBlock::create_block_for_request_recourse(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRequestRecourseBlockData {
+                recourser: signer.clone().into(),
+                recoursee: other_party.clone().into(),
+                sum: 15000,
+                currency: "sat".to_string(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let request_recourse_result = request_recourse_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(request_recourse_result.is_ok());
+        assert_eq!(
+            request_recourse_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+
+        let recourse_block = BillBlock::create_block_for_recourse(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRecourseBlockData {
+                recourser: signer.clone().into(),
+                recoursee: other_party.clone().into(),
+                sum: 15000,
+                currency: "sat".to_string(),
+                signatory: None,
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            None,
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let recourse_result = recourse_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(recourse_result.is_ok());
+        assert_eq!(
+            recourse_result.as_ref().unwrap(),
+            &identity_keys.get_public_key()
+        );
+    }
+
+    #[test]
+    fn verify_and_get_signer_baseline_company() {
+        let bill_keys = BcrKeys::new();
+        let company_keys = BcrKeys::new();
+        let identity_keys = BcrKeys::new();
+        let bill_keys_obj = BillKeys {
+            private_key: bill_keys.get_private_key_string(),
+            public_key: bill_keys.get_public_key(),
+        };
+
+        let mut bill = empty_bitcredit_bill();
+        let signer = identity_public_data_only_node_id(company_keys.get_public_key());
+        let other_party = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
+        bill.drawer = signer.clone();
+        bill.drawee = other_party.clone();
+        bill.payee = other_party.clone();
+
+        let issue_block = BillBlock::create_block_for_issue(
+            TEST_BILL_ID.to_string(),
+            String::from("genesis"),
+            &BillIssueBlockData::from(
+                bill,
+                Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                1731593928,
+            ),
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+
+        let issue_result = issue_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(issue_result.is_ok());
+        assert_eq!(
+            issue_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let endorse_block = BillBlock::create_block_for_endorse(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillEndorseBlockData {
+                endorser: signer.clone().into(),
+                endorsee: other_party.clone().into(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let endorse_result = endorse_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(endorse_result.is_ok());
+        assert_eq!(
+            endorse_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let mint_block = BillBlock::create_block_for_mint(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillMintBlockData {
+                endorser: signer.clone().into(),
+                endorsee: other_party.clone().into(),
+                sum: 5000,
+                currency: "sat".to_string(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let mint_result = mint_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(mint_result.is_ok());
+        assert_eq!(
+            mint_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let req_to_accept_block = BillBlock::create_block_for_request_to_accept(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRequestToAcceptBlockData {
+                requester: signer.clone().into(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let req_to_accept_result = req_to_accept_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(req_to_accept_result.is_ok());
+        assert_eq!(
+            req_to_accept_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let req_to_pay_block = BillBlock::create_block_for_request_to_pay(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRequestToPayBlockData {
+                requester: signer.clone().into(),
+                currency: "sat".to_string(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let req_to_pay_result = req_to_pay_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(req_to_pay_result.is_ok());
+        assert_eq!(
+            req_to_pay_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let accept_block = BillBlock::create_block_for_accept(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillAcceptBlockData {
+                accepter: signer.clone().into(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let accept_result = accept_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(accept_result.is_ok());
+        assert_eq!(
+            accept_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let offer_to_sell_block = BillBlock::create_block_for_offer_to_sell(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillOfferToSellBlockData {
+                seller: signer.clone().into(),
+                buyer: other_party.clone().into(),
+                sum: 5000,
+                currency: "sat".to_string(),
+                payment_address: "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk0".to_string(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let offer_to_sell_result = offer_to_sell_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(offer_to_sell_result.is_ok());
+        assert_eq!(
+            offer_to_sell_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let sell_block = BillBlock::create_block_for_sell(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillSellBlockData {
+                seller: signer.clone().into(),
+                buyer: other_party.clone().into(),
+                sum: 5000,
+                currency: "sat".to_string(),
+                payment_address: "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk0".to_string(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let sell_result = sell_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(sell_result.is_ok());
+        assert_eq!(
+            sell_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let reject_to_accept_block = BillBlock::create_block_for_reject_to_accept(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRejectBlockData {
+                rejecter: signer.clone().into(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let reject_to_accept_result = reject_to_accept_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(reject_to_accept_result.is_ok());
+        assert_eq!(
+            reject_to_accept_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let reject_to_buy_block = BillBlock::create_block_for_reject_to_buy(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRejectBlockData {
+                rejecter: signer.clone().into(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let reject_to_buy_result = reject_to_buy_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(reject_to_buy_result.is_ok());
+        assert_eq!(
+            reject_to_buy_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let reject_to_pay_block = BillBlock::create_block_for_reject_to_pay(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRejectBlockData {
+                rejecter: signer.clone().into(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let reject_to_pay_result = reject_to_pay_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(reject_to_pay_result.is_ok());
+        assert_eq!(
+            reject_to_pay_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let reject_to_pay_recourse_block = BillBlock::create_block_for_reject_to_pay_recourse(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRejectBlockData {
+                rejecter: signer.clone().into(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let reject_to_pay_recourse_result =
+            reject_to_pay_recourse_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(reject_to_pay_recourse_result.is_ok());
+        assert_eq!(
+            reject_to_pay_recourse_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let request_recourse_block = BillBlock::create_block_for_request_recourse(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRequestRecourseBlockData {
+                recourser: signer.clone().into(),
+                recoursee: other_party.clone().into(),
+                sum: 15000,
+                currency: "sat".to_string(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let request_recourse_result = request_recourse_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(request_recourse_result.is_ok());
+        assert_eq!(
+            request_recourse_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+
+        let recourse_block = BillBlock::create_block_for_recourse(
+            TEST_BILL_ID.to_owned(),
+            &issue_block,
+            &BillRecourseBlockData {
+                recourser: signer.clone().into(),
+                recoursee: other_party.clone().into(),
+                sum: 15000,
+                currency: "sat".to_string(),
+                signatory: Some(BillSignatoryBlockData {
+                    node_id: identity_keys.get_public_key(),
+                    name: "signatory name".to_string(),
+                }),
+                signing_timestamp: 1731593928,
+                signing_address: signer.postal_address.clone(),
+            },
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        let recourse_result = recourse_block.verify_and_get_signer(&bill_keys_obj);
+        assert!(recourse_result.is_ok());
+        assert_eq!(
+            recourse_result.as_ref().unwrap(),
+            &company_keys.get_public_key()
+        );
+    }
+
+    #[test]
+    fn verify_and_get_signer_baseline_invalid_key() {
+        let bill_keys = BcrKeys::new();
+        let company_keys = BcrKeys::new();
+        let identity_keys = BcrKeys::new();
+        let bill_keys_obj = BillKeys {
+            private_key: bill_keys.get_private_key_string(),
+            public_key: bill_keys.get_public_key(),
+        };
+
+        let mut bill = empty_bitcredit_bill();
+        bill.drawer = identity_public_data_only_node_id(company_keys.get_public_key()); //company is drawer
+
+        let block = BillBlock::create_block_for_issue(
+            TEST_BILL_ID.to_string(),
+            String::from("genesis"),
+            &BillIssueBlockData::from(
+                bill,
+                Some(BillSignatoryBlockData {
+                    node_id: "invalid key".to_string(),
+                    name: "signatory name".to_string(),
+                }),
+                1731593928,
+            ),
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+
+        let result = block.verify_and_get_signer(&bill_keys_obj);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_and_get_signer_baseline_wrong_key() {
+        let bill_keys = BcrKeys::new();
+        let company_keys = BcrKeys::new();
+        let identity_keys = BcrKeys::new();
+        let bill_keys_obj = BillKeys {
+            private_key: bill_keys.get_private_key_string(),
+            public_key: bill_keys.get_public_key(),
+        };
+
+        let mut bill = empty_bitcredit_bill();
+        bill.drawer = identity_public_data_only_node_id(BcrKeys::new().get_public_key()); //company is drawer
+
+        let block = BillBlock::create_block_for_issue(
+            TEST_BILL_ID.to_string(),
+            String::from("genesis"),
+            &BillIssueBlockData::from(
+                bill,
+                Some(BillSignatoryBlockData {
+                    node_id: "invalid key".to_string(),
+                    name: "signatory name".to_string(),
+                }),
+                1731593928,
+            ),
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+
+        let result = block.verify_and_get_signer(&bill_keys_obj);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_and_get_signer_baseline_invalid_block() {
+        let bill_keys = BcrKeys::new();
+        let company_keys = BcrKeys::new();
+        let identity_keys = BcrKeys::new();
+        let bill_keys_obj = BillKeys {
+            private_key: bill_keys.get_private_key_string(),
+            public_key: bill_keys.get_public_key(),
+        };
+
+        let mut bill = empty_bitcredit_bill();
+        bill.drawer = identity_public_data_only_node_id(BcrKeys::new().get_public_key()); //company is drawer
+
+        let mut block = BillBlock::create_block_for_issue(
+            TEST_BILL_ID.to_string(),
+            String::from("genesis"),
+            &BillIssueBlockData::from(
+                bill,
+                Some(BillSignatoryBlockData {
+                    node_id: "invalid key".to_string(),
+                    name: "signatory name".to_string(),
+                }),
+                1731593928,
+            ),
+            &identity_keys,
+            Some(&company_keys),
+            &bill_keys,
+            1731593928,
+        )
+        .unwrap();
+        // manipulate the block
+        block.op_code = BillOpCode::Endorse;
+
+        let result = block.verify_and_get_signer(&bill_keys_obj);
+        assert!(result.is_err());
     }
 }

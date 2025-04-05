@@ -38,8 +38,10 @@ pub enum WasmError {
 #[derive(Tsify, Debug, Clone, Serialize)]
 #[tsify(into_wasm_abi)]
 enum JsErrorType {
+    FieldEmpty,
     InvalidSum,
     InvalidCurrency,
+    InvalidPaymentAddress,
     InvalidContentType,
     InvalidContactType,
     InvalidDate,
@@ -175,8 +177,10 @@ fn bill_service_error_data(e: BillServiceError) -> JsErrorData {
 
 fn validation_error_data(e: ValidationError) -> JsErrorData {
     match e {
+        ValidationError::FieldEmpty(_) => err_400(e, JsErrorType::FieldEmpty),
         ValidationError::InvalidSum => err_400(e, JsErrorType::InvalidSum),
         ValidationError::InvalidCurrency => err_400(e, JsErrorType::InvalidCurrency),
+        ValidationError::InvalidPaymentAddress => err_400(e, JsErrorType::InvalidPaymentAddress),
         ValidationError::InvalidContactType => err_400(e, JsErrorType::InvalidContactType),
         ValidationError::InvalidContentType => err_400(e, JsErrorType::InvalidContentType),
         ValidationError::InvalidDate => err_400(e, JsErrorType::InvalidDate),
