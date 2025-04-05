@@ -461,12 +461,12 @@ fn create_nip04_event(
 ) -> Result<EventBuilder> {
     Ok(EventBuilder::new(
         Kind::EncryptedDirectMessage,
-        nip04::encrypt(secret_key, &public_key, message).map_err(|e| {
+        nip04::encrypt(secret_key, public_key, message).map_err(|e| {
             error!("Failed to encrypt direct private message: {e}");
             Error::Crypto("Failed to encrypt direct private message".to_string())
         })?,
     )
-    .tag(Tag::public_key(public_key.clone())))
+    .tag(Tag::public_key(*public_key)))
 }
 
 /// Handle extracted event with given handlers.
