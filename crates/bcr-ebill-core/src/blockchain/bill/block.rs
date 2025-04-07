@@ -5,6 +5,7 @@ use super::BillOpCode::{
     RejectToPayRecourse, RequestRecourse, RequestToAccept, RequestToPay, Sell,
 };
 
+use crate::bill::{BillAction, RecourseReason};
 use crate::blockchain::{Block, FIRST_BLOCK_ID};
 use crate::util::BcrKeys;
 use crate::util::{self, crypto};
@@ -361,9 +362,16 @@ pub struct BillRequestRecourseBlockData {
     pub recoursee: BillIdentityBlockData,
     pub sum: u64,
     pub currency: String,
+    pub recourse_reason: BillRecourseReasonBlockData,
     pub signatory: Option<BillSignatoryBlockData>,
     pub signing_timestamp: u64,
     pub signing_address: PostalAddress, // address of the endorser
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
+pub enum BillRecourseReasonBlockData {
+    Accept,
+    Pay,
 }
 
 impl Validate for BillRequestRecourseBlockData {
@@ -444,6 +452,19 @@ impl From<IdentityPublicData> for BillIdentityBlockData {
             node_id: value.node_id,
             name: value.name,
             postal_address: value.postal_address,
+        }
+    }
+}
+
+impl From<BillIdentityBlockData> for IdentityPublicData {
+    fn from(value: BillIdentityBlockData) -> Self {
+        Self {
+            t: value.t,
+            node_id: value.node_id,
+            name: value.name,
+            postal_address: value.postal_address,
+            email: None,
+            nostr_relay: None,
         }
     }
 }
@@ -1179,72 +1200,165 @@ impl BillBlock {
     }
 
     /// Validates the block data and Verifies that the signer/signatory combo in the block is the one who signed the block and
-    /// returns the signer_node_id
-    pub fn verify_and_get_signer(&self, bill_keys: &BillKeys) -> Result<String> {
-        let (signer, signatory) = match self.op_code {
+    /// returns the signer_node_id and bill action for the block
+    pub fn verify_and_get_signer(
+        &self,
+        bill_keys: &BillKeys,
+    ) -> Result<(String, Option<BillAction>)> {
+        let (signer, signatory, bill_action) = match self.op_code {
             Issue => {
                 let data: BillIssueBlockData = self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.drawer.node_id, data.signatory.map(|s| s.node_id))
+                (data.drawer.node_id, data.signatory.map(|s| s.node_id), None)
             }
             Endorse => {
                 let data: BillEndorseBlockData = self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.endorser.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.endorser.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::Endorse(data.endorsee.into())),
+                )
             }
             Mint => {
                 let data: BillMintBlockData = self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.endorser.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.endorser.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::Mint(
+                        data.endorsee.into(),
+                        data.sum,
+                        data.currency,
+                    )),
+                )
             }
             RequestToAccept => {
                 let data: BillRequestToAcceptBlockData =
                     self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.requester.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.requester.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::RequestAcceptance),
+                )
             }
             Accept => {
                 let data: BillAcceptBlockData = self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.accepter.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.accepter.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::Accept),
+                )
             }
             RequestToPay => {
                 let data: BillRequestToPayBlockData = self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.requester.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.requester.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::RequestToPay(data.currency)),
+                )
             }
             OfferToSell => {
                 let data: BillOfferToSellBlockData = self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.seller.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.seller.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::OfferToSell(
+                        data.buyer.into(),
+                        data.sum,
+                        data.currency,
+                    )),
+                )
             }
             Sell => {
                 let data: BillSellBlockData = self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.seller.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.seller.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::Sell(
+                        data.buyer.into(),
+                        data.sum,
+                        data.currency,
+                        data.payment_address,
+                    )),
+                )
             }
-            RejectToAccept | RejectToBuy | RejectToPay | RejectToPayRecourse => {
+            RejectToAccept => {
                 let data: BillRejectBlockData = self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.rejecter.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.rejecter.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::RejectAcceptance),
+                )
+            }
+            RejectToBuy => {
+                let data: BillRejectBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (
+                    data.rejecter.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::RejectBuying),
+                )
+            }
+            RejectToPay => {
+                let data: BillRejectBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (
+                    data.rejecter.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::RejectPayment),
+                )
+            }
+            RejectToPayRecourse => {
+                let data: BillRejectBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                data.validate()?;
+                (
+                    data.rejecter.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::RejectPaymentForRecourse),
+                )
             }
             RequestRecourse => {
                 let data: BillRequestRecourseBlockData =
                     self.get_decrypted_block_bytes(bill_keys)?;
+                let reason = match data.recourse_reason {
+                    BillRecourseReasonBlockData::Pay => {
+                        RecourseReason::Pay(data.sum, data.currency.clone())
+                    }
+                    BillRecourseReasonBlockData::Accept => RecourseReason::Accept,
+                };
                 data.validate()?;
-                (data.recourser.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.recourser.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::RequestRecourse(data.recoursee.into(), reason)),
+                )
             }
             Recourse => {
                 let data: BillRecourseBlockData = self.get_decrypted_block_bytes(bill_keys)?;
                 data.validate()?;
-                (data.recourser.node_id, data.signatory.map(|s| s.node_id))
+                (
+                    data.recourser.node_id,
+                    data.signatory.map(|s| s.node_id),
+                    Some(BillAction::Recourse(
+                        data.recoursee.into(),
+                        data.sum,
+                        data.currency,
+                    )),
+                )
             }
         };
         if !self.verify_signer(&signer, &signatory, bill_keys) {
             return Err(Error::BlockSignatureDoesNotMatchSigner);
         }
 
-        Ok(signer)
+        Ok((signer, bill_action))
     }
 
     fn verify_signer(
@@ -1694,6 +1808,7 @@ mod tests {
                 recoursee: recoursee.clone().into(),
                 sum: 15000,
                 currency: "sat".to_string(),
+                recourse_reason: BillRecourseReasonBlockData::Pay,
                 signatory: None,
                 signing_timestamp: 1731593928,
                 signing_address: recourser.postal_address,
@@ -1769,8 +1884,8 @@ mod tests {
         let issue_result = issue_block.verify_and_get_signer(&bill_keys_obj);
         assert!(issue_result.is_ok());
         assert_eq!(
-            issue_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            issue_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let endorse_block = BillBlock::create_block_for_endorse(
@@ -1792,8 +1907,8 @@ mod tests {
         let endorse_result = endorse_block.verify_and_get_signer(&bill_keys_obj);
         assert!(endorse_result.is_ok());
         assert_eq!(
-            endorse_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            endorse_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let mint_block = BillBlock::create_block_for_mint(
@@ -1817,8 +1932,8 @@ mod tests {
         let mint_result = mint_block.verify_and_get_signer(&bill_keys_obj);
         assert!(mint_result.is_ok());
         assert_eq!(
-            mint_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            mint_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let req_to_accept_block = BillBlock::create_block_for_request_to_accept(
@@ -1839,8 +1954,8 @@ mod tests {
         let req_to_accept_result = req_to_accept_block.verify_and_get_signer(&bill_keys_obj);
         assert!(req_to_accept_result.is_ok());
         assert_eq!(
-            req_to_accept_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            req_to_accept_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let req_to_pay_block = BillBlock::create_block_for_request_to_pay(
@@ -1862,8 +1977,8 @@ mod tests {
         let req_to_pay_result = req_to_pay_block.verify_and_get_signer(&bill_keys_obj);
         assert!(req_to_pay_result.is_ok());
         assert_eq!(
-            req_to_pay_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            req_to_pay_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let accept_block = BillBlock::create_block_for_accept(
@@ -1884,8 +1999,8 @@ mod tests {
         let accept_result = accept_block.verify_and_get_signer(&bill_keys_obj);
         assert!(accept_result.is_ok());
         assert_eq!(
-            accept_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            accept_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let offer_to_sell_block = BillBlock::create_block_for_offer_to_sell(
@@ -1910,8 +2025,8 @@ mod tests {
         let offer_to_sell_result = offer_to_sell_block.verify_and_get_signer(&bill_keys_obj);
         assert!(offer_to_sell_result.is_ok());
         assert_eq!(
-            offer_to_sell_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            offer_to_sell_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let sell_block = BillBlock::create_block_for_sell(
@@ -1936,8 +2051,8 @@ mod tests {
         let sell_result = sell_block.verify_and_get_signer(&bill_keys_obj);
         assert!(sell_result.is_ok());
         assert_eq!(
-            sell_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            sell_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let reject_to_accept_block = BillBlock::create_block_for_reject_to_accept(
@@ -1958,8 +2073,8 @@ mod tests {
         let reject_to_accept_result = reject_to_accept_block.verify_and_get_signer(&bill_keys_obj);
         assert!(reject_to_accept_result.is_ok());
         assert_eq!(
-            reject_to_accept_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            reject_to_accept_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let reject_to_buy_block = BillBlock::create_block_for_reject_to_buy(
@@ -1980,8 +2095,8 @@ mod tests {
         let reject_to_buy_result = reject_to_buy_block.verify_and_get_signer(&bill_keys_obj);
         assert!(reject_to_buy_result.is_ok());
         assert_eq!(
-            reject_to_buy_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            reject_to_buy_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let reject_to_pay_block = BillBlock::create_block_for_reject_to_pay(
@@ -2002,8 +2117,8 @@ mod tests {
         let reject_to_pay_result = reject_to_pay_block.verify_and_get_signer(&bill_keys_obj);
         assert!(reject_to_pay_result.is_ok());
         assert_eq!(
-            reject_to_pay_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            reject_to_pay_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let reject_to_pay_recourse_block = BillBlock::create_block_for_reject_to_pay_recourse(
@@ -2025,8 +2140,8 @@ mod tests {
             reject_to_pay_recourse_block.verify_and_get_signer(&bill_keys_obj);
         assert!(reject_to_pay_recourse_result.is_ok());
         assert_eq!(
-            reject_to_pay_recourse_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            reject_to_pay_recourse_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let request_recourse_block = BillBlock::create_block_for_request_recourse(
@@ -2037,6 +2152,7 @@ mod tests {
                 recoursee: other_party.clone().into(),
                 sum: 15000,
                 currency: "sat".to_string(),
+                recourse_reason: BillRecourseReasonBlockData::Accept,
                 signatory: None,
                 signing_timestamp: 1731593928,
                 signing_address: signer.postal_address.clone(),
@@ -2050,8 +2166,8 @@ mod tests {
         let request_recourse_result = request_recourse_block.verify_and_get_signer(&bill_keys_obj);
         assert!(request_recourse_result.is_ok());
         assert_eq!(
-            request_recourse_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            request_recourse_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
 
         let recourse_block = BillBlock::create_block_for_recourse(
@@ -2075,8 +2191,8 @@ mod tests {
         let recourse_result = recourse_block.verify_and_get_signer(&bill_keys_obj);
         assert!(recourse_result.is_ok());
         assert_eq!(
-            recourse_result.as_ref().unwrap(),
-            &identity_keys.get_public_key()
+            recourse_result.as_ref().unwrap().0,
+            identity_keys.get_public_key()
         );
     }
 
@@ -2118,8 +2234,8 @@ mod tests {
         let issue_result = issue_block.verify_and_get_signer(&bill_keys_obj);
         assert!(issue_result.is_ok());
         assert_eq!(
-            issue_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            issue_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let endorse_block = BillBlock::create_block_for_endorse(
@@ -2144,8 +2260,8 @@ mod tests {
         let endorse_result = endorse_block.verify_and_get_signer(&bill_keys_obj);
         assert!(endorse_result.is_ok());
         assert_eq!(
-            endorse_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            endorse_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let mint_block = BillBlock::create_block_for_mint(
@@ -2172,8 +2288,8 @@ mod tests {
         let mint_result = mint_block.verify_and_get_signer(&bill_keys_obj);
         assert!(mint_result.is_ok());
         assert_eq!(
-            mint_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            mint_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let req_to_accept_block = BillBlock::create_block_for_request_to_accept(
@@ -2197,8 +2313,8 @@ mod tests {
         let req_to_accept_result = req_to_accept_block.verify_and_get_signer(&bill_keys_obj);
         assert!(req_to_accept_result.is_ok());
         assert_eq!(
-            req_to_accept_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            req_to_accept_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let req_to_pay_block = BillBlock::create_block_for_request_to_pay(
@@ -2223,8 +2339,8 @@ mod tests {
         let req_to_pay_result = req_to_pay_block.verify_and_get_signer(&bill_keys_obj);
         assert!(req_to_pay_result.is_ok());
         assert_eq!(
-            req_to_pay_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            req_to_pay_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let accept_block = BillBlock::create_block_for_accept(
@@ -2248,8 +2364,8 @@ mod tests {
         let accept_result = accept_block.verify_and_get_signer(&bill_keys_obj);
         assert!(accept_result.is_ok());
         assert_eq!(
-            accept_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            accept_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let offer_to_sell_block = BillBlock::create_block_for_offer_to_sell(
@@ -2277,8 +2393,8 @@ mod tests {
         let offer_to_sell_result = offer_to_sell_block.verify_and_get_signer(&bill_keys_obj);
         assert!(offer_to_sell_result.is_ok());
         assert_eq!(
-            offer_to_sell_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            offer_to_sell_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let sell_block = BillBlock::create_block_for_sell(
@@ -2306,8 +2422,8 @@ mod tests {
         let sell_result = sell_block.verify_and_get_signer(&bill_keys_obj);
         assert!(sell_result.is_ok());
         assert_eq!(
-            sell_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            sell_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let reject_to_accept_block = BillBlock::create_block_for_reject_to_accept(
@@ -2331,8 +2447,8 @@ mod tests {
         let reject_to_accept_result = reject_to_accept_block.verify_and_get_signer(&bill_keys_obj);
         assert!(reject_to_accept_result.is_ok());
         assert_eq!(
-            reject_to_accept_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            reject_to_accept_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let reject_to_buy_block = BillBlock::create_block_for_reject_to_buy(
@@ -2356,8 +2472,8 @@ mod tests {
         let reject_to_buy_result = reject_to_buy_block.verify_and_get_signer(&bill_keys_obj);
         assert!(reject_to_buy_result.is_ok());
         assert_eq!(
-            reject_to_buy_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            reject_to_buy_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let reject_to_pay_block = BillBlock::create_block_for_reject_to_pay(
@@ -2381,8 +2497,8 @@ mod tests {
         let reject_to_pay_result = reject_to_pay_block.verify_and_get_signer(&bill_keys_obj);
         assert!(reject_to_pay_result.is_ok());
         assert_eq!(
-            reject_to_pay_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            reject_to_pay_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let reject_to_pay_recourse_block = BillBlock::create_block_for_reject_to_pay_recourse(
@@ -2407,8 +2523,8 @@ mod tests {
             reject_to_pay_recourse_block.verify_and_get_signer(&bill_keys_obj);
         assert!(reject_to_pay_recourse_result.is_ok());
         assert_eq!(
-            reject_to_pay_recourse_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            reject_to_pay_recourse_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let request_recourse_block = BillBlock::create_block_for_request_recourse(
@@ -2419,6 +2535,7 @@ mod tests {
                 recoursee: other_party.clone().into(),
                 sum: 15000,
                 currency: "sat".to_string(),
+                recourse_reason: BillRecourseReasonBlockData::Accept,
                 signatory: Some(BillSignatoryBlockData {
                     node_id: identity_keys.get_public_key(),
                     name: "signatory name".to_string(),
@@ -2435,8 +2552,8 @@ mod tests {
         let request_recourse_result = request_recourse_block.verify_and_get_signer(&bill_keys_obj);
         assert!(request_recourse_result.is_ok());
         assert_eq!(
-            request_recourse_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            request_recourse_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
 
         let recourse_block = BillBlock::create_block_for_recourse(
@@ -2463,8 +2580,8 @@ mod tests {
         let recourse_result = recourse_block.verify_and_get_signer(&bill_keys_obj);
         assert!(recourse_result.is_ok());
         assert_eq!(
-            recourse_result.as_ref().unwrap(),
-            &company_keys.get_public_key()
+            recourse_result.as_ref().unwrap().0,
+            company_keys.get_public_key()
         );
     }
 
