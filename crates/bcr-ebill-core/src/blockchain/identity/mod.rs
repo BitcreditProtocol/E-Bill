@@ -391,7 +391,7 @@ impl IdentityBlockchain {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::tests::{empty_identity, empty_optional_address};
+    use crate::tests::tests::{empty_identity, valid_optional_address};
 
     #[test]
     fn create_and_check_validity() {
@@ -417,7 +417,7 @@ mod tests {
             &IdentityUpdateBlockData {
                 name: Some("newname".to_string()),
                 email: None,
-                postal_address: empty_optional_address(),
+                postal_address: valid_optional_address(),
                 date_of_birth: None,
                 country_of_birth: None,
                 city_of_birth: None,
