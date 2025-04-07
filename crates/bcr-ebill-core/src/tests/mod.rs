@@ -140,7 +140,7 @@ pub mod tests {
         OptionalPostalAddress { address: Some("".into()), ..valid_optional_address() },
         ValidationError::FieldEmpty(Field::Address)
     )]
-    fn test_optional_addrress(
+    fn test_optional_address(
         #[case] address: OptionalPostalAddress,
         #[case] expected_error: ValidationError,
     ) {
