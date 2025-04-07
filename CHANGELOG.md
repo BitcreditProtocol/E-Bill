@@ -1,5 +1,7 @@
 # 0.3.3
 
+* Use Nip-04 as a default for Nostr communication
+* Add incoming bill validation
 * Add block data validation
 * Add bill action validation for incoming blocks
 * Add signer verification for incoming blocks

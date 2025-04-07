@@ -63,6 +63,6 @@ pub enum Error {
     RecourseeNotInContacts,
 
     /// errors that stem from bill validation errors
-    #[error("bill validation error")]
+    #[error("bill validation error {0}")]
     Validation(#[from] bcr_ebill_core::ValidationError),
 }
