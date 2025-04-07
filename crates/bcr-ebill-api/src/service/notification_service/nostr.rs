@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::service::contact_service::ContactServiceApi;
 use crate::util::BcrKeys;
+use crate::{constants::NOSTR_EVENT_TIME_SLACK, service::contact_service::ContactServiceApi};
 use bcr_ebill_core::ServiceTraitBounds;
 use bcr_ebill_persistence::{NostrEventOffset, NostrEventOffsetStoreApi};
 use bcr_ebill_transport::{Error, NotificationJsonTransportApi, Result};
@@ -397,17 +397,16 @@ async fn valid_sender(
 }
 
 async fn get_offset(db: &Arc<dyn NostrEventOffsetStoreApi>, node_id: &str) -> Timestamp {
-    let slack = 3600;
     let current = db
         .current_offset(node_id)
         .await
         .map_err(|e| error!("Could not get event offset: {e}"))
         .ok()
         .unwrap_or(0);
-    let ts = if current <= slack {
+    let ts = if current <= NOSTR_EVENT_TIME_SLACK {
         current
     } else {
-        current - slack
+        current - NOSTR_EVENT_TIME_SLACK
     };
     Timestamp::from_secs(ts)
 }
