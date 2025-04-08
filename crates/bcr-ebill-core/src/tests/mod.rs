@@ -28,20 +28,20 @@ pub mod tests {
         PostalAddress { country: "  ".into(), ..valid_address() },
         ValidationError::FieldEmpty(Field::Country)
     )]
-    #[case::blank_city(
-        PostalAddress { city: "  ".into(), ..valid_address() },
-        ValidationError::FieldEmpty(Field::City)
-    )]
     #[case::empty_city(
         PostalAddress { city: "".into(), ..valid_address() },
         ValidationError::FieldEmpty(Field::City)
     )]
-    #[case::blank_zip(
-        PostalAddress { zip: Some("   ".into()), ..valid_address() },
-        ValidationError::FieldEmpty(Field::Zip)
+    #[case::blank_city(
+        PostalAddress { city: "  ".into(), ..valid_address() },
+        ValidationError::FieldEmpty(Field::City)
     )]
     #[case::empty_zip(
         PostalAddress { zip: Some("".into()), ..valid_address() },
+        ValidationError::FieldEmpty(Field::Zip)
+    )]
+    #[case::blank_zip(
+        PostalAddress { zip: Some("   ".into()), ..valid_address() },
         ValidationError::FieldEmpty(Field::Zip)
     )]
     #[case::empty_address(
@@ -108,20 +108,20 @@ pub mod tests {
     }
 
     #[rstest]
-    #[case::blank_country(
-        OptionalPostalAddress { country: Some("  ".into()), ..valid_optional_address() },
-        ValidationError::FieldEmpty(Field::Country)
-    )]
     #[case::empty_country(
         OptionalPostalAddress { country: Some("".into()), ..valid_optional_address() },
         ValidationError::FieldEmpty(Field::Country)
     )]
-    #[case::blank_city(
-        OptionalPostalAddress { city: Some("\n\t".into()), ..valid_optional_address() },
-        ValidationError::FieldEmpty(Field::City)
+    #[case::blank_country(
+        OptionalPostalAddress { country: Some("  ".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::Country)
     )]
     #[case::empty_city(
         OptionalPostalAddress { city: Some("".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::City)
+    )]
+    #[case::blank_city(
+        OptionalPostalAddress { city: Some("\n\t".into()), ..valid_optional_address() },
         ValidationError::FieldEmpty(Field::City)
     )]
     #[case::empty_zip(
@@ -132,12 +132,12 @@ pub mod tests {
         OptionalPostalAddress { zip: Some("  ".into()), ..valid_optional_address() },
         ValidationError::FieldEmpty(Field::Zip)
     )]
-    #[case::blank_address(
-        OptionalPostalAddress { address: Some("    ".into()), ..valid_optional_address() },
-        ValidationError::FieldEmpty(Field::Address)
-    )]
     #[case::empty_address(
         OptionalPostalAddress { address: Some("".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::Address)
+    )]
+    #[case::blank_address(
+        OptionalPostalAddress { address: Some("    ".into()), ..valid_optional_address() },
         ValidationError::FieldEmpty(Field::Address)
     )]
     fn test_optional_address(

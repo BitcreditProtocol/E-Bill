@@ -2715,12 +2715,12 @@ mod tests {
         BillIdentityBlockData { node_id: "invalidkey".into(), ..valid_bill_identity_block_data() },
         ValidationError::InvalidSecp256k1Key("invalidkey".into())
     )]
-    #[case::blank_name(
-        BillIdentityBlockData { name: "   ".into(), ..valid_bill_identity_block_data() },
-        ValidationError::FieldEmpty(Field::Name)
-    )]
     #[case::empty_name(
         BillIdentityBlockData { name: "".into(), ..valid_bill_identity_block_data() },
+        ValidationError::FieldEmpty(Field::Name)
+    )]
+    #[case::blank_name(
+        BillIdentityBlockData { name: "   ".into(), ..valid_bill_identity_block_data() },
         ValidationError::FieldEmpty(Field::Name)
     )]
     #[case::invalid_address(
