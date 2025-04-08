@@ -468,7 +468,8 @@ mod tests {
     #[tokio::test]
     async fn test_creates_new_chain_for_new_chain_event() {
         let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
-        let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let mut payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        payee.node_id = OTHER_TEST_PUB_KEY_SECP.to_owned();
         let drawer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, Some(&drawer), None);
         let chain = get_genesis_chain(Some(bill.clone()));
@@ -522,7 +523,8 @@ mod tests {
     #[tokio::test]
     async fn test_fails_to_create_new_chain_for_new_chain_event_if_block_validation_fails() {
         let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
-        let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let mut payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        payee.node_id = OTHER_TEST_PUB_KEY_SECP.to_owned();
         let drawer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, Some(&drawer), None);
         let mut chain = get_genesis_chain(Some(bill.clone()));
@@ -649,7 +651,8 @@ mod tests {
     async fn test_adds_block_for_existing_chain_event() {
         let payer = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
         let payee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
-        let endorsee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        let mut endorsee = IdentityPublicData::new(get_baseline_identity().identity).unwrap();
+        endorsee.node_id = OTHER_TEST_PUB_KEY_SECP.to_owned();
         let bill = get_test_bitcredit_bill(TEST_BILL_ID, &payer, &payee, None, None);
         let chain = get_genesis_chain(Some(bill.clone()));
         let block = BillBlock::create_block_for_endorse(
@@ -1147,6 +1150,9 @@ mod tests {
 
     pub const TEST_PUB_KEY_SECP: &str =
         "02295fb5f4eeb2f21e01eaf3a2d9a3be10f39db870d28f02146130317973a40ac0";
+
+    pub const OTHER_TEST_PUB_KEY_SECP: &str =
+        "03f9f94d1fdc2090d46f3524807e3f58618c36988e69577d70d5d4d1e9e9645a4f";
 
     pub const TEST_BILL_ID: &str = "KmtMUia3ezhshD9EyzvpT62DUPLr66M5LESy6j8ErCtv1USUDtoTA8JkXnCCGEtZxp41aKne5wVcCjoaFbjDqD4aFk";
 

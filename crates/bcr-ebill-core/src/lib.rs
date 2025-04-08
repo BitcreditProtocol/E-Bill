@@ -200,6 +200,18 @@ pub enum ValidationError {
     #[error("Drawee can't be Payee at the same time")]
     DraweeCantBePayee,
 
+    /// errors stemming from when the endorser is the endorsee
+    #[error("Endorser can't be Endorsee at the same time")]
+    EndorserCantBeEndorsee,
+
+    /// errors stemming from when the buyer is the seller
+    #[error("Buyer can't be Seller at the same time")]
+    BuyerCantBeSeller,
+
+    /// errors stemming from when the recourser is the recoursee
+    #[error("Recourser can't be Recoursee at the same time")]
+    RecourserCantBeRecoursee,
+
     /// error returned if a bill was already accepted and is attempted to be accepted again
     #[error("Bill was already accepted")]
     BillAlreadyAccepted,

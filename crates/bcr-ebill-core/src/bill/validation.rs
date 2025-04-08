@@ -4,7 +4,7 @@ use crate::{
         Block, Blockchain,
         bill::{
             BillBlockchain, BillOpCode, OfferToSellWaitingForPayment, RecourseWaitingForPayment,
-            block::BillRequestRecourseBlockData,
+            block::{BillRecourseReasonBlockData, BillRequestRecourseBlockData},
         },
     },
     constants::{ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS},
@@ -180,11 +180,15 @@ pub fn validate_bill_action(
                 }
             };
         }
-        BillAction::Recourse(recoursee, sum, currency, _reason) => {
+        BillAction::Recourse(recoursee, sum, currency, reason) => {
             // not waiting for req to pay
             bill_waiting_for_req_to_pay(blockchain, maturity_date, timestamp, is_paid)?;
             // not waiting for offer to sell
             bill_waiting_for_offer_to_sell(blockchain, bill_keys, timestamp)?;
+            let recourse_reason = match reason {
+                RecourseReason::Pay(_, _) => BillRecourseReasonBlockData::Pay,
+                RecourseReason::Accept => BillRecourseReasonBlockData::Accept,
+            };
 
             if let RecourseWaitingForPayment::Yes(payment_info) = blockchain
                 .is_last_request_to_recourse_block_waiting_for_payment(bill_keys, timestamp)?
@@ -193,6 +197,7 @@ pub fn validate_bill_action(
                     || payment_info.currency != *currency
                     || payment_info.recoursee.node_id != recoursee.node_id
                     || payment_info.recourser.node_id != signer_node_id
+                    || payment_info.reason != recourse_reason
                 {
                     return Err(ValidationError::BillRecourseDataInvalid);
                 }

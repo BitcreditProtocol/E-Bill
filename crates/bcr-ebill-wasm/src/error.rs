@@ -48,6 +48,9 @@ enum JsErrorType {
     InvalidFileUploadId,
     InvalidBillType,
     DraweeCantBePayee,
+    EndorserCantBeEndorsee,
+    BuyerCantBeSeller,
+    RecourserCantBeRecoursee,
     DraweeNotInContacts,
     PayeeNotInContacts,
     MintNotInContacts,
@@ -187,6 +190,11 @@ fn validation_error_data(e: ValidationError) -> JsErrorData {
         ValidationError::InvalidFileUploadId => err_400(e, JsErrorType::InvalidFileUploadId),
         ValidationError::InvalidBillType => err_400(e, JsErrorType::InvalidBillType),
         ValidationError::DraweeCantBePayee => err_400(e, JsErrorType::DraweeCantBePayee),
+        ValidationError::EndorserCantBeEndorsee => err_400(e, JsErrorType::EndorserCantBeEndorsee),
+        ValidationError::BuyerCantBeSeller => err_400(e, JsErrorType::BuyerCantBeSeller),
+        ValidationError::RecourserCantBeRecoursee => {
+            err_400(e, JsErrorType::RecourserCantBeRecoursee)
+        }
         ValidationError::RequestAlreadyExpired => err_400(e, JsErrorType::RequestAlreadyExpired),
         ValidationError::BillAlreadyAccepted => err_400(e, JsErrorType::BillAlreadyAccepted),
         ValidationError::BillWasNotOfferedToSell => {
