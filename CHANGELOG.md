@@ -1,6 +1,8 @@
 # 0.3.4
 
 * Add in-depth tests for bill validation
+* Add recourse reason to `Recourse` block data
+    * (breaks existing persisted bills, if they had a recourse block)
 
 # 0.3.3
 

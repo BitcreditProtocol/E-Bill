@@ -162,6 +162,7 @@ impl BillBlockchain {
                         recourser: block_data_decrypted.recourser,
                         sum: block_data_decrypted.sum,
                         currency: block_data_decrypted.currency,
+                        reason: block_data_decrypted.recourse_reason,
                     },
                 )));
             }

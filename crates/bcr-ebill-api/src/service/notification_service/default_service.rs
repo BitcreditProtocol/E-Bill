@@ -511,7 +511,7 @@ mod tests {
     use bcr_ebill_core::blockchain::Blockchain;
     use bcr_ebill_core::blockchain::bill::block::{
         BillAcceptBlockData, BillOfferToSellBlockData, BillRecourseBlockData,
-        BillRequestToAcceptBlockData, BillRequestToPayBlockData,
+        BillRecourseReasonBlockData, BillRequestToAcceptBlockData, BillRequestToPayBlockData,
     };
     use bcr_ebill_core::blockchain::bill::{BillBlock, BillBlockchain};
     use bcr_ebill_core::util::date::now;
@@ -1468,7 +1468,8 @@ mod tests {
                 recourser: payee.clone().into(),
                 recoursee: recoursee.clone().into(),
                 sum: 100,
-                currency: "USD".to_string(),
+                currency: "sat".to_string(),
+                recourse_reason: BillRecourseReasonBlockData::Pay,
                 signatory: None,
                 signing_timestamp: timestamp,
                 signing_address: PostalAddress::default(),

@@ -10,15 +10,22 @@ pub mod validation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BillAction {
-    Accept,
     RequestAcceptance,
-    RequestToPay(String),                                // currency
-    RequestRecourse(IdentityPublicData, RecourseReason), // recoursee, recourse reason
-    Recourse(IdentityPublicData, u64, String),           // recoursee, sum, currency
-    Mint(IdentityPublicData, u64, String),               // mint, sum, currency
-    OfferToSell(IdentityPublicData, u64, String),        // buyer, sum, currency
-    Sell(IdentityPublicData, u64, String, String),       // buyer, sum, currency, payment_address
-    Endorse(IdentityPublicData),                         // endorsee
+    Accept,
+    // currency
+    RequestToPay(String),
+    // buyer, sum, currency
+    OfferToSell(IdentityPublicData, u64, String),
+    // buyer, sum, currency, payment_address
+    Sell(IdentityPublicData, u64, String, String),
+    // endorsee
+    Endorse(IdentityPublicData),
+    // recoursee, recourse reason
+    RequestRecourse(IdentityPublicData, RecourseReason),
+    // recoursee, sum, currency reason/
+    Recourse(IdentityPublicData, u64, String, RecourseReason),
+    // mint, sum, currency
+    Mint(IdentityPublicData, u64, String),
     RejectAcceptance,
     RejectPayment,
     RejectBuying,

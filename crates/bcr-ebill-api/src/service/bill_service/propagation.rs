@@ -56,7 +56,7 @@ impl BillService {
                     .send_recourse_action_event(&chain_event, action_type, recoursee)
                     .await?;
             }
-            BillAction::Recourse(recoursee, _, _) => {
+            BillAction::Recourse(recoursee, _, _, _) => {
                 self.notification_service
                     .send_bill_recourse_paid_event(&chain_event, recoursee)
                     .await?;

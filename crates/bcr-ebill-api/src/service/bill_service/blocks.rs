@@ -129,12 +129,17 @@ impl BillService {
                     timestamp,
                 )?
             }
-            BillAction::Recourse(recoursee, sum, currency) => {
+            BillAction::Recourse(recoursee, sum, currency, recourse_reason) => {
+                let reason = match *recourse_reason {
+                    RecourseReason::Accept => BillRecourseReasonBlockData::Accept,
+                    RecourseReason::Pay(_, _) => BillRecourseReasonBlockData::Pay,
+                };
                 let block_data = BillRecourseBlockData {
                     recourser: signer_public_data.clone().into(),
                     recoursee: recoursee.clone().into(),
                     sum: *sum,
                     currency: currency.to_owned(),
+                    recourse_reason: reason,
                     signatory: signing_keys.signatory_identity,
                     signing_timestamp: timestamp,
                     signing_address: signer_public_data.postal_address.clone(),

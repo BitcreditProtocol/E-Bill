@@ -180,7 +180,7 @@ pub fn validate_bill_action(
                 }
             };
         }
-        BillAction::Recourse(recoursee, sum, currency) => {
+        BillAction::Recourse(recoursee, sum, currency, _reason) => {
             // not waiting for req to pay
             bill_waiting_for_req_to_pay(blockchain, maturity_date, timestamp, is_paid)?;
             // not waiting for offer to sell
