@@ -1286,6 +1286,7 @@ pub mod tests {
                             BcrKeys::new().get_public_key(),
                         )
                         .into(),
+                        recourse_reason: BillRecourseReasonBlockData::Pay,
                         currency: "sat".to_string(),
                         sum: 15000,
                         signatory: None,

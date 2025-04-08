@@ -2,9 +2,13 @@ use super::Result;
 use super::service::BillService;
 use crate::service::bill_service::{BillAction, BillServiceApi};
 use bcr_ebill_core::{
+    bill::RecourseReason,
     blockchain::{
         Blockchain,
-        bill::{BillOpCode, OfferToSellWaitingForPayment, RecourseWaitingForPayment},
+        bill::{
+            BillOpCode, OfferToSellWaitingForPayment, RecourseWaitingForPayment,
+            block::BillRecourseReasonBlockData,
+        },
     },
     company::{Company, CompanyKeys},
     contact::IdentityPublicData,
@@ -88,6 +92,13 @@ impl BillService {
                         if let Some(signer_identity) =
                             IdentityPublicData::new(identity.identity.clone())
                         {
+                            let reason = match payment_info.reason {
+                                BillRecourseReasonBlockData::Pay => RecourseReason::Pay(
+                                    payment_info.sum,
+                                    payment_info.currency.clone(),
+                                ),
+                                BillRecourseReasonBlockData::Accept => RecourseReason::Accept,
+                            };
                             let _ = self
                                 .execute_bill_action(
                                     bill_id,
@@ -97,7 +108,7 @@ impl BillService {
                                             &identity.identity,
                                             &contacts
                                         )
-                                        .await, payment_info.sum, payment_info.currency),
+                                        .await, payment_info.sum, payment_info.currency, reason),
                                     &signer_identity,
                                     &identity.key_pair,
                                     now,
@@ -119,6 +130,13 @@ impl BillService {
                             .iter()
                             .any(|s| s == &identity.identity.node_id)
                         {
+                            let reason = match payment_info.reason {
+                                BillRecourseReasonBlockData::Pay => RecourseReason::Pay(
+                                    payment_info.sum,
+                                    payment_info.currency.clone(),
+                                ),
+                                BillRecourseReasonBlockData::Accept => RecourseReason::Accept,
+                            };
                             let _ = self
                                 .execute_bill_action(
                                     bill_id,
@@ -127,7 +145,7 @@ impl BillService {
                                         &identity.identity,
                                         &contacts
                                     )
-                                    .await, payment_info.sum, payment_info.currency),
+                                    .await, payment_info.sum, payment_info.currency, reason),
                                     // signer identity (company)
                                     &IdentityPublicData::from(recourser_company.0.clone()),
                                     // signer keys (company keys)

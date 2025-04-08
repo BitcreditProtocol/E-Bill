@@ -5,7 +5,7 @@ pub mod block;
 pub mod chain;
 
 pub use block::BillBlock;
-use block::BillIdentityBlockData;
+use block::{BillIdentityBlockData, BillRecourseReasonBlockData};
 pub use chain::BillBlockchain;
 
 #[derive(
@@ -55,6 +55,7 @@ pub struct RecoursePaymentInfo {
     pub recoursee: BillIdentityBlockData,
     pub sum: u64,
     pub currency: String,
+    pub reason: BillRecourseReasonBlockData,
 }
 
 #[cfg(test)]

@@ -412,4 +412,6 @@ pub mod tests {
 
     pub const TEST_NODE_ID_SECP_AS_NPUB_HEX: &str =
         "205b8dec12bc9e879f5b517aa32192a2550e88adcee3e54ec2c7294802568fef";
+
+    pub const VALID_PAYMENT_ADDRESS: &str = "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk0";
 }
