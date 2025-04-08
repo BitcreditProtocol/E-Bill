@@ -474,7 +474,7 @@ impl CompanyBlockchain {
 mod tests {
     use super::*;
     use crate::tests::tests::{
-        TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP, empty_address, empty_optional_address,
+        TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP, valid_address, valid_optional_address,
     };
 
     fn get_baseline_company_data() -> (String, (Company, CompanyKeys)) {
@@ -486,7 +486,7 @@ mod tests {
                     name: "some_name".to_string(),
                     country_of_registration: Some("AT".to_string()),
                     city_of_registration: Some("Vienna".to_string()),
-                    postal_address: empty_address(),
+                    postal_address: valid_address(),
                     email: "company@example.com".to_string(),
                     registration_number: Some("some_number".to_string()),
                     registration_date: Some("2012-01-01".to_string()),
@@ -536,7 +536,7 @@ mod tests {
             &CompanyUpdateBlockData {
                 name: Some("new_name".to_string()),
                 email: None,
-                postal_address: empty_optional_address(),
+                postal_address: valid_optional_address(),
                 country_of_registration: None,
                 city_of_registration: None,
                 registration_number: None,

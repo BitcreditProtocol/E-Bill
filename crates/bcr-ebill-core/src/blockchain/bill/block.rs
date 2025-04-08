@@ -1402,10 +1402,12 @@ mod tests {
     use crate::{
         blockchain::bill::tests::get_baseline_identity,
         tests::tests::{
-            TEST_BILL_ID, TEST_PRIVATE_KEY_SECP, empty_bitcredit_bill, empty_identity_public_data,
-            get_bill_keys, identity_public_data_only_node_id,
+            TEST_BILL_ID, TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP, empty_bitcredit_bill,
+            empty_identity_public_data, get_bill_keys, identity_public_data_only_node_id,
+            valid_address,
         },
     };
+    use rstest::rstest;
 
     fn get_first_block() -> BillBlock {
         let mut bill = empty_bitcredit_bill();
@@ -2690,5 +2692,48 @@ mod tests {
 
         let result = block.verify_and_get_signer(&bill_keys_obj);
         assert!(result.is_err());
+    }
+
+    // Validation
+
+    fn valid_bill_identity_block_data() -> BillIdentityBlockData {
+        BillIdentityBlockData {
+            t: ContactType::Person,
+            node_id: TEST_PUB_KEY_SECP.into(),
+            name: "Johanna Smith".into(),
+            postal_address: valid_address(),
+        }
+    }
+
+    #[test]
+    fn test_valid_bill_identity_block_data() {
+        assert_eq!(valid_bill_identity_block_data().validate(), Ok(()));
+    }
+
+    #[rstest]
+    #[case::invalid_node_id(
+        BillIdentityBlockData { node_id: "invalidkey".into(), ..valid_bill_identity_block_data() },
+        ValidationError::InvalidSecp256k1Key("invalidkey".into())
+    )]
+    #[case::empty_name(
+        BillIdentityBlockData { name: "".into(), ..valid_bill_identity_block_data() },
+        ValidationError::FieldEmpty(Field::Name)
+    )]
+    #[case::blank_name(
+        BillIdentityBlockData { name: "   ".into(), ..valid_bill_identity_block_data() },
+        ValidationError::FieldEmpty(Field::Name)
+    )]
+    #[case::invalid_address(
+        BillIdentityBlockData {
+            postal_address: PostalAddress { country: "".into(), ..valid_address() },
+            ..valid_bill_identity_block_data()
+        },
+        ValidationError::FieldEmpty(Field::Country)
+    )]
+    fn test_invalid_identity_data(
+        #[case] identity: BillIdentityBlockData,
+        #[case] expected_error: ValidationError,
+    ) {
+        assert_eq!(identity.validate(), Err(expected_error));
     }
 }

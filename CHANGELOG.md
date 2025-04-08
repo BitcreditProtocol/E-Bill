@@ -1,3 +1,7 @@
+# 0.3.4
+
+* Add in-depth tests for bill validation
+
 # 0.3.3
 
 * Use Nip-04 as a default for Nostr communication

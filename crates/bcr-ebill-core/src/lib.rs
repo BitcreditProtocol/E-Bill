@@ -150,7 +150,7 @@ pub struct UploadFileResult {
     pub file_upload_id: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Field {
     Country,
     City,
@@ -166,7 +166,7 @@ pub enum Field {
 }
 
 /// Generic validation error type
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Eq, PartialEq)]
 pub enum ValidationError {
     /// error returned if a field that is not allowed to be empty is empty
     #[error("Field {0:?} can't be empty")]

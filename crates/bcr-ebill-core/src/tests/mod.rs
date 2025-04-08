@@ -1,29 +1,150 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 pub mod tests {
+    use crate::Validate;
     use crate::{
-        OptionalPostalAddress, PostalAddress,
+        Field, OptionalPostalAddress, PostalAddress, ValidationError,
         bill::{BillKeys, BitcreditBill},
         contact::{ContactType, IdentityPublicData},
         identity::Identity,
     };
+    use rstest::rstest;
 
-    pub fn empty_address() -> PostalAddress {
+    pub fn valid_address() -> PostalAddress {
         PostalAddress {
-            country: "AT".to_string(),
-            city: "Vienna".to_string(),
-            zip: None,
-            address: "Some address".to_string(),
+            country: "AT".into(),
+            city: "Vienna".into(),
+            zip: Some("1010".into()),
+            address: "Kärntner Straße 1".into(),
         }
     }
 
-    pub fn empty_optional_address() -> OptionalPostalAddress {
+    #[rstest]
+    #[case::empty_country(
+        PostalAddress { country: "".into(), ..valid_address() },
+        ValidationError::FieldEmpty(Field::Country)
+    )]
+    #[case::blank_country(
+        PostalAddress { country: "  ".into(), ..valid_address() },
+        ValidationError::FieldEmpty(Field::Country)
+    )]
+    #[case::empty_city(
+        PostalAddress { city: "".into(), ..valid_address() },
+        ValidationError::FieldEmpty(Field::City)
+    )]
+    #[case::blank_city(
+        PostalAddress { city: "  ".into(), ..valid_address() },
+        ValidationError::FieldEmpty(Field::City)
+    )]
+    #[case::empty_zip(
+        PostalAddress { zip: Some("".into()), ..valid_address() },
+        ValidationError::FieldEmpty(Field::Zip)
+    )]
+    #[case::blank_zip(
+        PostalAddress { zip: Some("   ".into()), ..valid_address() },
+        ValidationError::FieldEmpty(Field::Zip)
+    )]
+    #[case::empty_address(
+        PostalAddress { address: "".into(), ..valid_address() },
+        ValidationError::FieldEmpty(Field::Address)
+    )]
+    #[case::blank_address(
+        PostalAddress { address: "  ".into(), ..valid_address() },
+        ValidationError::FieldEmpty(Field::Address)
+    )]
+    fn test_invalid_address_cases(
+        #[case] address: PostalAddress,
+        #[case] expected_error: ValidationError,
+    ) {
+        assert_eq!(address.validate(), Err(expected_error));
+    }
+
+    #[rstest]
+    #[case::baseline(valid_address())]
+    #[case::spaced_country(PostalAddress {
+        zip: Some("1020".into()),
+        country: " AT ".into(),
+        ..valid_address()
+    })]
+    #[case::no_zip(
+        PostalAddress { zip: None, ..valid_address() },
+    )]
+    #[case::spaced_zip(PostalAddress {
+        zip: Some(" Some Street 1 ".into()),
+        ..valid_address()
+    })]
+    #[case::spaced_zip_address(PostalAddress {
+        zip: Some(" 10101 ".into()),
+        address: " 56 Rue de Paris ".into(),
+        ..valid_address()
+    })]
+    fn test_valid_addresses(#[case] address: PostalAddress) {
+        assert_eq!(address.validate(), Ok(()));
+    }
+
+    pub fn valid_optional_address() -> OptionalPostalAddress {
         OptionalPostalAddress {
-            country: None,
-            city: None,
-            zip: None,
-            address: None,
+            country: Some("AT".into()),
+            city: Some("Vienna".into()),
+            zip: Some("1010".into()),
+            address: Some("Kärntner Straße 1".into()),
         }
+    }
+
+    #[test]
+    fn test_valid_optional_address() {
+        let address = valid_optional_address();
+        assert_eq!(address.validate(), Ok(()));
+        assert_eq!(
+            OptionalPostalAddress {
+                country: None,
+                city: None,
+                zip: None,
+                address: None
+            }
+            .validate(),
+            Ok(())
+        );
+    }
+
+    #[rstest]
+    #[case::empty_country(
+        OptionalPostalAddress { country: Some("".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::Country)
+    )]
+    #[case::blank_country(
+        OptionalPostalAddress { country: Some("  ".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::Country)
+    )]
+    #[case::empty_city(
+        OptionalPostalAddress { city: Some("".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::City)
+    )]
+    #[case::blank_city(
+        OptionalPostalAddress { city: Some("\n\t".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::City)
+    )]
+    #[case::empty_zip(
+        OptionalPostalAddress { zip: Some("".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::Zip)
+    )]
+    #[case::blank_zip(
+        OptionalPostalAddress { zip: Some("  ".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::Zip)
+    )]
+    #[case::empty_address(
+        OptionalPostalAddress { address: Some("".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::Address)
+    )]
+    #[case::blank_address(
+        OptionalPostalAddress { address: Some("    ".into()), ..valid_optional_address() },
+        ValidationError::FieldEmpty(Field::Address)
+    )]
+    fn test_optional_address(
+        #[case] address: OptionalPostalAddress,
+        #[case] expected_error: ValidationError,
+    ) {
+        assert_eq!(address.validate(), Err(expected_error));
     }
 
     pub fn empty_identity() -> Identity {
@@ -31,7 +152,7 @@ pub mod tests {
             node_id: "".to_string(),
             name: "some name".to_string(),
             email: "some@example.com".to_string(),
-            postal_address: empty_optional_address(),
+            postal_address: valid_optional_address(),
             date_of_birth: None,
             country_of_birth: None,
             city_of_birth: None,
@@ -47,7 +168,7 @@ pub mod tests {
             t: ContactType::Person,
             node_id: "".to_string(),
             name: "some name".to_string(),
-            postal_address: empty_address(),
+            postal_address: valid_address(),
             email: None,
             nostr_relay: None,
         }
@@ -58,7 +179,7 @@ pub mod tests {
             t: ContactType::Person,
             node_id,
             name: "some name".to_string(),
-            postal_address: empty_address(),
+            postal_address: valid_address(),
             email: None,
             nostr_relay: None,
         }
