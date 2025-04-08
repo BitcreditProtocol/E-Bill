@@ -1410,7 +1410,7 @@ mod tests {
     use crate::{
         blockchain::bill::tests::get_baseline_identity,
         tests::tests::{
-            TEST_BILL_ID, TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP, VALID_PAYMENT_ADDRESS,
+            TEST_BILL_ID, TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP, VALID_PAYMENT_ADDRESS_TESTNET,
             empty_bitcredit_bill, empty_identity_public_data, get_bill_keys,
             identity_public_data_only_node_id, invalid_address, valid_address,
         },
@@ -1656,7 +1656,7 @@ mod tests {
                 seller: seller.clone().into(),
                 sum: 5000,
                 currency: "sat".to_string(),
-                payment_address: VALID_PAYMENT_ADDRESS.to_string(),
+                payment_address: VALID_PAYMENT_ADDRESS_TESTNET.to_string(),
                 signatory: None,
                 signing_timestamp: 1731593928,
                 signing_address: seller.postal_address,
@@ -1689,7 +1689,7 @@ mod tests {
                 seller: seller.clone().into(),
                 sum: 5000,
                 currency: "sat".to_string(),
-                payment_address: VALID_PAYMENT_ADDRESS.to_string(),
+                payment_address: VALID_PAYMENT_ADDRESS_TESTNET.to_string(),
                 signatory: Some(BillSignatoryBlockData {
                     node_id: buyer.node_id.clone(),
                     name: buyer.name.clone(),
@@ -2022,7 +2022,7 @@ mod tests {
                 buyer: other_party.clone().into(),
                 sum: 5000,
                 currency: "sat".to_string(),
-                payment_address: VALID_PAYMENT_ADDRESS.to_string(),
+                payment_address: VALID_PAYMENT_ADDRESS_TESTNET.to_string(),
                 signatory: None,
                 signing_timestamp: 1731593928,
                 signing_address: signer.postal_address.clone(),
@@ -2048,7 +2048,7 @@ mod tests {
                 buyer: other_party.clone().into(),
                 sum: 5000,
                 currency: "sat".to_string(),
-                payment_address: VALID_PAYMENT_ADDRESS.to_string(),
+                payment_address: VALID_PAYMENT_ADDRESS_TESTNET.to_string(),
                 signatory: None,
                 signing_timestamp: 1731593928,
                 signing_address: signer.postal_address.clone(),
@@ -2388,7 +2388,7 @@ mod tests {
                 buyer: other_party.clone().into(),
                 sum: 5000,
                 currency: "sat".to_string(),
-                payment_address: VALID_PAYMENT_ADDRESS.to_string(),
+                payment_address: VALID_PAYMENT_ADDRESS_TESTNET.to_string(),
                 signatory: Some(BillSignatoryBlockData {
                     node_id: identity_keys.get_public_key(),
                     name: "signatory name".to_string(),
@@ -2417,7 +2417,7 @@ mod tests {
                 buyer: other_party.clone().into(),
                 sum: 5000,
                 currency: "sat".to_string(),
-                payment_address: VALID_PAYMENT_ADDRESS.to_string(),
+                payment_address: VALID_PAYMENT_ADDRESS_TESTNET.to_string(),
                 signatory: Some(BillSignatoryBlockData {
                     node_id: identity_keys.get_public_key(),
                     name: "signatory name".to_string(),
@@ -2947,7 +2947,7 @@ mod tests {
             buyer: valid_bill_identity_block_data(),
             currency: "sat".into(),
             sum: 500,
-            payment_address: VALID_PAYMENT_ADDRESS.into(),
+            payment_address: VALID_PAYMENT_ADDRESS_TESTNET.into(),
             signatory: Some(valid_bill_signatory_block_data()),
             signing_timestamp: 1731593928,
             signing_address: valid_address(),
@@ -2981,7 +2981,7 @@ mod tests {
             buyer: valid_bill_identity_block_data(),
             currency: "sat".into(),
             sum: 500,
-            payment_address: VALID_PAYMENT_ADDRESS.into(),
+            payment_address: VALID_PAYMENT_ADDRESS_TESTNET.into(),
             signatory: Some(valid_bill_signatory_block_data()),
             signing_timestamp: 1731593928,
             signing_address: valid_address(),
@@ -3057,8 +3057,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case::invalid_endorser(BillRequestRecourseBlockData { recourser: invalid_bill_identity_block_data(), ..valid_req_to_recourse_block_data() }, ValidationError::FieldEmpty(Field::Name))]
-    #[case::invalid_endorsee(BillRequestRecourseBlockData { recoursee: invalid_bill_identity_block_data(), ..valid_req_to_recourse_block_data() }, ValidationError::FieldEmpty(Field::Name))]
+    #[case::invalid_recourser(BillRequestRecourseBlockData { recourser: invalid_bill_identity_block_data(), ..valid_req_to_recourse_block_data() }, ValidationError::FieldEmpty(Field::Name))]
+    #[case::invalid_recoursee(BillRequestRecourseBlockData { recoursee: invalid_bill_identity_block_data(), ..valid_req_to_recourse_block_data() }, ValidationError::FieldEmpty(Field::Name))]
     #[case::invalid_sum(BillRequestRecourseBlockData { sum: 0, ..valid_req_to_recourse_block_data() }, ValidationError::InvalidSum)]
     #[case::invalid_payment_address(BillRequestRecourseBlockData { currency: "invalidcurrency".into(), ..valid_req_to_recourse_block_data() }, ValidationError::InvalidCurrency)]
     #[case::invalid_signing_address(BillRequestRecourseBlockData { signing_address: invalid_address(), ..valid_req_to_recourse_block_data() }, ValidationError::FieldEmpty(Field::Country))]
@@ -3090,14 +3090,40 @@ mod tests {
     }
 
     #[rstest]
-    #[case::invalid_endorser(BillRecourseBlockData { recourser: invalid_bill_identity_block_data(), ..valid_recourse_block_data() }, ValidationError::FieldEmpty(Field::Name))]
-    #[case::invalid_endorsee(BillRecourseBlockData { recoursee: invalid_bill_identity_block_data(), ..valid_recourse_block_data() }, ValidationError::FieldEmpty(Field::Name))]
+    #[case::invalid_recourser(BillRecourseBlockData { recourser: invalid_bill_identity_block_data(), ..valid_recourse_block_data() }, ValidationError::FieldEmpty(Field::Name))]
+    #[case::invalid_recoursee(BillRecourseBlockData { recoursee: invalid_bill_identity_block_data(), ..valid_recourse_block_data() }, ValidationError::FieldEmpty(Field::Name))]
     #[case::invalid_sum(BillRecourseBlockData { sum: 0, ..valid_recourse_block_data() }, ValidationError::InvalidSum)]
     #[case::invalid_payment_address(BillRecourseBlockData { currency: "invalidcurrency".into(), ..valid_recourse_block_data() }, ValidationError::InvalidCurrency)]
     #[case::invalid_signing_address(BillRecourseBlockData { signing_address: invalid_address(), ..valid_recourse_block_data() }, ValidationError::FieldEmpty(Field::Country))]
     #[case::invalid_signatory(BillRecourseBlockData { signatory: Some(invalid_bill_signatory_block_data()), ..valid_recourse_block_data() }, ValidationError::FieldEmpty(Field::Name))]
     fn test_invalid_recourse_block_data(
         #[case] block: BillRecourseBlockData,
+        #[case] expected_error: ValidationError,
+    ) {
+        assert_eq!(block.validate(), Err(expected_error));
+    }
+
+    fn valid_reject_block_data() -> BillRejectBlockData {
+        BillRejectBlockData {
+            rejecter: valid_bill_identity_block_data(),
+            signatory: Some(valid_bill_signatory_block_data()),
+            signing_timestamp: 1731593928,
+            signing_address: valid_address(),
+        }
+    }
+
+    #[test]
+    fn test_valid_reject_block_data() {
+        let accept = valid_reject_block_data();
+        assert_eq!(accept.validate(), Ok(()));
+    }
+
+    #[rstest]
+    #[case::invalid_rejecter(BillRejectBlockData { rejecter: invalid_bill_identity_block_data(), ..valid_reject_block_data() }, ValidationError::FieldEmpty(Field::Name))]
+    #[case::invalid_signing_address(BillRejectBlockData { signing_address: invalid_address(), ..valid_reject_block_data() }, ValidationError::FieldEmpty(Field::Country))]
+    #[case::invalid_signatory(BillRejectBlockData { signatory: Some(invalid_bill_signatory_block_data()), ..valid_reject_block_data() }, ValidationError::FieldEmpty(Field::Name))]
+    fn test_invalid_reject_block_data(
+        #[case] block: BillRejectBlockData,
         #[case] expected_error: ValidationError,
     ) {
         assert_eq!(block.validate(), Err(expected_error));
