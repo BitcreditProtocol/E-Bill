@@ -11,11 +11,19 @@ document.getElementById("switch_identity").addEventListener("click", switchIdent
 document.getElementById("bill_fetch_detail").addEventListener("click", fetchBillDetail);
 document.getElementById("bill_fetch_endorsements").addEventListener("click", fetchBillEndorsements);
 document.getElementById("bill_fetch_past_endorsees").addEventListener("click", fetchBillPastEndorsees);
+document.getElementById("bill_fetch_past_payments").addEventListener("click", fetchBillPastPayments);
 document.getElementById("bill_fetch_bills").addEventListener("click", fetchBillBills);
 document.getElementById("bill_balances").addEventListener("click", fetchBillBalances);
 document.getElementById("bill_search").addEventListener("click", fetchBillSearch);
 document.getElementById("endorse_bill").addEventListener("click", endorseBill);
 document.getElementById("req_to_accept_bill").addEventListener("click", requestToAcceptBill);
+document.getElementById("req_to_pay_bill").addEventListener("click", requestToPayBill);
+document.getElementById("offer_to_sell_bill").addEventListener("click", offerToSellBill);
+document.getElementById("req_to_recourse_bill").addEventListener("click", requestToRecourseBill);
+document.getElementById("reject_accept").addEventListener("click", rejectAcceptBill);
+document.getElementById("reject_pay").addEventListener("click", rejectPayBill);
+document.getElementById("reject_buying").addEventListener("click", rejectBuyingBill);
+document.getElementById("reject_recourse").addEventListener("click", rejectRecourseBill);
 document.getElementById("bill_test").addEventListener("click", triggerBill);
 
 async function start() {
@@ -135,6 +143,7 @@ let generalApi = apis.generalApi;
 let identityApi = apis.identityApi;
 let billApi = apis.billApi;
 window.billApi = billApi;
+window.generalApi = generalApi;
 let notificationTriggerApi = apis.notificationApi;
 
 async function uploadFile(event) {
@@ -217,8 +226,8 @@ async function triggerBill() {
         t: 1,
         country_of_issuing: "AT",
         city_of_issuing: "Vienna",
-        issue_date: "2025-01-22",
-        maturity_date: "2025-06-22",
+        issue_date: "2024-01-22",
+        maturity_date: "2024-06-22",
         payee: identity.node_id,
         drawee: node_id,
         sum: "1500",
@@ -287,6 +296,64 @@ async function requestToAcceptBill() {
   await measured();
 }
 
+async function requestToPayBill() {
+  let bill_id = document.getElementById("endorse_bill_id").value;
+  let measured = measure(async () => {
+    return await billApi.request_to_pay({ bill_id, currency: "sat" });
+  });
+  await measured();
+}
+
+async function offerToSellBill() {
+  let bill_id = document.getElementById("endorse_bill_id").value;
+  let endorsee = document.getElementById("endorsee_id").value;
+  let measured = measure(async () => {
+    return await billApi.offer_to_sell({ bill_id, sum: "500", currency: "sat", buyer: endorsee });
+  });
+  await measured();
+}
+
+async function requestToRecourseBill() {
+  let bill_id = document.getElementById("endorse_bill_id").value;
+  let endorsee = document.getElementById("endorsee_id").value;
+  let measured = measure(async () => {
+    return await billApi.request_to_recourse_bill_acceptance({ bill_id, recoursee: endorsee });
+  });
+  await measured();
+}
+
+async function rejectAcceptBill() {
+  let bill_id = document.getElementById("endorse_bill_id").value;
+  let measured = measure(async () => {
+    return await billApi.reject_to_accept({ bill_id });
+  });
+  await measured();
+}
+
+async function rejectPayBill() {
+  let bill_id = document.getElementById("endorse_bill_id").value;
+  let measured = measure(async () => {
+    return await billApi.reject_to_pay({ bill_id });
+  });
+  await measured();
+}
+
+async function rejectBuyingBill() {
+  let bill_id = document.getElementById("endorse_bill_id").value;
+  let measured = measure(async () => {
+    return await billApi.reject_to_buy({ bill_id });
+  });
+  await measured();
+}
+
+async function rejectRecourseBill() {
+  let bill_id = document.getElementById("endorse_bill_id").value;
+  let measured = measure(async () => {
+    return await billApi.reject_to_pay_recourse({ bill_id });
+  });
+  await measured();
+}
+
 async function fetchBillDetail() {
   let measured = measure(async () => {
     return await billApi.detail(document.getElementById("bill_id").value);
@@ -304,6 +371,13 @@ async function fetchBillEndorsements() {
 async function fetchBillPastEndorsees() {
   let measured = measure(async () => {
     return await billApi.past_endorsees(document.getElementById("bill_id").value);
+  });
+  await measured();
+}
+
+async function fetchBillPastPayments() {
+  let measured = measure(async () => {
+    return await billApi.past_payments(document.getElementById("bill_id").value);
   });
   await measured();
 }

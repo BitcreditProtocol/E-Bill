@@ -4,7 +4,8 @@ use bcr_ebill_api::data::{
         BillParticipants, BillPaymentStatus, BillRecourseStatus, BillSellStatus, BillStatus,
         BillWaitingForPaymentState, BillWaitingForRecourseState, BillWaitingForSellState,
         BillsFilterRole, BitcreditBillResult, Endorsement, LightBitcreditBillResult, LightSignedBy,
-        PastEndorsee,
+        PastEndorsee, PastPaymentDataPayment, PastPaymentDataRecourse, PastPaymentDataSell,
+        PastPaymentResult, PastPaymentStatus,
     },
     contact::{IdentityPublicData, LightIdentityPublicData, LightIdentityPublicDataWithAddress},
 };
@@ -257,6 +258,143 @@ pub struct PastEndorseesResponse {
     pub past_endorsees: Vec<PastEndorseeWeb>,
 }
 
+#[derive(Tsify, Debug, Clone, Serialize)]
+#[tsify(into_wasm_abi)]
+pub struct PastPaymentsResponse {
+    pub past_payments: Vec<PastPaymentResultWeb>,
+}
+
+#[derive(Tsify, Debug, Clone, Serialize)]
+#[tsify(into_wasm_abi)]
+pub enum PastPaymentResultWeb {
+    Sell(PastPaymentDataSellWeb),
+    Payment(PastPaymentDataPaymentWeb),
+    Recourse(PastPaymentDataRecourseWeb),
+}
+
+impl IntoWeb<PastPaymentResultWeb> for PastPaymentResult {
+    fn into_web(self) -> PastPaymentResultWeb {
+        match self {
+            PastPaymentResult::Sell(state) => PastPaymentResultWeb::Sell(state.into_web()),
+            PastPaymentResult::Payment(state) => PastPaymentResultWeb::Payment(state.into_web()),
+            PastPaymentResult::Recourse(state) => PastPaymentResultWeb::Recourse(state.into_web()),
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Clone, Serialize)]
+#[tsify(into_wasm_abi)]
+pub enum PastPaymentStatusWeb {
+    Paid(u64),
+    Rejected(u64),
+    Expired(u64),
+}
+
+impl IntoWeb<PastPaymentStatusWeb> for PastPaymentStatus {
+    fn into_web(self) -> PastPaymentStatusWeb {
+        match self {
+            PastPaymentStatus::Paid(ts) => PastPaymentStatusWeb::Paid(ts),
+            PastPaymentStatus::Rejected(ts) => PastPaymentStatusWeb::Rejected(ts),
+            PastPaymentStatus::Expired(ts) => PastPaymentStatusWeb::Expired(ts),
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct PastPaymentDataSellWeb {
+    pub time_of_request: u64,
+    pub buyer: IdentityPublicDataWeb,
+    pub seller: IdentityPublicDataWeb,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub private_key_to_spend: String,
+    pub mempool_link_for_address_to_pay: String,
+    pub status: PastPaymentStatusWeb,
+}
+
+impl IntoWeb<PastPaymentDataSellWeb> for PastPaymentDataSell {
+    fn into_web(self) -> PastPaymentDataSellWeb {
+        PastPaymentDataSellWeb {
+            time_of_request: self.time_of_request,
+            buyer: self.buyer.into_web(),
+            seller: self.seller.into_web(),
+            currency: self.currency,
+            sum: self.sum,
+            link_to_pay: self.link_to_pay,
+            address_to_pay: self.address_to_pay,
+            private_key_to_spend: self.private_key_to_spend,
+            mempool_link_for_address_to_pay: self.mempool_link_for_address_to_pay,
+            status: self.status.into_web(),
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct PastPaymentDataPaymentWeb {
+    pub time_of_request: u64,
+    pub payer: IdentityPublicDataWeb,
+    pub payee: IdentityPublicDataWeb,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub private_key_to_spend: String,
+    pub mempool_link_for_address_to_pay: String,
+    pub status: PastPaymentStatusWeb,
+}
+impl IntoWeb<PastPaymentDataPaymentWeb> for PastPaymentDataPayment {
+    fn into_web(self) -> PastPaymentDataPaymentWeb {
+        PastPaymentDataPaymentWeb {
+            time_of_request: self.time_of_request,
+            payer: self.payer.into_web(),
+            payee: self.payee.into_web(),
+            currency: self.currency,
+            sum: self.sum,
+            link_to_pay: self.link_to_pay,
+            address_to_pay: self.address_to_pay,
+            private_key_to_spend: self.private_key_to_spend,
+            mempool_link_for_address_to_pay: self.mempool_link_for_address_to_pay,
+            status: self.status.into_web(),
+        }
+    }
+}
+
+#[derive(Tsify, Debug, Serialize, Clone)]
+#[tsify(into_wasm_abi)]
+pub struct PastPaymentDataRecourseWeb {
+    pub time_of_request: u64,
+    pub recourser: IdentityPublicDataWeb,
+    pub recoursee: IdentityPublicDataWeb,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub private_key_to_spend: String,
+    pub mempool_link_for_address_to_pay: String,
+    pub status: PastPaymentStatusWeb,
+}
+
+impl IntoWeb<PastPaymentDataRecourseWeb> for PastPaymentDataRecourse {
+    fn into_web(self) -> PastPaymentDataRecourseWeb {
+        PastPaymentDataRecourseWeb {
+            time_of_request: self.time_of_request,
+            recourser: self.recourser.into_web(),
+            recoursee: self.recoursee.into_web(),
+            currency: self.currency,
+            sum: self.sum,
+            link_to_pay: self.link_to_pay,
+            address_to_pay: self.address_to_pay,
+            private_key_to_spend: self.private_key_to_spend,
+            mempool_link_for_address_to_pay: self.mempool_link_for_address_to_pay,
+            status: self.status.into_web(),
+        }
+    }
+}
+
 #[derive(Tsify, Debug, Serialize, Clone)]
 #[tsify(into_wasm_abi)]
 pub struct BitcreditEbillQuote {
@@ -406,6 +544,7 @@ pub struct BillStatusWeb {
     pub sell: BillSellStatusWeb,
     pub recourse: BillRecourseStatusWeb,
     pub redeemed_funds_available: bool,
+    pub has_requested_funds: bool,
 }
 
 impl IntoWeb<BillStatusWeb> for BillStatus {
@@ -416,6 +555,7 @@ impl IntoWeb<BillStatusWeb> for BillStatus {
             sell: self.sell.into_web(),
             recourse: self.recourse.into_web(),
             redeemed_funds_available: self.redeemed_funds_available,
+            has_requested_funds: self.has_requested_funds,
         }
     }
 }

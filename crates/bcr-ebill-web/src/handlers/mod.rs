@@ -318,6 +318,13 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for ValidationError {
                 | bcr_ebill_api::util::ValidationError::BuyerCantBeSeller
                 | bcr_ebill_api::util::ValidationError::RecourserCantBeRecoursee
                 | bcr_ebill_api::util::ValidationError::BillAlreadyAccepted
+                | bcr_ebill_api::util::ValidationError::BillWasRejectedToAccept
+                | bcr_ebill_api::util::ValidationError::BillAcceptanceExpired
+                | bcr_ebill_api::util::ValidationError::BillWasRejectedToPay
+                | bcr_ebill_api::util::ValidationError::BillPaymentExpired
+                | bcr_ebill_api::util::ValidationError::BillWasRejectedToRecourse
+                | bcr_ebill_api::util::ValidationError::BillRequestToRecourseExpired
+                | bcr_ebill_api::util::ValidationError::BillWasRecoursedToTheEnd
                 | bcr_ebill_api::util::ValidationError::BillWasNotOfferedToSell
                 | bcr_ebill_api::util::ValidationError::BillWasNotRequestedToPay
                 | bcr_ebill_api::util::ValidationError::BillWasNotRequestedToAccept

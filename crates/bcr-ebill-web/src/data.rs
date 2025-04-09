@@ -916,6 +916,7 @@ pub struct BillStatusWeb {
     pub sell: BillSellStatusWeb,
     pub recourse: BillRecourseStatusWeb,
     pub redeemed_funds_available: bool,
+    pub has_requested_funds: bool,
 }
 
 impl IntoWeb<BillStatusWeb> for BillStatus {
@@ -926,6 +927,7 @@ impl IntoWeb<BillStatusWeb> for BillStatus {
             sell: self.sell.into_web(),
             recourse: self.recourse.into_web(),
             redeemed_funds_available: self.redeemed_funds_available,
+            has_requested_funds: self.has_requested_funds,
         }
     }
 }

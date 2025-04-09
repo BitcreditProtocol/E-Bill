@@ -1180,6 +1180,30 @@ impl BillBlock {
         }
     }
 
+    /// If the block is a request with a financial beneficiary(req to pay, offer to sell, req to recourse),
+    /// return the node_id of the beneficiary
+    pub fn get_beneficiary_from_request_funds_block(
+        &self,
+        bill_keys: &BillKeys,
+    ) -> Result<Option<String>> {
+        match self.op_code {
+            OfferToSell => {
+                let block: BillOfferToSellBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                Ok(Some(block.seller.node_id))
+            }
+            RequestRecourse => {
+                let block: BillRequestRecourseBlockData =
+                    self.get_decrypted_block_bytes(bill_keys)?;
+                Ok(Some(block.recourser.node_id))
+            }
+            RequestToPay => {
+                let block: BillRequestToPayBlockData = self.get_decrypted_block_bytes(bill_keys)?;
+                Ok(Some(block.requester.node_id))
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// If the block is holder-changing block (issue, endorse, sell, mint, recourse), returns
     /// the new holder and signer data from the block
     pub fn get_holder_from_block(&self, bill_keys: &BillKeys) -> Result<Option<HolderFromBlock>> {

@@ -450,6 +450,7 @@ pub struct BillStatusDb {
     pub sell: BillSellStatusDb,
     pub recourse: BillRecourseStatusDb,
     pub redeemed_funds_available: bool,
+    pub has_requested_funds: bool,
 }
 
 impl From<BillStatusDb> for BillStatus {
@@ -460,6 +461,7 @@ impl From<BillStatusDb> for BillStatus {
             sell: value.sell.into(),
             recourse: value.recourse.into(),
             redeemed_funds_available: value.redeemed_funds_available,
+            has_requested_funds: value.has_requested_funds,
         }
     }
 }
@@ -472,6 +474,7 @@ impl From<&BillStatus> for BillStatusDb {
             sell: (&value.sell).into(),
             recourse: (&value.recourse).into(),
             redeemed_funds_available: value.redeemed_funds_available,
+            has_requested_funds: value.has_requested_funds,
         }
     }
 }

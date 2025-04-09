@@ -3,6 +3,8 @@
 * Add in-depth tests for bill validation
 * Add recourse reason to `Recourse` block data
     * (breaks existing persisted bills, if they had a recourse block)
+* Added `has_requested_funds` flag to `BillStatusWeb`, indicating the caller has requested funds (req to pay, req to recourse, offer to sell) at some point
+* Added `past_payments` endpoint to `Api.bill()`, which returns data about past payments and payment requests where the caller was the beneficiary
 
 # 0.3.3
 

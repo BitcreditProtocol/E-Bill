@@ -16,6 +16,8 @@ use crate::{
     },
 };
 
+pub const VERSION: &str = env!("CRATE_VERSION");
+
 #[wasm_bindgen]
 pub struct General;
 
@@ -30,7 +32,7 @@ impl General {
     pub async fn status(&self) -> Result<JsValue> {
         let res = serde_wasm_bindgen::to_value(&StatusResponse {
             bitcoin_network: get_ctx().cfg.bitcoin_network.clone(),
-            app_version: String::from("0.3.0"),
+            app_version: VERSION.to_owned(),
         })?;
         Ok(res)
     }
