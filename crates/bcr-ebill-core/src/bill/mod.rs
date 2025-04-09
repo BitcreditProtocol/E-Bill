@@ -1,3 +1,5 @@
+use crate::{blockchain::bill::BillBlockchain, util::BcrKeys};
+
 use super::{
     File, PostalAddress,
     contact::{IdentityPublicData, LightIdentityPublicData, LightIdentityPublicDataWithAddress},
@@ -38,6 +40,40 @@ pub enum BillType {
     PromissoryNote = 0, // Drawer pays to payee
     SelfDrafted = 1,    // Drawee pays to drawer
     ThreeParties = 2,   // Drawee pays to payee
+}
+
+#[derive(Debug, Clone)]
+pub struct BillIssueData {
+    pub t: u64,
+    pub country_of_issuing: String,
+    pub city_of_issuing: String,
+    pub issue_date: String,
+    pub maturity_date: String,
+    pub drawee: String,
+    pub payee: String,
+    pub sum: String,
+    pub currency: String,
+    pub country_of_payment: String,
+    pub city_of_payment: String,
+    pub language: String,
+    pub file_upload_ids: Vec<String>,
+    pub drawer_public_data: IdentityPublicData,
+    pub drawer_keys: BcrKeys,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct BillValidateActionData {
+    pub blockchain: BillBlockchain,
+    pub drawee_node_id: String,
+    pub payee_node_id: String,
+    pub endorsee_node_id: Option<String>,
+    pub maturity_date: String,
+    pub bill_keys: BillKeys,
+    pub timestamp: u64,
+    pub signer_node_id: String,
+    pub bill_action: BillAction,
+    pub is_paid: bool,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Serialize, Deserialize, Clone)]

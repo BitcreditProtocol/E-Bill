@@ -11,7 +11,7 @@ use crate::data::{
 use crate::util::BcrKeys;
 use async_trait::async_trait;
 use bcr_ebill_core::ServiceTraitBounds;
-use bcr_ebill_core::bill::BillAction;
+use bcr_ebill_core::bill::{BillAction, BillIssueData};
 
 pub use error::Error;
 #[cfg(test)]
@@ -97,26 +97,7 @@ pub trait BillServiceApi: ServiceTraitBounds {
     ) -> Result<File>;
 
     /// issues a new bill
-    #[allow(clippy::too_many_arguments)]
-    async fn issue_new_bill(
-        &self,
-        t: u64,
-        country_of_issuing: String,
-        city_of_issuing: String,
-        issue_date: String,
-        maturity_date: String,
-        drawee: String,
-        payee: String,
-        sum: String,
-        currency: String,
-        country_of_payment: String,
-        city_of_payment: String,
-        language: String,
-        file_upload_ids: Vec<String>,
-        drawer_public_data: IdentityPublicData,
-        drawer_keys: BcrKeys,
-        timestamp: u64,
-    ) -> Result<BitcreditBill>;
+    async fn issue_new_bill(&self, data: BillIssueData) -> Result<BitcreditBill>;
 
     /// executes the given bill action
     async fn execute_bill_action(
@@ -428,24 +409,24 @@ pub mod tests {
         payee.node_id = BcrKeys::new().get_public_key();
 
         let bill = service
-            .issue_new_bill(
-                2,
-                String::from("UK"),
-                String::from("London"),
-                String::from("2030-01-01"),
-                String::from("2030-04-01"),
-                drawee.node_id,
-                payee.node_id,
-                String::from("100"),
-                String::from("sat"),
-                String::from("AT"),
-                String::from("Vienna"),
-                String::from("en-UK"),
-                vec![TEST_BILL_ID.to_string()],
-                IdentityPublicData::new(drawer.identity).unwrap(),
-                drawer.key_pair,
-                1731593928,
-            )
+            .issue_new_bill(BillIssueData {
+                t: 2,
+                country_of_issuing: String::from("UK"),
+                city_of_issuing: String::from("London"),
+                issue_date: String::from("2030-01-01"),
+                maturity_date: String::from("2030-04-01"),
+                drawee: drawee.node_id,
+                payee: payee.node_id,
+                sum: String::from("100"),
+                currency: String::from("sat"),
+                country_of_payment: String::from("AT"),
+                city_of_payment: String::from("Vienna"),
+                language: String::from("en-UK"),
+                file_upload_ids: vec![TEST_BILL_ID.to_string()],
+                drawer_public_data: IdentityPublicData::new(drawer.identity).unwrap(),
+                drawer_keys: drawer.key_pair,
+                timestamp: 1731593928,
+            })
             .await
             .unwrap();
 
@@ -485,24 +466,24 @@ pub mod tests {
         payee.node_id = BcrKeys::new().get_public_key();
 
         let bill = service
-            .issue_new_bill(
-                2,
-                String::from("UK"),
-                String::from("London"),
-                String::from("2030-01-01"),
-                String::from("2030-04-01"),
-                drawee.node_id,
-                payee.node_id,
-                String::from("100"),
-                String::from("sat"),
-                String::from("AT"),
-                String::from("Vienna"),
-                String::from("en-UK"),
-                vec![TEST_BILL_ID.to_string()],
-                IdentityPublicData::from(drawer.1.0), // public company data
-                BcrKeys::from_private_key(&drawer.1.1.private_key).unwrap(), // company keys
-                1731593928,
-            )
+            .issue_new_bill(BillIssueData {
+                t: 2,
+                country_of_issuing: String::from("UK"),
+                city_of_issuing: String::from("London"),
+                issue_date: String::from("2030-01-01"),
+                maturity_date: String::from("2030-04-01"),
+                drawee: drawee.node_id,
+                payee: payee.node_id,
+                sum: String::from("100"),
+                currency: String::from("sat"),
+                country_of_payment: String::from("AT"),
+                city_of_payment: String::from("Vienna"),
+                language: String::from("en-UK"),
+                file_upload_ids: vec![TEST_BILL_ID.to_string()],
+                drawer_public_data: IdentityPublicData::from(drawer.1.0),
+                drawer_keys: BcrKeys::from_private_key(&drawer.1.1.private_key).unwrap(),
+                timestamp: 1731593928,
+            })
             .await
             .unwrap();
 
