@@ -176,9 +176,11 @@ pub fn get_service(mut ctx: MockBillContext) -> BillService {
             )
         });
     bitcoin_client.expect_generate_link_to_pay().returning(|_,_,_| String::from("bitcoin:1Jfn2nZcJ4T7bhE8FdMRz8T3P3YV4LsWn2?amount=0.01&message=Payment in relation to bill some bill"));
-    ctx.contact_store
-        .expect_get()
-        .returning(|_| Ok(Some(get_baseline_contact())));
+    ctx.contact_store.expect_get().returning(|node_id| {
+        let mut contact = get_baseline_contact();
+        contact.node_id = node_id.to_owned();
+        Ok(Some(contact))
+    });
     ctx.contact_store
         .expect_get_map()
         .returning(|| Ok(HashMap::new()));

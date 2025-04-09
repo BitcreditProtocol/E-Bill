@@ -314,6 +314,9 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for ValidationError {
                 | bcr_ebill_api::util::ValidationError::InvalidContentType
                 | bcr_ebill_api::util::ValidationError::InvalidContactType
                 | bcr_ebill_api::util::ValidationError::DraweeCantBePayee
+                | bcr_ebill_api::util::ValidationError::EndorserCantBeEndorsee
+                | bcr_ebill_api::util::ValidationError::BuyerCantBeSeller
+                | bcr_ebill_api::util::ValidationError::RecourserCantBeRecoursee
                 | bcr_ebill_api::util::ValidationError::BillAlreadyAccepted
                 | bcr_ebill_api::util::ValidationError::BillWasNotOfferedToSell
                 | bcr_ebill_api::util::ValidationError::BillWasNotRequestedToPay

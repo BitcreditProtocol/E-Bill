@@ -818,6 +818,7 @@ pub mod tests {
         let returned_bills = res.unwrap();
         assert!(returned_bills.len() == 1);
         assert_eq!(returned_bills[0].id, TEST_BILL_ID.to_string());
+        assert!(returned_bills[0].status.payment.requested_to_pay);
         assert!(returned_bills[0].status.payment.paid);
     }
 
@@ -4012,6 +4013,23 @@ pub mod tests {
         assert!(
             service
                 .check_requests_for_expiration(&bill_payment, 1731593928)
+                .unwrap()
+        );
+        assert!(
+            !service
+                .check_requests_for_expiration(&bill_payment, 1431593928)
+                .unwrap()
+        );
+        bill_payment.data.maturity_date = "2018-07-15".into(); // before ts
+        assert!(
+            !service
+                .check_requests_for_expiration(&bill_payment, 1531593929)
+                .unwrap()
+        );
+        // 2 days after req to pay, but not yet 2 days after end of day maturity date
+        assert!(
+            !service
+                .check_requests_for_expiration(&bill_payment, 1531780429)
                 .unwrap()
         );
 

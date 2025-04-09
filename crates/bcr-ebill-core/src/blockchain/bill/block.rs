@@ -105,6 +105,10 @@ impl Validate for BillIssueBlockData {
             return Err(ValidationError::FieldEmpty(Field::CityOfIssuing));
         }
 
+        if self.drawee.node_id == self.payee.node_id {
+            return Err(ValidationError::DraweeCantBePayee);
+        }
+
         self.drawee.validate()?;
         self.drawer.validate()?;
         self.payee.validate()?;
@@ -251,6 +255,10 @@ impl Validate for BillMintBlockData {
         self.endorser.validate()?;
         self.endorsee.validate()?;
 
+        if self.endorsee.node_id == self.endorser.node_id {
+            return Err(ValidationError::EndorserCantBeEndorsee);
+        }
+
         util::currency::validate_currency(&self.currency)?;
         util::currency::validate_sum(self.sum)?;
 
@@ -280,6 +288,10 @@ impl Validate for BillOfferToSellBlockData {
     fn validate(&self) -> std::result::Result<(), ValidationError> {
         self.seller.validate()?;
         self.buyer.validate()?;
+
+        if self.buyer.node_id == self.seller.node_id {
+            return Err(ValidationError::BuyerCantBeSeller);
+        }
 
         util::currency::validate_currency(&self.currency)?;
         util::currency::validate_sum(self.sum)?;
@@ -315,6 +327,10 @@ impl Validate for BillSellBlockData {
         self.seller.validate()?;
         self.buyer.validate()?;
 
+        if self.buyer.node_id == self.seller.node_id {
+            return Err(ValidationError::BuyerCantBeSeller);
+        }
+
         util::currency::validate_currency(&self.currency)?;
         util::currency::validate_sum(self.sum)?;
 
@@ -345,6 +361,10 @@ impl Validate for BillEndorseBlockData {
     fn validate(&self) -> std::result::Result<(), ValidationError> {
         self.endorser.validate()?;
         self.endorsee.validate()?;
+
+        if self.endorsee.node_id == self.endorser.node_id {
+            return Err(ValidationError::EndorserCantBeEndorsee);
+        }
 
         if let Some(ref signatory) = self.signatory {
             signatory.validate()?;
@@ -379,6 +399,10 @@ impl Validate for BillRequestRecourseBlockData {
         self.recourser.validate()?;
         self.recoursee.validate()?;
 
+        if self.recoursee.node_id == self.recourser.node_id {
+            return Err(ValidationError::RecourserCantBeRecoursee);
+        }
+
         util::currency::validate_currency(&self.currency)?;
         util::currency::validate_sum(self.sum)?;
 
@@ -408,6 +432,10 @@ impl Validate for BillRecourseBlockData {
     fn validate(&self) -> std::result::Result<(), ValidationError> {
         self.recourser.validate()?;
         self.recoursee.validate()?;
+
+        if self.recoursee.node_id == self.recourser.node_id {
+            return Err(ValidationError::RecourserCantBeRecoursee);
+        }
 
         util::currency::validate_currency(&self.currency)?;
         util::currency::validate_sum(self.sum)?;
@@ -1410,9 +1438,10 @@ mod tests {
     use crate::{
         blockchain::bill::tests::get_baseline_identity,
         tests::tests::{
-            TEST_BILL_ID, TEST_PRIVATE_KEY_SECP, TEST_PUB_KEY_SECP, VALID_PAYMENT_ADDRESS_TESTNET,
-            empty_bitcredit_bill, empty_identity_public_data, get_bill_keys,
-            identity_public_data_only_node_id, invalid_address, valid_address,
+            OTHER_TEST_PUB_KEY_SECP, TEST_BILL_ID, TEST_NODE_ID_SECP, TEST_PRIVATE_KEY_SECP,
+            TEST_PUB_KEY_SECP, VALID_PAYMENT_ADDRESS_TESTNET, empty_bitcredit_bill,
+            empty_identity_public_data, get_bill_keys, identity_public_data_only_node_id,
+            invalid_address, valid_address,
         },
     };
     use rstest::rstest;
@@ -1879,7 +1908,7 @@ mod tests {
         let signer = identity_public_data_only_node_id(identity_keys.get_public_key());
         let other_party = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         bill.drawer = signer.clone();
-        bill.drawee = other_party.clone();
+        bill.drawee = signer.clone();
         bill.payee = other_party.clone();
 
         let issue_block = BillBlock::create_block_for_issue(
@@ -1898,6 +1927,7 @@ mod tests {
             issue_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(issue_result.as_ref().unwrap().1.is_none());
 
         let endorse_block = BillBlock::create_block_for_endorse(
             TEST_BILL_ID.to_owned(),
@@ -1921,6 +1951,10 @@ mod tests {
             endorse_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            endorse_result.as_ref().unwrap().1,
+            Some(BillAction::Endorse(_))
+        ));
 
         let mint_block = BillBlock::create_block_for_mint(
             TEST_BILL_ID.to_owned(),
@@ -1946,6 +1980,10 @@ mod tests {
             mint_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            mint_result.as_ref().unwrap().1,
+            Some(BillAction::Mint(_, _, _))
+        ));
 
         let req_to_accept_block = BillBlock::create_block_for_request_to_accept(
             TEST_BILL_ID.to_owned(),
@@ -1968,6 +2006,10 @@ mod tests {
             req_to_accept_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            req_to_accept_result.as_ref().unwrap().1,
+            Some(BillAction::RequestAcceptance)
+        ));
 
         let req_to_pay_block = BillBlock::create_block_for_request_to_pay(
             TEST_BILL_ID.to_owned(),
@@ -1991,6 +2033,10 @@ mod tests {
             req_to_pay_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            req_to_pay_result.as_ref().unwrap().1,
+            Some(BillAction::RequestToPay(_))
+        ));
 
         let accept_block = BillBlock::create_block_for_accept(
             TEST_BILL_ID.to_owned(),
@@ -2013,6 +2059,10 @@ mod tests {
             accept_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            accept_result.as_ref().unwrap().1,
+            Some(BillAction::Accept)
+        ));
 
         let offer_to_sell_block = BillBlock::create_block_for_offer_to_sell(
             TEST_BILL_ID.to_owned(),
@@ -2039,6 +2089,10 @@ mod tests {
             offer_to_sell_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            offer_to_sell_result.as_ref().unwrap().1,
+            Some(BillAction::OfferToSell(_, _, _))
+        ));
 
         let sell_block = BillBlock::create_block_for_sell(
             TEST_BILL_ID.to_owned(),
@@ -2065,6 +2119,10 @@ mod tests {
             sell_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            sell_result.as_ref().unwrap().1,
+            Some(BillAction::Sell(_, _, _, _))
+        ));
 
         let reject_to_accept_block = BillBlock::create_block_for_reject_to_accept(
             TEST_BILL_ID.to_owned(),
@@ -2087,6 +2145,10 @@ mod tests {
             reject_to_accept_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            reject_to_accept_result.as_ref().unwrap().1,
+            Some(BillAction::RejectAcceptance)
+        ));
 
         let reject_to_buy_block = BillBlock::create_block_for_reject_to_buy(
             TEST_BILL_ID.to_owned(),
@@ -2109,6 +2171,10 @@ mod tests {
             reject_to_buy_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            reject_to_buy_result.as_ref().unwrap().1,
+            Some(BillAction::RejectBuying)
+        ));
 
         let reject_to_pay_block = BillBlock::create_block_for_reject_to_pay(
             TEST_BILL_ID.to_owned(),
@@ -2131,6 +2197,10 @@ mod tests {
             reject_to_pay_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            reject_to_pay_result.as_ref().unwrap().1,
+            Some(BillAction::RejectPayment)
+        ));
 
         let reject_to_pay_recourse_block = BillBlock::create_block_for_reject_to_pay_recourse(
             TEST_BILL_ID.to_owned(),
@@ -2154,6 +2224,10 @@ mod tests {
             reject_to_pay_recourse_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            reject_to_pay_recourse_result.as_ref().unwrap().1,
+            Some(BillAction::RejectPaymentForRecourse)
+        ));
 
         let request_recourse_block = BillBlock::create_block_for_request_recourse(
             TEST_BILL_ID.to_owned(),
@@ -2180,6 +2254,10 @@ mod tests {
             request_recourse_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            request_recourse_result.as_ref().unwrap().1,
+            Some(BillAction::RequestRecourse(_, _))
+        ));
 
         let recourse_block = BillBlock::create_block_for_recourse(
             TEST_BILL_ID.to_owned(),
@@ -2206,6 +2284,10 @@ mod tests {
             recourse_result.as_ref().unwrap().0,
             identity_keys.get_public_key()
         );
+        assert!(matches!(
+            recourse_result.as_ref().unwrap().1,
+            Some(BillAction::Recourse(_, _, _, _))
+        ));
     }
 
     #[test]
@@ -2222,7 +2304,7 @@ mod tests {
         let signer = identity_public_data_only_node_id(company_keys.get_public_key());
         let other_party = identity_public_data_only_node_id(BcrKeys::new().get_public_key());
         bill.drawer = signer.clone();
-        bill.drawee = other_party.clone();
+        bill.drawee = signer.clone();
         bill.payee = other_party.clone();
 
         let issue_block = BillBlock::create_block_for_issue(
@@ -2249,6 +2331,7 @@ mod tests {
             issue_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(issue_result.as_ref().unwrap().1.is_none());
 
         let endorse_block = BillBlock::create_block_for_endorse(
             TEST_BILL_ID.to_owned(),
@@ -2275,6 +2358,10 @@ mod tests {
             endorse_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            endorse_result.as_ref().unwrap().1,
+            Some(BillAction::Endorse(_))
+        ));
 
         let mint_block = BillBlock::create_block_for_mint(
             TEST_BILL_ID.to_owned(),
@@ -2303,6 +2390,10 @@ mod tests {
             mint_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            mint_result.as_ref().unwrap().1,
+            Some(BillAction::Mint(_, _, _))
+        ));
 
         let req_to_accept_block = BillBlock::create_block_for_request_to_accept(
             TEST_BILL_ID.to_owned(),
@@ -2328,6 +2419,10 @@ mod tests {
             req_to_accept_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            req_to_accept_result.as_ref().unwrap().1,
+            Some(BillAction::RequestAcceptance)
+        ));
 
         let req_to_pay_block = BillBlock::create_block_for_request_to_pay(
             TEST_BILL_ID.to_owned(),
@@ -2354,6 +2449,10 @@ mod tests {
             req_to_pay_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            req_to_pay_result.as_ref().unwrap().1,
+            Some(BillAction::RequestToPay(_))
+        ));
 
         let accept_block = BillBlock::create_block_for_accept(
             TEST_BILL_ID.to_owned(),
@@ -2379,6 +2478,10 @@ mod tests {
             accept_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            accept_result.as_ref().unwrap().1,
+            Some(BillAction::Accept)
+        ));
 
         let offer_to_sell_block = BillBlock::create_block_for_offer_to_sell(
             TEST_BILL_ID.to_owned(),
@@ -2408,6 +2511,10 @@ mod tests {
             offer_to_sell_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            offer_to_sell_result.as_ref().unwrap().1,
+            Some(BillAction::OfferToSell(_, _, _))
+        ));
 
         let sell_block = BillBlock::create_block_for_sell(
             TEST_BILL_ID.to_owned(),
@@ -2437,6 +2544,10 @@ mod tests {
             sell_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            sell_result.as_ref().unwrap().1,
+            Some(BillAction::Sell(_, _, _, _))
+        ));
 
         let reject_to_accept_block = BillBlock::create_block_for_reject_to_accept(
             TEST_BILL_ID.to_owned(),
@@ -2462,6 +2573,10 @@ mod tests {
             reject_to_accept_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            reject_to_accept_result.as_ref().unwrap().1,
+            Some(BillAction::RejectAcceptance)
+        ));
 
         let reject_to_buy_block = BillBlock::create_block_for_reject_to_buy(
             TEST_BILL_ID.to_owned(),
@@ -2487,6 +2602,10 @@ mod tests {
             reject_to_buy_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            reject_to_buy_result.as_ref().unwrap().1,
+            Some(BillAction::RejectBuying)
+        ));
 
         let reject_to_pay_block = BillBlock::create_block_for_reject_to_pay(
             TEST_BILL_ID.to_owned(),
@@ -2512,6 +2631,10 @@ mod tests {
             reject_to_pay_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            reject_to_pay_result.as_ref().unwrap().1,
+            Some(BillAction::RejectPayment)
+        ));
 
         let reject_to_pay_recourse_block = BillBlock::create_block_for_reject_to_pay_recourse(
             TEST_BILL_ID.to_owned(),
@@ -2538,6 +2661,10 @@ mod tests {
             reject_to_pay_recourse_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            reject_to_pay_recourse_result.as_ref().unwrap().1,
+            Some(BillAction::RejectPaymentForRecourse)
+        ));
 
         let request_recourse_block = BillBlock::create_block_for_request_recourse(
             TEST_BILL_ID.to_owned(),
@@ -2567,6 +2694,10 @@ mod tests {
             request_recourse_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            request_recourse_result.as_ref().unwrap().1,
+            Some(BillAction::RequestRecourse(_, _))
+        ));
 
         let recourse_block = BillBlock::create_block_for_recourse(
             TEST_BILL_ID.to_owned(),
@@ -2596,6 +2727,10 @@ mod tests {
             recourse_result.as_ref().unwrap().0,
             company_keys.get_public_key()
         );
+        assert!(matches!(
+            recourse_result.as_ref().unwrap().1,
+            Some(BillAction::Recourse(_, _, _, _))
+        ));
     }
 
     #[test]
@@ -2716,10 +2851,19 @@ mod tests {
         }
     }
 
+    fn other_valid_bill_identity_block_data() -> BillIdentityBlockData {
+        BillIdentityBlockData {
+            t: ContactType::Person,
+            node_id: TEST_NODE_ID_SECP.into(),
+            name: "John Smith".into(),
+            postal_address: valid_address(),
+        }
+    }
+
     fn invalid_bill_identity_block_data() -> BillIdentityBlockData {
         BillIdentityBlockData {
             t: ContactType::Person,
-            node_id: TEST_PUB_KEY_SECP.into(),
+            node_id: OTHER_TEST_PUB_KEY_SECP.into(),
             name: "".into(),
             postal_address: invalid_address(),
         }
@@ -2777,7 +2921,7 @@ mod tests {
             id: TEST_BILL_ID.into(),
             country_of_issuing: "AT".into(),
             city_of_issuing: "Vienna".into(),
-            drawee: valid_bill_identity_block_data(),
+            drawee: other_valid_bill_identity_block_data(),
             drawer: valid_bill_identity_block_data(),
             payee: valid_bill_identity_block_data(),
             currency: "sat".into(),
@@ -2912,7 +3056,7 @@ mod tests {
     fn valid_mint_block_data() -> BillMintBlockData {
         BillMintBlockData {
             endorser: valid_bill_identity_block_data(),
-            endorsee: valid_bill_identity_block_data(),
+            endorsee: other_valid_bill_identity_block_data(),
             currency: "sat".into(),
             sum: 500,
             signatory: Some(valid_bill_signatory_block_data()),
@@ -2944,7 +3088,7 @@ mod tests {
     fn valid_offer_to_sell_block_data() -> BillOfferToSellBlockData {
         BillOfferToSellBlockData {
             seller: valid_bill_identity_block_data(),
-            buyer: valid_bill_identity_block_data(),
+            buyer: other_valid_bill_identity_block_data(),
             currency: "sat".into(),
             sum: 500,
             payment_address: VALID_PAYMENT_ADDRESS_TESTNET.into(),
@@ -2978,7 +3122,7 @@ mod tests {
     fn valid_sell_block_data() -> BillSellBlockData {
         BillSellBlockData {
             seller: valid_bill_identity_block_data(),
-            buyer: valid_bill_identity_block_data(),
+            buyer: other_valid_bill_identity_block_data(),
             currency: "sat".into(),
             sum: 500,
             payment_address: VALID_PAYMENT_ADDRESS_TESTNET.into(),
@@ -3012,7 +3156,7 @@ mod tests {
     fn valid_endorse_block_data() -> BillEndorseBlockData {
         BillEndorseBlockData {
             endorser: valid_bill_identity_block_data(),
-            endorsee: valid_bill_identity_block_data(),
+            endorsee: other_valid_bill_identity_block_data(),
             signatory: Some(valid_bill_signatory_block_data()),
             signing_timestamp: 1731593928,
             signing_address: valid_address(),
@@ -3040,7 +3184,7 @@ mod tests {
     fn valid_req_to_recourse_block_data() -> BillRequestRecourseBlockData {
         BillRequestRecourseBlockData {
             recourser: valid_bill_identity_block_data(),
-            recoursee: valid_bill_identity_block_data(),
+            recoursee: other_valid_bill_identity_block_data(),
             currency: "sat".into(),
             sum: 500,
             recourse_reason: BillRecourseReasonBlockData::Pay,
@@ -3073,7 +3217,7 @@ mod tests {
     fn valid_recourse_block_data() -> BillRecourseBlockData {
         BillRecourseBlockData {
             recourser: valid_bill_identity_block_data(),
-            recoursee: valid_bill_identity_block_data(),
+            recoursee: other_valid_bill_identity_block_data(),
             currency: "sat".into(),
             sum: 500,
             recourse_reason: BillRecourseReasonBlockData::Pay,
