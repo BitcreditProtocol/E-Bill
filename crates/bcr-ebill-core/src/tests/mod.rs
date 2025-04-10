@@ -111,6 +111,17 @@ pub mod tests {
         }
     }
 
+    pub fn valid_identity_public_data() -> IdentityPublicData {
+        IdentityPublicData {
+            t: ContactType::Person,
+            node_id: TEST_PUB_KEY_SECP.into(),
+            name: "Johanna Smith".into(),
+            postal_address: valid_address(),
+            email: None,
+            nostr_relay: None,
+        }
+    }
+
     pub fn empty_identity_public_data() -> IdentityPublicData {
         IdentityPublicData {
             t: ContactType::Person,

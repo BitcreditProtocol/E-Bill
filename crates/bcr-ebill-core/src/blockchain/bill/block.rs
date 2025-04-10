@@ -1433,7 +1433,7 @@ impl BillBlock {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::{
         blockchain::bill::tests::get_baseline_identity,
@@ -2916,7 +2916,7 @@ mod tests {
         assert_eq!(signatory.validate(), Err(expected_error));
     }
 
-    fn valid_bill_issue_block_data() -> BillIssueBlockData {
+    pub fn valid_bill_issue_block_data() -> BillIssueBlockData {
         BillIssueBlockData {
             id: TEST_BILL_ID.into(),
             country_of_issuing: "AT".into(),

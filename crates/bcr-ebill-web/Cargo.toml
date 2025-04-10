@@ -22,15 +22,11 @@ rocket_ws = { version = "0.1.1", features = [
 ], default-features = false }
 open = "5.3.2"
 clap = { version = "4.5.29", features = ["derive", "env"] }
-# version = "5"
-utoipa = { git = "https://github.com/juhaku/utoipa/", rev = "1d32f0524a8680d79537ae92aa9ced6ba9d2b630", package = "utoipa", features = [
+utoipa = { version = "5", features = [
   "chrono",
   "rocket_extras",
 ], default-features = false }
-# version = "9" - temporary until downstream semver breakage in zip2 is fixed
-utoipa-swagger-ui = { git = "https://github.com/juhaku/utoipa/", rev = "1d32f0524a8680d79537ae92aa9ced6ba9d2b630", package = "utoipa-swagger-ui", features = ["rocket"], default-features = false }
-# temporary until downstream semver breakage in zip2 is fixed
-zip = "=2.5.0"
+utoipa-swagger-ui = { version = "9", features = ["rocket"], default-features = false }
 bcr-ebill-api = { path = "../bcr-ebill-api" }
 bcr-ebill-transport = { path = "../bcr-ebill-transport" }
 

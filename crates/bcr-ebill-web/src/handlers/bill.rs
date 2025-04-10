@@ -11,6 +11,7 @@ use crate::data::{
     UploadFileResponse,
 };
 use crate::service_context::ServiceContext;
+use bcr_ebill_api::data::bill::BillIssueData;
 use bcr_ebill_api::data::{
     bill::{BillAction, BillsFilterRole, LightBitcreditBillResult, RecourseReason},
     contact::IdentityPublicData,
@@ -351,24 +352,24 @@ pub async fn issue_bill(
 
     let bill = state
         .bill_service
-        .issue_new_bill(
-            bill_payload.t,
-            bill_payload.country_of_issuing.to_owned(),
-            bill_payload.city_of_issuing.to_owned(),
-            bill_payload.issue_date.to_owned(),
-            bill_payload.maturity_date.to_owned(),
-            bill_payload.drawee.to_owned(),
-            bill_payload.payee.to_owned(),
-            bill_payload.sum.to_owned(),
-            bill_payload.currency.to_owned(),
-            bill_payload.country_of_payment.to_owned(),
-            bill_payload.city_of_payment.to_owned(),
-            bill_payload.language.to_owned(),
-            bill_payload.file_upload_ids.to_owned(),
-            drawer_public_data.clone(),
-            drawer_keys.clone(),
+        .issue_new_bill(BillIssueData {
+            t: bill_payload.t,
+            country_of_issuing: bill_payload.country_of_issuing.to_owned(),
+            city_of_issuing: bill_payload.city_of_issuing.to_owned(),
+            issue_date: bill_payload.issue_date.to_owned(),
+            maturity_date: bill_payload.maturity_date.to_owned(),
+            drawee: bill_payload.drawee.to_owned(),
+            payee: bill_payload.payee.to_owned(),
+            sum: bill_payload.sum.to_owned(),
+            currency: bill_payload.currency.to_owned(),
+            country_of_payment: bill_payload.country_of_payment.to_owned(),
+            city_of_payment: bill_payload.city_of_payment.to_owned(),
+            language: bill_payload.language.to_owned(),
+            file_upload_ids: bill_payload.file_upload_ids.to_owned(),
+            drawer_public_data: drawer_public_data.clone(),
+            drawer_keys: drawer_keys.clone(),
             timestamp,
-        )
+        })
         .await?;
 
     Ok(Json(BillId {

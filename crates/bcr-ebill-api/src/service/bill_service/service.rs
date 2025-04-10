@@ -24,14 +24,14 @@ use crate::persistence::identity::{IdentityChainStoreApi, IdentityStoreApi};
 use crate::util::BcrKeys;
 use crate::{external, util};
 use async_trait::async_trait;
-use bcr_ebill_core::ServiceTraitBounds;
-use bcr_ebill_core::bill::validation::validate_bill_action;
+use bcr_ebill_core::bill::{BillIssueData, BillValidateActionData};
 use bcr_ebill_core::constants::{
     ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS,
 };
 use bcr_ebill_core::contact::Contact;
 use bcr_ebill_core::notification::ActionType;
 use bcr_ebill_core::util::currency;
+use bcr_ebill_core::{ServiceTraitBounds, Validate};
 use bcr_ebill_transport::NotificationServiceApi;
 use log::{debug, error, info};
 use std::collections::{HashMap, HashSet};
@@ -497,44 +497,8 @@ impl BillServiceApi for BillService {
         })
     }
 
-    async fn issue_new_bill(
-        &self,
-        t: u64,
-        country_of_issuing: String,
-        city_of_issuing: String,
-        issue_date: String,
-        maturity_date: String,
-        drawee: String,
-        payee: String,
-        sum: String,
-        currency: String,
-        country_of_payment: String,
-        city_of_payment: String,
-        language: String,
-        file_upload_ids: Vec<String>,
-        drawer_public_data: IdentityPublicData,
-        drawer_keys: BcrKeys,
-        timestamp: u64,
-    ) -> Result<BitcreditBill> {
-        self.issue_bill(
-            t,
-            country_of_issuing,
-            city_of_issuing,
-            issue_date,
-            maturity_date,
-            drawee,
-            payee,
-            sum,
-            currency,
-            country_of_payment,
-            city_of_payment,
-            language,
-            file_upload_ids,
-            drawer_public_data,
-            drawer_keys,
-            timestamp,
-        )
-        .await
+    async fn issue_new_bill(&self, data: BillIssueData) -> Result<BitcreditBill> {
+        self.issue_bill(data).await
     }
 
     async fn execute_bill_action(
@@ -560,18 +524,19 @@ impl BillServiceApi for BillService {
         let is_paid = self.store.is_paid(bill_id).await?;
 
         // validate
-        validate_bill_action(
-            &blockchain,
-            &bill.drawee.node_id,
-            &bill.payee.node_id,
-            bill.endorsee.clone().map(|e| e.node_id).as_deref(),
-            &bill.maturity_date,
-            &bill_keys,
+        BillValidateActionData {
+            blockchain: blockchain.clone(),
+            drawee_node_id: bill.drawee.node_id.clone(),
+            payee_node_id: bill.payee.node_id.clone(),
+            endorsee_node_id: bill.endorsee.clone().map(|e| e.node_id),
+            maturity_date: bill.maturity_date.clone(),
+            bill_keys: bill_keys.clone(),
             timestamp,
-            &signer_public_data.node_id,
-            &bill_action,
+            signer_node_id: signer_public_data.node_id.clone(),
+            bill_action: bill_action.clone(),
             is_paid,
-        )?;
+        }
+        .validate()?;
 
         // create and sign blocks
         self.create_blocks_for_bill_action(

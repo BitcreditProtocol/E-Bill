@@ -2,68 +2,40 @@ use super::{BillAction, BillServiceApi, Result, error::Error, service::BillServi
 use crate::util;
 use bcr_ebill_core::{
     File, Validate,
-    bill::{BillKeys, BillType, BitcreditBill, validation::validate_bill_issue},
+    bill::{BillIssueData, BillKeys, BillType, BitcreditBill, validation::validate_bill_issue},
     blockchain::{
         Blockchain,
         bill::{BillBlockchain, block::BillIssueBlockData},
     },
-    contact::IdentityPublicData,
     util::BcrKeys,
 };
 use bcr_ebill_transport::BillChainEvent;
 use log::{debug, error};
 
 impl BillService {
-    #[allow(clippy::too_many_arguments)]
-    pub(super) async fn issue_bill(
-        &self,
-        t: u64,
-        country_of_issuing: String,
-        city_of_issuing: String,
-        issue_date: String,
-        maturity_date: String,
-        drawee: String,
-        payee: String,
-        sum: String,
-        currency: String,
-        country_of_payment: String,
-        city_of_payment: String,
-        language: String,
-        file_upload_ids: Vec<String>,
-        drawer_public_data: IdentityPublicData,
-        drawer_keys: BcrKeys,
-        timestamp: u64,
-    ) -> Result<BitcreditBill> {
-        debug!("issuing bill with type {t}");
-        let (sum, bill_type) = validate_bill_issue(
-            &sum,
-            &file_upload_ids,
-            &issue_date,
-            &maturity_date,
-            &drawee,
-            &payee,
-            t,
-        )?;
+    pub(super) async fn issue_bill(&self, data: BillIssueData) -> Result<BitcreditBill> {
+        debug!("issuing bill with type {}", &data.t);
+        let (sum, bill_type) = validate_bill_issue(&data)?;
 
         let (public_data_drawee, public_data_payee) = match bill_type {
             // Drawer is payee
             BillType::SelfDrafted => {
-                let public_data_drawee = match self.contact_store.get(&drawee).await {
+                let public_data_drawee = match self.contact_store.get(&data.drawee).await {
                     Ok(Some(drawee)) => drawee.into(),
                     Ok(None) | Err(_) => {
                         return Err(Error::DraweeNotInContacts);
                     }
                 };
 
-                let public_data_payee = drawer_public_data.clone();
+                let public_data_payee = data.drawer_public_data.clone();
 
                 (public_data_drawee, public_data_payee)
             }
             // Drawer is drawee
             BillType::PromissoryNote => {
-                let public_data_drawee = drawer_public_data.clone();
+                let public_data_drawee = data.drawer_public_data.clone();
 
-                let public_data_payee = match self.contact_store.get(&payee).await {
+                let public_data_payee = match self.contact_store.get(&data.payee).await {
                     Ok(Some(drawee)) => drawee.into(),
                     Ok(None) | Err(_) => {
                         return Err(Error::PayeeNotInContacts);
@@ -74,14 +46,14 @@ impl BillService {
             }
             // Drawer is neither drawee nor payee
             BillType::ThreeParties => {
-                let public_data_drawee = match self.contact_store.get(&drawee).await {
+                let public_data_drawee = match self.contact_store.get(&data.drawee).await {
                     Ok(Some(drawee)) => drawee.into(),
                     Ok(None) | Err(_) => {
                         return Err(Error::DraweeNotInContacts);
                     }
                 };
 
-                let public_data_payee = match self.contact_store.get(&payee).await {
+                let public_data_payee = match self.contact_store.get(&data.payee).await {
                     Ok(Some(drawee)) => drawee.into(),
                     Ok(None) | Err(_) => {
                         return Err(Error::PayeeNotInContacts);
@@ -104,7 +76,7 @@ impl BillService {
         };
 
         let mut bill_files: Vec<File> = vec![];
-        for file_upload_id in file_upload_ids.iter() {
+        for file_upload_id in data.file_upload_ids.iter() {
             let (file_name, file_bytes) = &self
                 .file_upload_store
                 .read_temp_upload_file(file_upload_id)
@@ -118,25 +90,29 @@ impl BillService {
 
         let bill = BitcreditBill {
             id: bill_id.clone(),
-            country_of_issuing,
-            city_of_issuing,
-            currency,
+            country_of_issuing: data.country_of_issuing,
+            city_of_issuing: data.city_of_issuing,
+            currency: data.currency,
             sum,
-            maturity_date,
-            issue_date,
-            country_of_payment,
-            city_of_payment,
-            language,
+            maturity_date: data.maturity_date,
+            issue_date: data.issue_date,
+            country_of_payment: data.country_of_payment,
+            city_of_payment: data.city_of_payment,
+            language: data.language,
             drawee: public_data_drawee,
-            drawer: drawer_public_data.clone(),
+            drawer: data.drawer_public_data.clone(),
             payee: public_data_payee,
             endorsee: None,
             files: bill_files,
         };
 
-        let signing_keys = self.get_bill_signing_keys(&drawer_public_data, &drawer_keys, &identity);
-        let block_data =
-            BillIssueBlockData::from(bill.clone(), signing_keys.signatory_identity, timestamp);
+        let signing_keys =
+            self.get_bill_signing_keys(&data.drawer_public_data, &data.drawer_keys, &identity);
+        let block_data = BillIssueBlockData::from(
+            bill.clone(),
+            signing_keys.signatory_identity,
+            data.timestamp,
+        );
         block_data.validate()?;
 
         self.store.save_keys(&bill_id, &bill_keys).await?;
@@ -145,19 +121,19 @@ impl BillService {
             signing_keys.signatory_keys,
             signing_keys.company_keys,
             keys.clone(),
-            timestamp,
+            data.timestamp,
         )?;
 
         let block = chain.get_first_block();
         self.blockchain_store.add_block(&bill.id, block).await?;
 
         self.add_identity_and_company_chain_blocks_for_signed_bill_action(
-            &drawer_public_data,
+            &data.drawer_public_data,
             &bill_id,
             block,
             &identity.key_pair,
-            &drawer_keys,
-            timestamp,
+            &data.drawer_keys,
+            data.timestamp,
         )
         .await?;
 
@@ -167,13 +143,13 @@ impl BillService {
             &chain,
             &bill_keys,
             &identity.identity,
-            &drawer_public_data.node_id,
-            timestamp,
+            &data.drawer_public_data.node_id,
+            data.timestamp,
         )
         .await?;
 
         // clean up temporary file uploads, if there are any, logging any errors
-        for file_upload_id in file_upload_ids.iter() {
+        for file_upload_id in data.file_upload_ids.iter() {
             if let Err(e) = self
                 .file_upload_store
                 .remove_temp_upload_folder(file_upload_id)
@@ -209,9 +185,9 @@ impl BillService {
             self.execute_bill_action(
                 &bill_id,
                 BillAction::Accept,
-                &drawer_public_data,
-                &drawer_keys,
-                timestamp + 1,
+                &data.drawer_public_data,
+                &data.drawer_keys,
+                data.timestamp + 1,
             )
             .await?;
         }

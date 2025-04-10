@@ -4,8 +4,9 @@ use crate::EventType;
 use crate::{Error, Event, EventEnvelope, PushApi, Result};
 use async_trait::async_trait;
 use bcr_ebill_core::ServiceTraitBounds;
+use bcr_ebill_core::Validate;
 use bcr_ebill_core::bill::BillKeys;
-use bcr_ebill_core::bill::validation::validate_bill_action;
+use bcr_ebill_core::bill::BillValidateActionData;
 use bcr_ebill_core::blockchain::Blockchain;
 use bcr_ebill_core::blockchain::bill::BillOpCode;
 use bcr_ebill_core::blockchain::bill::block::BillIssueBlockData;
@@ -221,31 +222,32 @@ impl BillChainEventHandler {
                     "Received invalid block for bill - couldn't get bill parties".to_string(),
                 )
             })?;
-        if let Err(e) = validate_bill_action(
-                &chain_clone_for_validation,
-                &bill_parties.drawee.node_id,
-                &bill_parties.payee.node_id,
-                bill_parties.endorsee.map(|e| e.node_id).as_deref(),
-                &bill_first_version.maturity_date,
-                bill_keys,
-                block.timestamp,
-                &signer,
-                &bill_action.ok_or_else(|| {
-                    error!(
-                        "Received invalid block {block_id} for bill {bill_id} - no valid bill action returned"
-                    );
-                    Error::Blockchain(
-                        "Received invalid block for bill - no valid bill action returned"
-                            .to_string(),
-                    )
-                })?,
-                is_paid,
-            ) {
+        if let Err(e) = (BillValidateActionData {
+            blockchain: chain_clone_for_validation,
+            drawee_node_id: bill_parties.drawee.node_id,
+            payee_node_id: bill_parties.payee.node_id,
+            endorsee_node_id: bill_parties.endorsee.map(|e| e.node_id),
+            maturity_date: bill_first_version.maturity_date.clone(),
+            bill_keys: bill_keys.clone(),
+            timestamp: block.timestamp,
+            signer_node_id: signer,
+            bill_action: bill_action.ok_or_else(|| {
                 error!(
-                    "Received invalid block {block_id} for bill {bill_id}, bill action validation failed: {e}"
+                    "Received invalid block {block_id} for bill {bill_id} - no valid bill action returned"
                 );
-                return Err(Error::Blockchain(e.to_string()));
-            }
+                Error::Blockchain(
+                    "Received invalid block for bill - no valid bill action returned"
+                    .to_string(),
+                )
+            })?,
+            is_paid,
+        }).validate()
+        {
+            error!(
+                "Received invalid block {block_id} for bill {bill_id}, bill action validation failed: {e}"
+            );
+            return Err(Error::Blockchain(e.to_string()));
+        }
         // if everything works out - add the block
         self.save_block(bill_id, &block).await?;
         Ok(true) // block was added
