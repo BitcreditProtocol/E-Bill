@@ -1,3 +1,7 @@
+# 0.3.5
+
+* Add in-depth tests for bill validation
+
 # 0.3.4
 
 * Add in-depth tests for bill validation
