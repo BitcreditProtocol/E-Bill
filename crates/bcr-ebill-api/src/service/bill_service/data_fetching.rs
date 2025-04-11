@@ -175,6 +175,9 @@ impl BillService {
             redeemed_funds_available = true;
         }
 
+        let has_requested_funds =
+            chain.is_beneficiary_from_a_request_funds_block(bill_keys, current_identity_node_id);
+
         let mut offered_to_sell = false;
         let mut rejected_offer_to_sell = false;
         let mut offer_to_sell_timed_out = false;
@@ -260,18 +263,15 @@ impl BillService {
             time_of_request_to_accept = Some(req_to_accept_block.timestamp);
             rejected_to_accept = chain.block_with_operation_code_exists(BillOpCode::RejectToAccept);
 
-            if !accepted && !rejected_to_accept {
-                if let Some(req_block) =
-                    chain.get_last_version_block_with_op_code(BillOpCode::RequestToAccept)
-                {
-                    if util::date::check_if_deadline_has_passed(
-                        req_block.timestamp,
-                        current_timestamp,
-                        ACCEPT_DEADLINE_SECONDS,
-                    ) {
-                        request_to_accept_timed_out = true;
-                    }
-                }
+            if !accepted
+                && !rejected_to_accept
+                && util::date::check_if_deadline_has_passed(
+                    req_to_accept_block.timestamp,
+                    current_timestamp,
+                    ACCEPT_DEADLINE_SECONDS,
+                )
+            {
+                request_to_accept_timed_out = true;
             }
         }
 
@@ -297,9 +297,7 @@ impl BillService {
                         )
                         .await;
 
-                    let address_to_pay = self
-                        .bitcoin_client
-                        .get_address_to_pay(&bill_keys.public_key, &payment_info.seller.node_id)?;
+                    let address_to_pay = payment_info.payment_address;
 
                     let link_to_pay = self.bitcoin_client.generate_link_to_pay(
                         &address_to_pay,
@@ -452,6 +450,7 @@ impl BillService {
                 rejected_request_to_recourse,
             },
             redeemed_funds_available,
+            has_requested_funds,
         };
 
         let participants = BillParticipants {

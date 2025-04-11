@@ -2,16 +2,18 @@ use super::super::Result;
 use super::PaymentInfo;
 use super::block::{
     BillBlock, BillEndorseBlockData, BillIdentityBlockData, BillIssueBlockData, BillMintBlockData,
-    BillOfferToSellBlockData, BillRequestRecourseBlockData, BillSellBlockData,
+    BillOfferToSellBlockData, BillRecourseBlockData, BillRequestRecourseBlockData,
+    BillSellBlockData,
 };
 use super::{BillOpCode, RecourseWaitingForPayment};
 use super::{OfferToSellWaitingForPayment, RecoursePaymentInfo};
-use crate::bill::{BillKeys, LightSignedBy, PastEndorsee};
+use crate::bill::{BillKeys, LightSignedBy, PastEndorsee, PastPaymentStatus};
 use crate::blockchain::{Block, Blockchain, Error};
 use crate::constants::{PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS};
 use crate::contact::{ContactType, LightIdentityPublicData};
 use crate::util::{self, BcrKeys};
 use borsh_derive::{BorshDeserialize, BorshSerialize};
+use log::error;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -89,12 +91,248 @@ impl BillBlockchain {
         }
     }
 
+    /// Gets the past payment information for the given node id regarding sell operations (offer to sell, reject to buy,
+    /// / sell), where the node id is the beneficiary (seller)
+    pub fn get_past_sell_payments_for_node_id(
+        &self,
+        bill_keys: &BillKeys,
+        node_id: &str,
+        timestamp: u64,
+    ) -> Result<Vec<(PaymentInfo, PastPaymentStatus, u64)>> {
+        let mut result = vec![];
+        let blocks = self.blocks();
+        let mut sell_pairs: Vec<(BillBlock, Option<BillBlock>)> = vec![];
+
+        let mut current_offer_to_sell: Option<BillBlock> = None;
+        // collect offer to sell / (sell / reject to buy) block pairs
+        for block in blocks {
+            match block.op_code() {
+                BillOpCode::OfferToSell => {
+                    if let Some(offer_to_sell_block) = current_offer_to_sell {
+                        // offer to sell after offer to sell - push current without sell and set new
+                        sell_pairs.push((offer_to_sell_block.clone(), None));
+                        current_offer_to_sell = Some(block.clone());
+                    } else {
+                        // no offer to sell found yet - set it
+                        current_offer_to_sell = Some(block.clone());
+                    }
+                }
+                BillOpCode::RejectToBuy => {
+                    if let Some(offer_to_sell_block) = current_offer_to_sell {
+                        // reject after offer to sell - push both, reset offer to sell
+                        sell_pairs.push((offer_to_sell_block.clone(), Some(block.clone())));
+                        current_offer_to_sell = None;
+                    } else {
+                        error!("RejectToBuy block without Offer to Sell block detected");
+                        return Err(Error::BlockchainInvalid);
+                    }
+                }
+                BillOpCode::Sell => {
+                    if let Some(offer_to_sell_block) = current_offer_to_sell {
+                        // sell after offer to sell - push both, reset offer to sell
+                        sell_pairs.push((offer_to_sell_block.clone(), Some(block.clone())));
+                        current_offer_to_sell = None;
+                    } else {
+                        error!("Sell block without Offer to Sell block detected");
+                        return Err(Error::BlockchainInvalid);
+                    }
+                }
+                _ => (),
+            };
+        }
+
+        if let Some(leftover_offer_to_sell_block) = current_offer_to_sell {
+            sell_pairs.push((leftover_offer_to_sell_block.clone(), None));
+        }
+
+        for sell_pair in sell_pairs {
+            let offer_to_sell_block = sell_pair.0;
+            let block_data_decrypted: BillOfferToSellBlockData =
+                offer_to_sell_block.get_decrypted_block_bytes(bill_keys)?;
+
+            if node_id != block_data_decrypted.seller.node_id {
+                // node id is not beneficiary - skip
+                continue;
+            }
+
+            let payment_info = PaymentInfo {
+                buyer: block_data_decrypted.buyer,
+                seller: block_data_decrypted.seller,
+                sum: block_data_decrypted.sum,
+                currency: block_data_decrypted.currency,
+                payment_address: block_data_decrypted.payment_address,
+            };
+
+            match sell_pair.1 {
+                Some(reject_or_sell_block) => match reject_or_sell_block.op_code() {
+                    BillOpCode::RejectToBuy => {
+                        result.push((
+                            payment_info,
+                            PastPaymentStatus::Rejected(reject_or_sell_block.timestamp),
+                            offer_to_sell_block.timestamp,
+                        ));
+                    }
+                    BillOpCode::Sell => {
+                        result.push((
+                            payment_info,
+                            PastPaymentStatus::Paid(reject_or_sell_block.timestamp),
+                            offer_to_sell_block.timestamp,
+                        ));
+                    }
+                    _ => (),
+                },
+                None => {
+                    // check if deadline expired, if not, ignore, otherwise add as expired
+                    if util::date::check_if_deadline_has_passed(
+                        offer_to_sell_block.timestamp,
+                        timestamp,
+                        PAYMENT_DEADLINE_SECONDS,
+                    ) {
+                        result.push((
+                            payment_info,
+                            PastPaymentStatus::Expired(
+                                offer_to_sell_block.timestamp + PAYMENT_DEADLINE_SECONDS,
+                            ),
+                            offer_to_sell_block.timestamp,
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+
+    /// Gets the past payment information for the given node id regarding recourse operations (req
+    /// to recourse, reject recourse, recourse where the node id is the beneficiary (seller)
+    pub fn get_past_recourse_payments_for_node_id(
+        &self,
+        bill_keys: &BillKeys,
+        node_id: &str,
+        timestamp: u64,
+    ) -> Result<Vec<(RecoursePaymentInfo, PastPaymentStatus, u64)>> {
+        let mut result = vec![];
+        let blocks = self.blocks();
+        let mut recourse_pairs: Vec<(BillBlock, Option<BillBlock>)> = vec![];
+
+        let mut current_req_to_recourse: Option<BillBlock> = None;
+        // collect req to recourse / (reject recourse / recourse) block pairs
+        for block in blocks {
+            match block.op_code() {
+                BillOpCode::RequestRecourse => {
+                    if let Some(req_to_recourse_block) = current_req_to_recourse {
+                        // req to recourse after req_to_recourse_block - push current without recourse and set new
+                        recourse_pairs.push((req_to_recourse_block.clone(), None));
+                        current_req_to_recourse = Some(block.clone());
+                    } else {
+                        // no offer to sell found yet - set it
+                        current_req_to_recourse = Some(block.clone());
+                    }
+                }
+                BillOpCode::RejectToPayRecourse => {
+                    if let Some(req_to_recourse_block) = current_req_to_recourse {
+                        // reject after offer to sell - push both, reset offer to sell
+                        recourse_pairs.push((req_to_recourse_block.clone(), Some(block.clone())));
+                        current_req_to_recourse = None;
+                    } else {
+                        error!("RejectToPayRecourse block without Req to Recourse block detected");
+                        return Err(Error::BlockchainInvalid);
+                    }
+                }
+                BillOpCode::Recourse => {
+                    if let Some(req_to_recourse_block) = current_req_to_recourse {
+                        // recourse after req to recourse- push both, reset req to recourse
+                        recourse_pairs.push((req_to_recourse_block.clone(), Some(block.clone())));
+                        current_req_to_recourse = None;
+                    } else {
+                        error!("Recourse block without Req to Recourse block detected");
+                        return Err(Error::BlockchainInvalid);
+                    }
+                }
+                _ => (),
+            };
+        }
+
+        if let Some(leftover_req_to_recourse_block) = current_req_to_recourse {
+            recourse_pairs.push((leftover_req_to_recourse_block.clone(), None));
+        }
+
+        for recourse_pair in recourse_pairs {
+            let request_to_recourse_block = recourse_pair.0;
+            let block_data_decrypted: BillRequestRecourseBlockData =
+                request_to_recourse_block.get_decrypted_block_bytes(bill_keys)?;
+
+            if node_id != block_data_decrypted.recourser.node_id {
+                // node id is not beneficiary - skip
+                continue;
+            }
+
+            let payment_info = RecoursePaymentInfo {
+                recoursee: block_data_decrypted.recoursee,
+                recourser: block_data_decrypted.recourser,
+                sum: block_data_decrypted.sum,
+                currency: block_data_decrypted.currency,
+                reason: block_data_decrypted.recourse_reason,
+            };
+
+            match recourse_pair.1 {
+                Some(reject_or_recourse_block) => match reject_or_recourse_block.op_code() {
+                    BillOpCode::RejectToPayRecourse => {
+                        result.push((
+                            payment_info,
+                            PastPaymentStatus::Rejected(reject_or_recourse_block.timestamp),
+                            request_to_recourse_block.timestamp,
+                        ));
+                    }
+                    BillOpCode::Recourse => {
+                        result.push((
+                            payment_info,
+                            PastPaymentStatus::Paid(reject_or_recourse_block.timestamp),
+                            request_to_recourse_block.timestamp,
+                        ));
+                    }
+                    _ => (),
+                },
+                None => {
+                    // check if deadline expired, if not, ignore, otherwise add as expired
+                    if util::date::check_if_deadline_has_passed(
+                        request_to_recourse_block.timestamp,
+                        timestamp,
+                        RECOURSE_DEADLINE_SECONDS,
+                    ) {
+                        result.push((
+                            payment_info,
+                            PastPaymentStatus::Expired(
+                                request_to_recourse_block.timestamp + PAYMENT_DEADLINE_SECONDS,
+                            ),
+                            request_to_recourse_block.timestamp,
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
+
     /// Checks if the given node_id is a beneficiary of a holder-changing block with a financial
     /// beneficiary (sell, recourse)
     pub fn is_beneficiary_from_a_block(&self, bill_keys: &BillKeys, node_id: &str) -> bool {
         self.blocks()
             .iter()
             .filter_map(|b| b.get_beneficiary_from_block(bill_keys).ok())
+            .flatten()
+            .any(|s| s == node_id)
+    }
+
+    /// Checks if the given node_id is a beneficiary of a request block with a financial
+    /// beneficiary (offer to sell, req to recourse, req to pay)
+    pub fn is_beneficiary_from_a_request_funds_block(
+        &self,
+        bill_keys: &BillKeys,
+        node_id: &str,
+    ) -> bool {
+        self.blocks()
+            .iter()
+            .filter_map(|b| b.get_beneficiary_from_request_funds_block(bill_keys).ok())
             .flatten()
             .any(|s| s == node_id)
     }
@@ -385,11 +623,24 @@ impl BillBlockchain {
         } else {
             None
         };
+        let last_version_block_recourse = if let Some(recourse_block_encrypted) =
+            self.get_last_version_block_with_op_code(BillOpCode::Recourse)
+        {
+            Some((
+                recourse_block_encrypted.id,
+                recourse_block_encrypted
+                    .get_decrypted_block_bytes::<BillRecourseBlockData>(bill_keys)?
+                    .recoursee,
+            ))
+        } else {
+            None
+        };
 
         let last_endorsee = vec![
             last_version_block_endorse,
             last_version_block_mint,
             last_version_block_sell,
+            last_version_block_recourse,
         ]
         .into_iter()
         .flatten()

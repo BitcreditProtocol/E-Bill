@@ -1,6 +1,7 @@
 #![allow(clippy::arc_with_non_send_sync)]
+use api::general::VERSION;
 use bcr_ebill_api::{Config as ApiConfig, get_db_context, init};
-use constants::{API_VERSION, SURREAL_DB_CON_INDXDB_DATA};
+use constants::SURREAL_DB_CON_INDXDB_DATA;
 use context::{Context, get_ctx};
 use futures::{StreamExt, future::ready};
 use gloo_timers::future::{IntervalStream, TimeoutFuture};
@@ -69,7 +70,7 @@ pub async fn initialize_api(
     let db = get_db_context(&api_config).await?;
     let keys = db.identity_store.get_or_create_key_pair().await?;
 
-    info!("Initialized WASM API {}", API_VERSION);
+    info!("Initialized WASM API {}", VERSION);
     info!("Local node id: {:?}", keys.get_public_key());
     info!("Local npub: {:?}", keys.get_nostr_npub());
     info!("Local npub as hex: {:?}", keys.get_nostr_npub_as_hex());

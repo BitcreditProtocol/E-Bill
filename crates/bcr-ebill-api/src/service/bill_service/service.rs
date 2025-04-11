@@ -24,7 +24,11 @@ use crate::persistence::identity::{IdentityChainStoreApi, IdentityStoreApi};
 use crate::util::BcrKeys;
 use crate::{external, util};
 use async_trait::async_trait;
-use bcr_ebill_core::bill::{BillIssueData, BillValidateActionData};
+use bcr_ebill_core::bill::validation::get_deadline_base_for_req_to_pay;
+use bcr_ebill_core::bill::{
+    BillIssueData, BillValidateActionData, PastPaymentDataPayment, PastPaymentDataRecourse,
+    PastPaymentDataSell, PastPaymentResult, PastPaymentStatus,
+};
 use bcr_ebill_core::constants::{
     ACCEPT_DEADLINE_SECONDS, PAYMENT_DEADLINE_SECONDS, RECOURSE_DEADLINE_SECONDS,
 };
@@ -671,6 +675,162 @@ impl BillServiceApi for BillService {
 
         let res = chain.get_past_endorsees_for_bill(&bill_keys, current_identity_node_id)?;
         Ok(res)
+    }
+
+    async fn get_past_payments(
+        &self,
+        bill_id: &str,
+        caller_public_data: &IdentityPublicData,
+        caller_keys: &BcrKeys,
+        timestamp: u64,
+    ) -> Result<Vec<PastPaymentResult>> {
+        if !self.store.exists(bill_id).await {
+            return Err(Error::NotFound);
+        }
+
+        let mut result = vec![];
+
+        let chain = self.blockchain_store.get_chain(bill_id).await?;
+        let bill_keys = self.store.get_keys(bill_id).await?;
+        let is_paid = self.store.is_paid(bill_id).await?;
+        let bill = chain.get_first_version_bill(&bill_keys)?;
+        let bill_parties = chain.get_bill_parties(&bill_keys, &bill)?;
+
+        let holder = match bill_parties.endorsee {
+            None => &bill_parties.payee,
+            Some(ref endorsee) => endorsee,
+        };
+
+        let private_key_to_spend = self.bitcoin_client.get_combined_private_key(
+            &BcrKeys::from_private_key(&bill_keys.private_key)?
+                .get_bitcoin_private_key(get_config().bitcoin_network()),
+            &caller_keys.get_bitcoin_private_key(get_config().bitcoin_network()),
+        )?;
+
+        // Request to Pay
+        if holder.node_id == caller_public_data.node_id {
+            if let Some(req_to_pay) =
+                chain.get_last_version_block_with_op_code(BillOpCode::RequestToPay)
+            {
+                let address_to_pay = self
+                    .bitcoin_client
+                    .get_address_to_pay(&bill_keys.public_key, &holder.node_id)?;
+                let link_to_pay = self.bitcoin_client.generate_link_to_pay(
+                    &address_to_pay,
+                    bill.sum,
+                    &format!("Payment in relation to a bill {}", bill.id.clone()),
+                );
+                let mempool_link_for_address_to_pay = self
+                    .bitcoin_client
+                    .get_mempool_link_for_address(&address_to_pay);
+
+                let deadline_base =
+                    get_deadline_base_for_req_to_pay(req_to_pay.timestamp, &bill.maturity_date)?;
+                let is_expired = util::date::check_if_deadline_has_passed(
+                    deadline_base,
+                    timestamp,
+                    PAYMENT_DEADLINE_SECONDS,
+                );
+                let is_rejected = chain.block_with_operation_code_exists(BillOpCode::RejectToPay);
+
+                if is_paid || is_rejected || is_expired {
+                    result.push(PastPaymentResult::Payment(PastPaymentDataPayment {
+                        time_of_request: req_to_pay.timestamp,
+                        payer: bill_parties.drawee.clone().into(),
+                        payee: holder.clone().into(),
+                        currency: bill.currency.clone(),
+                        sum: currency::sum_to_string(bill.sum),
+                        link_to_pay,
+                        address_to_pay,
+                        private_key_to_spend: private_key_to_spend.clone(),
+                        mempool_link_for_address_to_pay,
+                        status: if is_paid {
+                            PastPaymentStatus::Paid(req_to_pay.timestamp)
+                        } else if is_rejected {
+                            let ts = if let Some(reject_to_pay_block) =
+                                chain.get_last_version_block_with_op_code(BillOpCode::RejectToPay)
+                            {
+                                reject_to_pay_block.timestamp
+                            } else {
+                                req_to_pay.timestamp
+                            };
+                            PastPaymentStatus::Rejected(ts)
+                        } else {
+                            PastPaymentStatus::Expired(
+                                req_to_pay.timestamp + PAYMENT_DEADLINE_SECONDS,
+                            )
+                        },
+                    }));
+                }
+            }
+        }
+
+        // OfferToSell
+        let past_sell_payments = chain.get_past_sell_payments_for_node_id(
+            &bill_keys,
+            &caller_public_data.node_id,
+            timestamp,
+        )?;
+        for past_sell_payment in past_sell_payments {
+            let address_to_pay = past_sell_payment.0.payment_address;
+            let link_to_pay = self.bitcoin_client.generate_link_to_pay(
+                &address_to_pay,
+                past_sell_payment.0.sum,
+                &format!("Payment in relation to a bill {}", &bill.id),
+            );
+            let mempool_link_for_address_to_pay = self
+                .bitcoin_client
+                .get_mempool_link_for_address(&address_to_pay);
+
+            result.push(PastPaymentResult::Sell(PastPaymentDataSell {
+                time_of_request: past_sell_payment.2,
+                buyer: past_sell_payment.0.buyer.into(),
+                seller: past_sell_payment.0.seller.into(),
+                currency: past_sell_payment.0.currency,
+                sum: currency::sum_to_string(past_sell_payment.0.sum),
+                link_to_pay,
+                address_to_pay,
+                private_key_to_spend: private_key_to_spend.clone(),
+                mempool_link_for_address_to_pay,
+                status: past_sell_payment.1,
+            }));
+        }
+
+        // Recourse
+        let past_recourse_payments = chain.get_past_recourse_payments_for_node_id(
+            &bill_keys,
+            &caller_public_data.node_id,
+            timestamp,
+        )?;
+        for past_sell_payment in past_recourse_payments {
+            let address_to_pay = self.bitcoin_client.get_address_to_pay(
+                &bill_keys.public_key,
+                &past_sell_payment.0.recourser.node_id,
+            )?;
+            let link_to_pay = self.bitcoin_client.generate_link_to_pay(
+                &address_to_pay,
+                past_sell_payment.0.sum,
+                &format!("Payment in relation to a bill {}", &bill.id),
+            );
+            let mempool_link_for_address_to_pay = self
+                .bitcoin_client
+                .get_mempool_link_for_address(&address_to_pay);
+
+            result.push(PastPaymentResult::Recourse(PastPaymentDataRecourse {
+                time_of_request: past_sell_payment.2,
+                recoursee: past_sell_payment.0.recoursee.into(),
+                recourser: past_sell_payment.0.recourser.into(),
+                currency: past_sell_payment.0.currency,
+                sum: currency::sum_to_string(past_sell_payment.0.sum),
+                link_to_pay,
+                address_to_pay,
+                private_key_to_spend: private_key_to_spend.clone(),
+                mempool_link_for_address_to_pay,
+                status: past_sell_payment.1,
+            }));
+        }
+
+        Ok(result)
     }
 
     async fn get_endorsements(

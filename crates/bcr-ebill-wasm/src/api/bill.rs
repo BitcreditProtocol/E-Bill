@@ -25,10 +25,10 @@ use crate::{
             AcceptBitcreditBillPayload, BillId, BillNumbersToWordsForSum, BillsResponse,
             BillsSearchFilterPayload, BitcreditBillPayload, EndorseBitcreditBillPayload,
             EndorsementsResponse, LightBillsResponse, MintBitcreditBillPayload,
-            OfferToSellBitcreditBillPayload, PastEndorseesResponse, RejectActionBillPayload,
-            RequestRecourseForAcceptancePayload, RequestRecourseForPaymentPayload,
-            RequestToAcceptBitcreditBillPayload, RequestToMintBitcreditBillPayload,
-            RequestToPayBitcreditBillPayload,
+            OfferToSellBitcreditBillPayload, PastEndorseesResponse, PastPaymentsResponse,
+            RejectActionBillPayload, RequestRecourseForAcceptancePayload,
+            RequestRecourseForPaymentPayload, RequestToAcceptBitcreditBillPayload,
+            RequestToMintBitcreditBillPayload, RequestToPayBitcreditBillPayload,
         },
     },
 };
@@ -53,6 +53,24 @@ impl Bill {
             .await?;
         let res = serde_wasm_bindgen::to_value(&EndorsementsResponse {
             endorsements: result.into_iter().map(|e| e.into_web()).collect(),
+        })?;
+        Ok(res)
+    }
+
+    #[wasm_bindgen(unchecked_return_type = "PastPaymentsResponse")]
+    pub async fn past_payments(&self, id: &str) -> Result<JsValue> {
+        let (caller_public_data, caller_keys) = get_signer_public_data_and_keys().await?;
+        let result = get_ctx()
+            .bill_service
+            .get_past_payments(
+                id,
+                &caller_public_data,
+                &caller_keys,
+                util::date::now().timestamp() as u64,
+            )
+            .await?;
+        let res = serde_wasm_bindgen::to_value(&PastPaymentsResponse {
+            past_payments: result.into_iter().map(|e| e.into_web()).collect(),
         })?;
         Ok(res)
     }

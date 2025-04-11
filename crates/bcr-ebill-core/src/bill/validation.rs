@@ -57,6 +57,44 @@ impl Validate for BillValidateActionData {
             Some(ref endorsee) => endorsee.clone(),
         };
 
+        // if the bill was rejected to recourse, no further actions are allowed
+        if self
+            .blockchain
+            .block_with_operation_code_exists(BillOpCode::RejectToPayRecourse)
+        {
+            return Err(ValidationError::BillWasRejectedToRecourse);
+        }
+
+        // if the bill was recoursed and there are no past endorsees to recourse against anymore,
+        // no further actions are allowed
+        if self
+            .blockchain
+            .block_with_operation_code_exists(BillOpCode::Recourse)
+        {
+            let past_holders = self
+                .blockchain
+                .get_past_endorsees_for_bill(&self.bill_keys, &self.signer_node_id)?;
+            if past_holders.is_empty() {
+                return Err(ValidationError::BillWasRecoursedToTheEnd);
+            }
+        }
+
+        // if the last block is req to recourse and it expired, no further actions are allowed
+        if let Some(req_to_recourse) = self
+            .blockchain
+            .get_last_version_block_with_op_code(BillOpCode::RequestRecourse)
+        {
+            if BillOpCode::RequestRecourse == *self.blockchain.get_latest_block().op_code()
+                && util::date::check_if_deadline_has_passed(
+                    req_to_recourse.timestamp,
+                    self.timestamp,
+                    RECOURSE_DEADLINE_SECONDS,
+                )
+            {
+                return Err(ValidationError::BillRequestToRecourseExpired);
+            }
+        }
+
         // If the bill was paid, no further actions are allowed
         if self.is_paid {
             return Err(ValidationError::BillAlreadyPaid);
@@ -65,6 +103,7 @@ impl Validate for BillValidateActionData {
         match &self.bill_action {
             BillAction::Accept => {
                 self.bill_is_blocked()?;
+                self.bill_can_only_be_recoursed()?;
                 // not already accepted
                 if self
                     .blockchain
@@ -79,6 +118,7 @@ impl Validate for BillValidateActionData {
             }
             BillAction::RequestAcceptance => {
                 self.bill_is_blocked()?;
+                self.bill_can_only_be_recoursed()?;
                 // not already accepted
                 if self
                     .blockchain
@@ -100,6 +140,7 @@ impl Validate for BillValidateActionData {
             }
             BillAction::RequestToPay(_) => {
                 self.bill_is_blocked()?;
+                self.bill_can_only_be_recoursed()?;
                 // not already requested to pay
                 if self
                     .blockchain
@@ -230,6 +271,7 @@ impl Validate for BillValidateActionData {
             }
             BillAction::Mint(_, _, _) => {
                 self.bill_is_blocked()?;
+                self.bill_can_only_be_recoursed()?;
                 // the bill has to have been accepted
                 if !self
                     .blockchain
@@ -250,6 +292,7 @@ impl Validate for BillValidateActionData {
                 }
             }
             BillAction::Sell(buyer, sum, currency, payment_address) => {
+                self.bill_can_only_be_recoursed()?;
                 // not in recourse
                 self.bill_waiting_for_recourse_payment()?;
                 // not waiting for req to pay
@@ -279,6 +322,7 @@ impl Validate for BillValidateActionData {
                 }
             }
             BillAction::Endorse(_) => {
+                self.bill_can_only_be_recoursed()?;
                 self.bill_is_blocked()?;
                 // the caller has to be the bill holder
                 if self.signer_node_id != holder_node_id {
@@ -286,6 +330,7 @@ impl Validate for BillValidateActionData {
                 }
             }
             BillAction::RejectAcceptance => {
+                self.bill_can_only_be_recoursed()?;
                 // if the op was already rejected, can't reject again
                 if BillOpCode::RejectToAccept == *self.blockchain.get_latest_block().op_code() {
                     return Err(ValidationError::RequestAlreadyRejected);
@@ -304,6 +349,7 @@ impl Validate for BillValidateActionData {
                 }
             }
             BillAction::RejectBuying => {
+                self.bill_can_only_be_recoursed()?;
                 // if the op was already rejected, can't reject again
                 if BillOpCode::RejectToBuy == *self.blockchain.get_latest_block().op_code() {
                     return Err(ValidationError::RequestAlreadyRejected);
@@ -329,6 +375,7 @@ impl Validate for BillValidateActionData {
                 }
             }
             BillAction::RejectPayment => {
+                self.bill_can_only_be_recoursed()?;
                 // if the op was already rejected, can't reject again
                 if BillOpCode::RejectToPay == *self.blockchain.get_latest_block().op_code() {
                     return Err(ValidationError::RequestAlreadyRejected);
@@ -373,6 +420,8 @@ impl Validate for BillValidateActionData {
                 }
                 // not offered to sell
                 self.bill_waiting_for_offer_to_sell()?;
+                // not waiting for req to pay
+                self.bill_waiting_for_req_to_pay()?;
                 // there has to be a request to recourse that is not expired
                 if let Some(req_to_recourse) = self
                     .blockchain
@@ -424,6 +473,77 @@ pub fn get_deadline_base_for_req_to_pay(
 }
 
 impl BillValidateActionData {
+    /// if the bill was rejected to accept, rejected to pay, or either of them expired, it can only
+    /// be recoursed from that point on
+    fn bill_can_only_be_recoursed(&self) -> Result<(), ValidationError> {
+        match self.bill_action {
+            BillAction::Recourse(_, _, _, _)
+            | BillAction::RequestRecourse(_, _)
+            | BillAction::RejectPaymentForRecourse => {
+                // do nothing, these actions are fine
+                Ok(())
+            }
+            _ => {
+                if self
+                    .blockchain
+                    .block_with_operation_code_exists(BillOpCode::RejectToAccept)
+                {
+                    return Err(ValidationError::BillWasRejectedToAccept);
+                }
+
+                if self
+                    .blockchain
+                    .block_with_operation_code_exists(BillOpCode::RejectToPay)
+                {
+                    return Err(ValidationError::BillWasRejectedToPay);
+                }
+
+                if let Some(req_to_pay_block) = self
+                    .blockchain
+                    .get_last_version_block_with_op_code(BillOpCode::RequestToPay)
+                {
+                    let deadline_base = get_deadline_base_for_req_to_pay(
+                        req_to_pay_block.timestamp,
+                        &self.maturity_date,
+                    )?;
+                    // not paid and not rejected (checked above)
+                    if !self.is_paid
+                        && util::date::check_if_deadline_has_passed(
+                            deadline_base,
+                            self.timestamp,
+                            PAYMENT_DEADLINE_SECONDS,
+                        )
+                    {
+                        return Err(ValidationError::BillPaymentExpired);
+                    }
+                }
+
+                if let Some(req_to_accept_block) = self
+                    .blockchain
+                    .get_last_version_block_with_op_code(BillOpCode::RequestToAccept)
+                {
+                    let accepted = self
+                        .blockchain
+                        .block_with_operation_code_exists(BillOpCode::Accept);
+
+                    // not accepted and not rejected (checked above)
+                    if !accepted
+                        && util::date::check_if_deadline_has_passed(
+                            req_to_accept_block.timestamp,
+                            self.timestamp,
+                            ACCEPT_DEADLINE_SECONDS,
+                        )
+                    {
+                        return Err(ValidationError::BillAcceptanceExpired);
+                    }
+                }
+
+                Ok(())
+            }
+        }
+    }
+
+    /// if the bill is waiting for payment, it's blocked
     fn bill_is_blocked(&self) -> Result<(), ValidationError> {
         // not waiting for req to pay
         self.bill_waiting_for_req_to_pay()?;

@@ -143,6 +143,7 @@ pub mod tests {
                     rejected_request_to_recourse: false,
                 },
                 redeemed_funds_available: false,
+                has_requested_funds: false,
             },
             current_waiting_state: None,
         }

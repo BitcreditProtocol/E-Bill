@@ -238,6 +238,34 @@ pub enum ValidationError {
     #[error("Bill was not yet accepted")]
     BillNotAccepted,
 
+    /// error returned if a bill was rejected to pay
+    #[error("Bill was rejected to pay")]
+    BillWasRejectedToPay,
+
+    /// error returned if a bill payment expired
+    #[error("Bill payment expired")]
+    BillPaymentExpired,
+
+    /// error returned if a bill was rejected to accept
+    #[error("Bill was rejected to accept")]
+    BillWasRejectedToAccept,
+
+    /// error returned if a bill acceptance expired
+    #[error("Bill acceptance expired")]
+    BillAcceptanceExpired,
+
+    /// error returned if a bill was rejected to recourse
+    #[error("Bill was rejected to recourse")]
+    BillWasRejectedToRecourse,
+
+    /// error returned if a bill request to recourse expired
+    #[error("Bill request to recourse expired")]
+    BillRequestToRecourseExpired,
+
+    /// error returned if a bill was recoursed to the end
+    #[error("Bill was recoursed to the end")]
+    BillWasRecoursedToTheEnd,
+
     /// error returned if the caller of a reject operation is not the recoursee
     #[error("Caller is not the recoursee and can't reject")]
     CallerIsNotRecoursee,

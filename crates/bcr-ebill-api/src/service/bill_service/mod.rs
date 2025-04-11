@@ -11,7 +11,7 @@ use crate::data::{
 use crate::util::BcrKeys;
 use async_trait::async_trait;
 use bcr_ebill_core::ServiceTraitBounds;
-use bcr_ebill_core::bill::{BillAction, BillIssueData};
+use bcr_ebill_core::bill::{BillAction, BillIssueData, PastPaymentResult};
 
 pub use error::Error;
 #[cfg(test)]
@@ -132,6 +132,16 @@ pub trait BillServiceApi: ServiceTraitBounds {
         current_identity_node_id: &str,
     ) -> Result<Vec<PastEndorsee>>;
 
+    /// Returns previous payment requests of the given bill, where the user with the given node id
+    /// was the financial beneficiary, with the metadata and outcomes
+    async fn get_past_payments(
+        &self,
+        bill_id: &str,
+        caller_public_data: &IdentityPublicData,
+        caller_keys: &BcrKeys,
+        timestamp: u64,
+    ) -> Result<Vec<PastPaymentResult>>;
+
     /// Returns all endorsements of the bill
     async fn get_endorsements(
         &self,
@@ -157,7 +167,7 @@ pub mod tests {
         ValidationError,
         bill::{
             BillAcceptanceStatus, BillPaymentStatus, BillRecourseStatus, BillSellStatus,
-            RecourseReason,
+            PastPaymentStatus, RecourseReason,
         },
         blockchain::{
             Blockchain,
@@ -1048,6 +1058,7 @@ pub mod tests {
         assert!(!res.as_ref().unwrap().status.sell.rejected_offer_to_sell);
         assert!(res.as_ref().unwrap().current_waiting_state.is_some());
         assert!(!res.as_ref().unwrap().status.redeemed_funds_available);
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1109,6 +1120,7 @@ pub mod tests {
             identity.identity.node_id
         );
         assert!(res.as_ref().unwrap().status.redeemed_funds_available); // caller is endorsee
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1156,6 +1168,7 @@ pub mod tests {
         assert!(res.as_ref().unwrap().status.sell.offer_to_sell_timed_out);
         assert!(!res.as_ref().unwrap().status.sell.rejected_offer_to_sell);
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1206,6 +1219,7 @@ pub mod tests {
         assert!(!res.as_ref().unwrap().status.sell.offer_to_sell_timed_out);
         assert!(res.as_ref().unwrap().status.sell.rejected_offer_to_sell);
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1266,6 +1280,7 @@ pub mod tests {
         );
         assert!(res.as_ref().unwrap().current_waiting_state.is_some());
         assert!(!res.as_ref().unwrap().status.redeemed_funds_available);
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1331,6 +1346,7 @@ pub mod tests {
         );
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
         assert!(res.as_ref().unwrap().status.redeemed_funds_available); // caller is endorsee
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1394,6 +1410,7 @@ pub mod tests {
                 .rejected_request_to_recourse
         );
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1454,6 +1471,7 @@ pub mod tests {
                 .rejected_request_to_recourse
         );
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1505,6 +1523,7 @@ pub mod tests {
         assert!(!res.as_ref().unwrap().status.payment.rejected_to_pay);
         assert!(res.as_ref().unwrap().current_waiting_state.is_some());
         assert!(!res.as_ref().unwrap().status.redeemed_funds_available);
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1556,6 +1575,7 @@ pub mod tests {
         assert!(!res.as_ref().unwrap().status.payment.rejected_to_pay);
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
         assert!(!res.as_ref().unwrap().status.redeemed_funds_available); // caller not payee
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1610,6 +1630,7 @@ pub mod tests {
         );
         assert!(res.as_ref().unwrap().status.payment.rejected_to_pay);
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1664,6 +1685,7 @@ pub mod tests {
         );
         assert!(res.as_ref().unwrap().status.payment.rejected_to_pay);
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1720,6 +1742,7 @@ pub mod tests {
         );
         assert!(!res.as_ref().unwrap().status.payment.rejected_to_pay);
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -1774,6 +1797,7 @@ pub mod tests {
         );
         assert!(!res.as_ref().unwrap().status.payment.rejected_to_pay);
         assert!(res.as_ref().unwrap().current_waiting_state.is_none());
+        assert!(res.as_ref().unwrap().status.has_requested_funds);
     }
 
     #[tokio::test]
@@ -3380,6 +3404,216 @@ pub mod tests {
     }
 
     #[tokio::test]
+    async fn past_payments_baseline() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let bill = get_baseline_bill(TEST_BILL_ID);
+
+        let identity_clone = identity.identity.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        // paid
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(true));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+
+                // req to pay
+                assert!(chain.try_add_block(request_to_pay_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    None,
+                )));
+                // paid
+                assert!(chain.try_add_block(offer_to_sell_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                    None,
+                )));
+                assert!(chain.try_add_block(sell_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                )));
+                // rejected
+                assert!(chain.try_add_block(offer_to_sell_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                    None,
+                )));
+                assert!(
+                    chain.try_add_block(reject_buy_block(TEST_BILL_ID, chain.get_latest_block(),))
+                );
+                // expired
+                assert!(chain.try_add_block(offer_to_sell_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                    None,
+                )));
+                // active
+                assert!(chain.try_add_block(offer_to_sell_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                    Some(1931593928),
+                )));
+
+                Ok(chain)
+            });
+
+        let service = get_service(ctx);
+
+        let res_past_payments = service
+            .get_past_payments(
+                TEST_BILL_ID,
+                &IdentityPublicData::new(identity.identity.clone()).unwrap(),
+                &identity.key_pair,
+                1931593928,
+            )
+            .await;
+
+        assert!(res_past_payments.is_ok());
+        assert_eq!(res_past_payments.as_ref().unwrap().len(), 4);
+        match res_past_payments.as_ref().unwrap()[0] {
+            PastPaymentResult::Payment(ref data) => {
+                assert!(matches!(data.status, PastPaymentStatus::Paid(_)));
+            }
+            _ => panic!("wrong result"),
+        };
+        match res_past_payments.as_ref().unwrap()[1] {
+            PastPaymentResult::Sell(ref data) => {
+                assert!(matches!(data.status, PastPaymentStatus::Paid(_)));
+            }
+            _ => panic!("wrong result"),
+        };
+        match res_past_payments.as_ref().unwrap()[2] {
+            PastPaymentResult::Sell(ref data) => {
+                assert!(matches!(data.status, PastPaymentStatus::Rejected(_)));
+            }
+            _ => panic!("wrong result"),
+        };
+        match res_past_payments.as_ref().unwrap()[3] {
+            PastPaymentResult::Sell(ref data) => {
+                assert!(matches!(data.status, PastPaymentStatus::Expired(_)));
+            }
+            _ => panic!("wrong result"),
+        };
+    }
+
+    #[tokio::test]
+    async fn past_payments_recourse() {
+        let mut ctx = get_ctx();
+        let identity = get_baseline_identity();
+        let bill = get_baseline_bill(TEST_BILL_ID);
+
+        let identity_clone = identity.identity.clone();
+        ctx.bill_store.expect_exists().returning(|_| true);
+        // not paid
+        ctx.bill_store.expect_is_paid().returning(|_| Ok(false));
+        ctx.bill_blockchain_store
+            .expect_get_chain()
+            .returning(move |_| {
+                let mut chain = get_genesis_chain(Some(bill.clone()));
+
+                // req to pay
+                assert!(chain.try_add_block(request_to_pay_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    None,
+                )));
+                // reject payment
+                assert!(
+                    chain
+                        .try_add_block(
+                            reject_to_pay_block(TEST_BILL_ID, chain.get_latest_block(),)
+                        )
+                );
+                // req to recourse
+                assert!(chain.try_add_block(request_to_recourse_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                    None,
+                )));
+                // recourse - paid
+                assert!(chain.try_add_block(recourse_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                )));
+                // req to recourse
+                assert!(chain.try_add_block(request_to_recourse_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                    None,
+                )));
+                // reject
+                assert!(chain.try_add_block(reject_recourse_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                )));
+                // expired
+                assert!(chain.try_add_block(request_to_recourse_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                    None,
+                )));
+                // active
+                assert!(chain.try_add_block(request_to_recourse_block(
+                    TEST_BILL_ID,
+                    chain.get_latest_block(),
+                    &IdentityPublicData::new(identity_clone.clone()).unwrap(),
+                    Some(1931593928),
+                )));
+
+                Ok(chain)
+            });
+
+        let service = get_service(ctx);
+
+        let res_past_payments = service
+            .get_past_payments(
+                TEST_BILL_ID,
+                &IdentityPublicData::new(identity.identity.clone()).unwrap(),
+                &identity.key_pair,
+                1931593928,
+            )
+            .await;
+
+        assert!(res_past_payments.is_ok());
+        assert_eq!(res_past_payments.as_ref().unwrap().len(), 4);
+        match res_past_payments.as_ref().unwrap()[0] {
+            PastPaymentResult::Payment(ref data) => {
+                assert!(matches!(data.status, PastPaymentStatus::Rejected(_)));
+            }
+            _ => panic!("wrong result"),
+        };
+        match res_past_payments.as_ref().unwrap()[1] {
+            PastPaymentResult::Recourse(ref data) => {
+                assert!(matches!(data.status, PastPaymentStatus::Paid(_)));
+            }
+            _ => panic!("wrong result"),
+        };
+        match res_past_payments.as_ref().unwrap()[2] {
+            PastPaymentResult::Recourse(ref data) => {
+                assert!(matches!(data.status, PastPaymentStatus::Rejected(_)));
+            }
+            _ => panic!("wrong result"),
+        };
+        match res_past_payments.as_ref().unwrap()[3] {
+            PastPaymentResult::Recourse(ref data) => {
+                assert!(matches!(data.status, PastPaymentStatus::Expired(_)));
+            }
+            _ => panic!("wrong result"),
+        };
+    }
+
+    #[tokio::test]
     async fn reject_acceptance_baseline() {
         let mut ctx = get_ctx();
         let identity = get_baseline_identity();
@@ -3447,6 +3681,7 @@ pub mod tests {
         ctx.bill_store
             .expect_save_bill_to_cache()
             .returning(|_, _| Ok(()));
+        ctx.bill_store.expect_exists().returning(|_| true);
         ctx.bill_blockchain_store
             .expect_get_chain()
             .returning(move |_| {

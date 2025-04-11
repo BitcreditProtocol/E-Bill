@@ -6,10 +6,11 @@ use super::{base58_decode, base58_encode};
 use bip39::Mnemonic;
 use bitcoin::{
     Network,
-    secp256k1::{self, Keypair, Scalar, SecretKey, schnorr::Signature},
+    secp256k1::{
+        self, Keypair, Message, PublicKey, SECP256K1, Scalar, SecretKey, rand, schnorr::Signature,
+    },
 };
 use nostr_sdk::ToBech32;
-use secp256k1::{Message, PublicKey, Secp256k1, rand};
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -100,9 +101,8 @@ impl BcrKeys {
         &self,
         used_network: Network,
     ) -> (bitcoin::PrivateKey, bitcoin::PublicKey) {
-        let secp = Secp256k1::new();
         let private_key = self.get_bitcoin_private_key(used_network);
-        (private_key, private_key.public_key(&secp))
+        (private_key, private_key.public_key(SECP256K1))
     }
 
     /// Returns the key pair as a bitcoin private key for the given network
@@ -180,14 +180,12 @@ pub fn is_node_id_nostr_hex_npub(node_id: &str, npub: &str) -> bool {
 
 /// Generates a new keypair using the secp256k1 library
 fn generate_keypair() -> Keypair {
-    let secp = Secp256k1::new();
-    Keypair::new(&secp, &mut rand::thread_rng())
+    Keypair::new(SECP256K1, &mut rand::thread_rng())
 }
 
 /// Loads a secp256k1 keypair from a private key string
 fn load_keypair(private_key: &str) -> Result<Keypair> {
-    let secp = Secp256k1::new();
-    let pair = Keypair::from_secret_key(&secp, &SecretKey::from_str(private_key)?);
+    let pair = Keypair::from_secret_key(SECP256K1, &SecretKey::from_str(private_key)?);
     Ok(pair)
 }
 
@@ -237,7 +235,6 @@ pub fn aggregated_signature(hash: &str, keys: &[String]) -> Result<String> {
     if keys.len() < 2 {
         return Err(Error::TooFewKeys);
     }
-    let secp = Secp256k1::signing_only();
     let key_pairs: Vec<Keypair> = keys
         .iter()
         .map(|pk| load_keypair(pk))
@@ -250,9 +247,9 @@ pub fn aggregated_signature(hash: &str, keys: &[String]) -> Result<String> {
         aggregated_key = aggregated_key.add_tweak(&Scalar::from(*key))?;
     }
 
-    let aggregated_key_pair = Keypair::from_secret_key(&secp, &aggregated_key);
+    let aggregated_key_pair = Keypair::from_secret_key(SECP256K1, &aggregated_key);
     let msg = Message::from_digest_slice(&base58_decode(hash)?)?;
-    let signature = secp.sign_schnorr(&msg, &aggregated_key_pair);
+    let signature = SECP256K1.sign_schnorr(&msg, &aggregated_key_pair);
 
     Ok(base58_encode(&signature.serialize()))
 }
@@ -260,21 +257,17 @@ pub fn aggregated_signature(hash: &str, keys: &[String]) -> Result<String> {
 // -------------------- Signatures --------------------------
 
 pub fn signature(hash: &str, private_key: &str) -> Result<String> {
-    // create a signing context
-    let secp = Secp256k1::signing_only();
     let key_pair = load_keypair(private_key)?;
     let msg = Message::from_digest_slice(&base58_decode(hash)?)?;
-    let signature = secp.sign_schnorr(&msg, &key_pair);
+    let signature = SECP256K1.sign_schnorr(&msg, &key_pair);
     Ok(base58_encode(&signature.serialize()))
 }
 
 pub fn verify(hash: &str, signature: &str, public_key: &str) -> Result<bool> {
-    // create a verification context
-    let secp = Secp256k1::verification_only();
     let (pub_key, _) = PublicKey::from_str(public_key)?.x_only_public_key();
     let msg = Message::from_digest_slice(&base58_decode(hash)?)?;
     let decoded_signature = Signature::from_slice(&base58_decode(signature)?)?;
-    Ok(secp
+    Ok(SECP256K1
         .verify_schnorr(&decoded_signature, &msg, &pub_key)
         .is_ok())
 }
@@ -319,9 +312,8 @@ fn keypair_from_seed_phrase(words: &str) -> Result<Keypair> {
 fn keypair_from_mnemonic(mnemonic: &Mnemonic) -> Result<Keypair> {
     let seed = mnemonic.to_seed("");
     let (key, _) = seed.split_at(32);
-    let secp = Secp256k1::new();
     let secret = SecretKey::from_slice(key)?;
-    Ok(Keypair::from_secret_key(&secp, &secret))
+    Ok(Keypair::from_secret_key(SECP256K1, &secret))
 }
 
 #[cfg(test)]

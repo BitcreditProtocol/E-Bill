@@ -169,6 +169,7 @@ pub struct BillStatus {
     pub sell: BillSellStatus,
     pub recourse: BillRecourseStatus,
     pub redeemed_funds_available: bool,
+    pub has_requested_funds: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -417,4 +418,60 @@ pub struct Endorsement {
 pub struct LightSignedBy {
     pub data: LightIdentityPublicData,
     pub signatory: Option<LightIdentityPublicData>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PastPaymentResult {
+    Sell(PastPaymentDataSell),
+    Payment(PastPaymentDataPayment),
+    Recourse(PastPaymentDataRecourse),
+}
+
+#[derive(Debug, Clone)]
+pub enum PastPaymentStatus {
+    Paid(u64),     // timestamp
+    Rejected(u64), // timestamp
+    Expired(u64),  // timestamp
+}
+
+#[derive(Debug, Clone)]
+pub struct PastPaymentDataSell {
+    pub time_of_request: u64,
+    pub buyer: IdentityPublicData,
+    pub seller: IdentityPublicData,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub private_key_to_spend: String,
+    pub mempool_link_for_address_to_pay: String,
+    pub status: PastPaymentStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct PastPaymentDataPayment {
+    pub time_of_request: u64,
+    pub payer: IdentityPublicData,
+    pub payee: IdentityPublicData,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub private_key_to_spend: String,
+    pub mempool_link_for_address_to_pay: String,
+    pub status: PastPaymentStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct PastPaymentDataRecourse {
+    pub time_of_request: u64,
+    pub recourser: IdentityPublicData,
+    pub recoursee: IdentityPublicData,
+    pub currency: String,
+    pub sum: String,
+    pub link_to_pay: String,
+    pub address_to_pay: String,
+    pub private_key_to_spend: String,
+    pub mempool_link_for_address_to_pay: String,
+    pub status: PastPaymentStatus,
 }

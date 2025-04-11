@@ -127,6 +127,7 @@ pub fn get_baseline_cached_bill(id: String) -> BitcreditBillResult {
                 rejected_request_to_recourse: false,
             },
             redeemed_funds_available: false,
+            has_requested_funds: false,
         },
         current_waiting_state: None,
     }
