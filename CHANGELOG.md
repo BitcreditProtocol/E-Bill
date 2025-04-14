@@ -1,6 +1,7 @@
 # 0.3.5
 
 * Add in-depth tests for bill validation
+* Properly propagate and log errors when getting a file (e.g. an avatar)
 
 # 0.3.4
 

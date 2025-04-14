@@ -34,8 +34,7 @@ impl Contact {
         let file_bytes = get_ctx()
             .contact_service
             .open_and_decrypt_file(id, file_name, &private_key)
-            .await
-            .map_err(|_| service::Error::NotFound)?;
+            .await?;
 
         let content_type = detect_content_type_for_bytes(&file_bytes).ok_or(
             service::Error::Validation(ValidationError::InvalidContentType),
