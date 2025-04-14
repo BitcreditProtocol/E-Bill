@@ -104,8 +104,7 @@ impl Bill {
         let file_bytes = get_ctx()
             .bill_service
             .open_and_decrypt_attached_file(bill_id, file_name, &keys.private_key)
-            .await
-            .map_err(|_| Error::NotFound)?;
+            .await?;
 
         let content_type = detect_content_type_for_bytes(&file_bytes)
             .ok_or(Error::Validation(ValidationError::InvalidContentType))?;
