@@ -46,7 +46,6 @@ impl Company {
             .company_service
             .open_and_decrypt_file(id, file_name, &private_key)
             .await?;
-        get_ctx().contact_service.get_contact(id).await?; // check if contact exists
 
         let content_type = detect_content_type_for_bytes(&file_bytes)
             .ok_or(Error::Validation(ValidationError::InvalidContentType))?;

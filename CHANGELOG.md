@@ -1,7 +1,9 @@
 # 0.3.5
 
-* Add in-depth tests for bill validation
 * Properly propagate and log errors when getting a file (e.g. an avatar)
+* Several fixes to recourse bill action validation
+* Add in-depth tests for bill validation
+* Fix not checking contact for company files
 
 # 0.3.4
 

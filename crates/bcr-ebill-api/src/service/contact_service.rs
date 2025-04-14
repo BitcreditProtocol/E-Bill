@@ -157,6 +157,7 @@ impl ContactServiceApi for ContactService {
     }
 
     async fn get_contact(&self, node_id: &str) -> Result<Contact> {
+        debug!("getting contact for {node_id}");
         let res = self.store.get(node_id).await?;
         match res {
             None => Err(super::Error::NotFound),
