@@ -186,7 +186,7 @@ pub enum ValidationError {
 
     /// error returned if the issue date is after the maturity date
     #[error("issue date after maturity date")]
-    IssueDateAfterMaturityDateInThePast,
+    IssueDateAfterMaturityDate,
 
     /// error returned if the currency was invalid
     #[error("invalid currency")]

@@ -43,7 +43,7 @@ pub fn validate_bill_issue(data: &BillIssueData) -> Result<(u64, BillType), Vali
     }
 
     if issue_date_ts > maturity_date_ts {
-        return Err(ValidationError::IssueDateAfterMaturityDateInThePast);
+        return Err(ValidationError::IssueDateAfterMaturityDate);
     }
 
     let bill_type = match data.t {
@@ -628,7 +628,7 @@ mod tests {
     #[case::invalid_issue_date( BillIssueData { issue_date: "invaliddate".into(), ..valid_bill_issue_data() }, ValidationError::InvalidDate)]
     #[case::invalid_maturity_date( BillIssueData { maturity_date: "invaliddate".into(), ..valid_bill_issue_data() }, ValidationError::InvalidDate)]
     #[case::maturity_date_before_now( BillIssueData { maturity_date: "2004-01-12".into(), ..valid_bill_issue_data() }, ValidationError::MaturityDateInThePast)]
-    #[case::issue_date_after_maturity_date( BillIssueData { issue_date: "2028-01-12".into(), ..valid_bill_issue_data() }, ValidationError::IssueDateAfterMaturityDateInThePast)]
+    #[case::issue_date_after_maturity_date( BillIssueData { issue_date: "2028-01-12".into(), ..valid_bill_issue_data() }, ValidationError::IssueDateAfterMaturityDate)]
     #[case::invalid_bill_type( BillIssueData { t: 5, ..valid_bill_issue_data() }, ValidationError::InvalidBillType)]
     #[case::drawee_equals_payee( BillIssueData { drawee: TEST_PUB_KEY_SECP.into(), payee: TEST_PUB_KEY_SECP.into(), ..valid_bill_issue_data() }, ValidationError::DraweeCantBePayee)]
     #[case::invalid_payee( BillIssueData { payee: "invalidkey".into(), ..valid_bill_issue_data() }, ValidationError::InvalidSecp256k1Key("invalidkey".into()))]
