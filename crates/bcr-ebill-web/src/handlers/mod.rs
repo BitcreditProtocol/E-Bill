@@ -309,6 +309,8 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for ValidationError {
                 | bcr_ebill_api::util::ValidationError::InvalidCurrency
                 | bcr_ebill_api::util::ValidationError::InvalidPaymentAddress
                 | bcr_ebill_api::util::ValidationError::InvalidDate
+                | bcr_ebill_api::util::ValidationError::IssueDateAfterMaturityDateInThePast
+                | bcr_ebill_api::util::ValidationError::MaturityDateInThePast
                 | bcr_ebill_api::util::ValidationError::InvalidFileUploadId
                 | bcr_ebill_api::util::ValidationError::InvalidBillType
                 | bcr_ebill_api::util::ValidationError::InvalidContentType

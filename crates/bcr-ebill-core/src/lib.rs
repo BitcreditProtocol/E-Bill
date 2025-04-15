@@ -180,6 +180,14 @@ pub enum ValidationError {
     #[error("invalid date")]
     InvalidDate,
 
+    /// error returned if the maturity date is in the past
+    #[error("maturity date can't be in the past")]
+    MaturityDateInThePast,
+
+    /// error returned if the issue date is after the maturity date
+    #[error("issue date after maturity date")]
+    IssueDateAfterMaturityDateInThePast,
+
     /// error returned if the currency was invalid
     #[error("invalid currency")]
     InvalidCurrency,

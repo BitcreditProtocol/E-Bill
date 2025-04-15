@@ -218,6 +218,13 @@ async function triggerContact() {
 async function triggerBill() {
   let measured = measure(async () => {
     console.log("creating bill");
+
+    const now = new Date();
+    const issue_date = now.toISOString().split('T')[0];
+    const threeMonthsLater = new Date(now);
+    threeMonthsLater.setMonth(now.getMonth() + 3);
+    const maturity_date = threeMonthsLater.toISOString().split('T')[0];
+
     let file_upload_id = document.getElementById("file_upload_id").value || undefined;
     let node_id = document.getElementById("node_id_bill").value;
     let identity = await identityApi.detail();
@@ -226,8 +233,8 @@ async function triggerBill() {
         t: 1,
         country_of_issuing: "AT",
         city_of_issuing: "Vienna",
-        issue_date: "2024-01-22",
-        maturity_date: "2024-06-22",
+        issue_date,
+        maturity_date,
         payee: identity.node_id,
         drawee: node_id,
         sum: "1500",
