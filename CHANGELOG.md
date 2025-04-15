@@ -1,3 +1,8 @@
+# 0.3.6
+
+* Add validation for maturity date
+* Add docs for testing
+
 # 0.3.5
 
 * Properly propagate and log errors when getting a file (e.g. an avatar)

@@ -21,6 +21,17 @@ pub fn seconds(timestamp: u64) -> DateTimeUtc {
     }
 }
 
+/// Returns the start of day timestamp for the given timestamp
+pub fn start_of_day_as_timestamp(timestamp: u64) -> u64 {
+    let dt = seconds(timestamp);
+    let date = dt.date_naive();
+    let end_of_day_time =
+        NaiveTime::from_hms_micro_opt(00, 00, 00, 000_000).expect("is a valid time");
+    let date_time = date.and_time(end_of_day_time);
+    let date_utc = Utc.from_utc_datetime(&date_time);
+    date_utc.timestamp() as u64
+}
+
 /// Returns the end of day timestamp for the given timestamp
 pub fn end_of_day_as_timestamp(timestamp: u64) -> u64 {
     let dt = seconds(timestamp);
@@ -86,6 +97,16 @@ mod tests {
             "now date was {} seconds smaller than expected",
             (timestamp - now)
         );
+    }
+
+    #[test]
+    fn test_start_of_day() {
+        let ts = Utc
+            .with_ymd_and_hms(2025, 1, 15, 5, 10, 45)
+            .unwrap()
+            .timestamp() as u64;
+        let start_of_day = start_of_day_as_timestamp(ts);
+        assert!(start_of_day < ts,);
     }
 
     #[test]

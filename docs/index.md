@@ -9,4 +9,5 @@ This is the documentation of the E-Bill API. The API can be used both as a Web A
 * [Web Setup](web.md)
 * [Web Configuration](web_configuration.md)
 * [Releasing new WASM versions](wasm_releasing.md)
+* [Testing](testing.md)
 
