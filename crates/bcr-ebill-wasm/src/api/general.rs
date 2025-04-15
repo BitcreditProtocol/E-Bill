@@ -71,7 +71,8 @@ impl General {
                 })?;
                 Ok(res)
             }
-            _ => Err(Error::NotFound.into()),
+            Ok(None) => Err(Error::NotFound.into()),
+            Err(e) => Err(e.into()),
         }
     }
 

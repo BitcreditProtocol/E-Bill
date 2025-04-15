@@ -200,4 +200,6 @@ pub mod tests {
         "205b8dec12bc9e879f5b517aa32192a2550e88adcee3e54ec2c7294802568fef";
 
     pub const VALID_PAYMENT_ADDRESS_TESTNET: &str = "tb1qteyk7pfvvql2r2zrsu4h4xpvju0nz7ykvguyk0";
+
+    pub const OTHER_VALID_PAYMENT_ADDRESS_TESTNET: &str = "msAPAcTqHqosWu3gaVwATTupxdHSY2wyQn";
 }
