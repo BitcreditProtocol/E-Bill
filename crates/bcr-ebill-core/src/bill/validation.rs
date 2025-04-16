@@ -198,12 +198,16 @@ impl Validate for BillValidateActionData {
                                 .blockchain
                                 .block_with_operation_code_exists(BillOpCode::RejectToAccept)
                             {
-                                return Err(
-                                ValidationError::BillRequestToAcceptDidNotExpireAndWasNotRejected,
-                            );
+                                return Err(ValidationError::BillRequestToAcceptDidNotExpireAndWasNotRejected);
                             }
                         } else {
-                            return Err(ValidationError::BillWasNotRequestedToAccept);
+                            // if there was no request to accept, only if it was rejected
+                            if !self
+                                .blockchain
+                                .block_with_operation_code_exists(BillOpCode::RejectToAccept)
+                            {
+                                return Err(ValidationError::BillRequestToAcceptDidNotExpireAndWasNotRejected);
+                            }
                         }
                     }
                     RecourseReason::Pay(_, _) => {
@@ -1027,6 +1031,7 @@ mod tests {
     #[rstest]
     #[case::req_to_recourse_not_rejected_but_expired(BillValidateActionData { timestamp: now().timestamp() as u64 + (RECOURSE_DEADLINE_SECONDS * 2), endorsee_node_id: Some(TEST_PUB_KEY_SECP.into()), bill_action: BillAction::RequestRecourse(valid_other_identity_public_data(), RecourseReason::Accept), ..valid_bill_validate_action_data(add_req_to_accept_block(add_endorse_block(add_endorse_block(valid_bill_blockchain_issue( valid_bill_issue_block_data(),), valid_other_identity_public_data(), valid_identity_public_data()), valid_identity_public_data(), valid_other_identity_public_data()))) }, Ok(()))]
     #[case::req_to_recourse_not_expired_but_rejected(BillValidateActionData { endorsee_node_id: Some(TEST_PUB_KEY_SECP.into()), bill_action: BillAction::RequestRecourse(valid_other_identity_public_data(), RecourseReason::Accept), ..valid_bill_validate_action_data(add_reject_accept_block(add_req_to_accept_block(add_endorse_block(add_endorse_block(valid_bill_blockchain_issue( valid_bill_issue_block_data(),), valid_other_identity_public_data(), valid_identity_public_data()), valid_identity_public_data(), valid_other_identity_public_data())))) }, Ok(()))]
+    #[case::req_to_recourse_not_req_to_accept_but_rejected(BillValidateActionData { endorsee_node_id: Some(TEST_PUB_KEY_SECP.into()), bill_action: BillAction::RequestRecourse(valid_other_identity_public_data(), RecourseReason::Accept), ..valid_bill_validate_action_data(add_reject_accept_block(add_endorse_block(add_endorse_block(valid_bill_blockchain_issue( valid_bill_issue_block_data(),), valid_other_identity_public_data(), valid_identity_public_data()), valid_identity_public_data(), valid_other_identity_public_data()))) }, Ok(()))]
     fn test_validate_bill_req_to_recourse_accept_valid(
         #[case] input: BillValidateActionData,
         #[case] expected: Result<(), ValidationError>,
@@ -1043,7 +1048,7 @@ mod tests {
     #[case::active_recourse_blocked(BillValidateActionData { bill_action: BillAction::RequestRecourse(valid_identity_public_data(), RecourseReason::Accept), ..valid_bill_validate_action_data(add_req_to_recourse_accept_block(valid_bill_blockchain_issue( valid_bill_issue_block_data(),))) }, Err(ValidationError::BillIsInRecourseAndWaitingForPayment))]
     #[case::req_to_recourse_not_holder(BillValidateActionData { bill_action: BillAction::RequestRecourse(valid_identity_public_data(), RecourseReason::Accept), signer_node_id: TEST_PUB_KEY_SECP.into(), ..valid_bill_validate_action_data(valid_bill_blockchain_issue( valid_bill_issue_block_data(),)) }, Err(ValidationError::CallerIsNotHolder))]
     #[case::req_to_recourse_not_past_endorsee(BillValidateActionData { endorsee_node_id: Some(TEST_PUB_KEY_SECP.into()), bill_action: BillAction::RequestRecourse(valid_other_identity_public_data(), RecourseReason::Accept), ..valid_bill_validate_action_data(add_endorse_block(valid_bill_blockchain_issue( valid_bill_issue_block_data(),), valid_other_identity_public_data(), valid_identity_public_data())) }, Err(ValidationError::RecourseeNotPastHolder))]
-    #[case::req_to_recourse_not_req_to_accept(BillValidateActionData { endorsee_node_id: Some(TEST_PUB_KEY_SECP.into()), bill_action: BillAction::RequestRecourse(valid_other_identity_public_data(), RecourseReason::Accept), ..valid_bill_validate_action_data(add_endorse_block(add_endorse_block(valid_bill_blockchain_issue( valid_bill_issue_block_data(),), valid_other_identity_public_data(), valid_identity_public_data()), valid_identity_public_data(), valid_other_identity_public_data())) }, Err(ValidationError::BillWasNotRequestedToAccept))]
+    #[case::req_to_recourse_not_req_to_accept_or_rejected(BillValidateActionData { endorsee_node_id: Some(TEST_PUB_KEY_SECP.into()), bill_action: BillAction::RequestRecourse(valid_other_identity_public_data(), RecourseReason::Accept), ..valid_bill_validate_action_data(add_endorse_block(add_endorse_block(valid_bill_blockchain_issue( valid_bill_issue_block_data(),), valid_other_identity_public_data(), valid_identity_public_data()), valid_identity_public_data(), valid_other_identity_public_data())) }, Err(ValidationError::BillRequestToAcceptDidNotExpireAndWasNotRejected))]
     #[case::req_to_recourse_not_expired_or_rejected(BillValidateActionData { endorsee_node_id: Some(TEST_PUB_KEY_SECP.into()), bill_action: BillAction::RequestRecourse(valid_other_identity_public_data(), RecourseReason::Accept), ..valid_bill_validate_action_data(add_req_to_accept_block(add_endorse_block(add_endorse_block(valid_bill_blockchain_issue( valid_bill_issue_block_data(),), valid_other_identity_public_data(), valid_identity_public_data()), valid_identity_public_data(), valid_other_identity_public_data()))) }, Err(ValidationError::BillRequestToAcceptDidNotExpireAndWasNotRejected))]
     fn test_validate_bill_req_to_recourse_accept_errors(
         #[case] input: BillValidateActionData,
