@@ -45,6 +45,7 @@ enum JsErrorType {
     InvalidContentType,
     InvalidContactType,
     InvalidDate,
+    SignerCantBeAnonymous,
     IssueDateAfterMaturityDate,
     MaturityDateInThePast,
     InvalidFileUploadId,
@@ -196,6 +197,7 @@ fn validation_error_data(e: ValidationError) -> JsErrorData {
         ValidationError::InvalidContactType => err_400(e, JsErrorType::InvalidContactType),
         ValidationError::InvalidContentType => err_400(e, JsErrorType::InvalidContentType),
         ValidationError::InvalidDate => err_400(e, JsErrorType::InvalidDate),
+        ValidationError::SignerCantBeAnonymous => err_400(e, JsErrorType::SignerCantBeAnonymous),
         ValidationError::MaturityDateInThePast => err_400(e, JsErrorType::MaturityDateInThePast),
         ValidationError::IssueDateAfterMaturityDate => {
             err_400(e, JsErrorType::IssueDateAfterMaturityDate)

@@ -1,3 +1,13 @@
+# 0.3.8
+
+* Add Blank Endorse Bill data model implementation
+    * Rename `IdentityPublicData` to `BillIdentifiedParticipant`
+        * same for `LightIdentityPublicData`
+    * Introduce the concept of `BillParticipant`, with the variants `Identified` and `Anonymous`
+        * `Anonymous` includes a `BillAnonymousParticipant`
+        * `Identified` includes a `BillIdentifiedParticipant`
+    * Use `BillParticipant` in parts of the bill where a participant can be anonymous
+
 # 0.3.7
 
 * Fix request recourse to accept validation - does not require a request to accept anymore
