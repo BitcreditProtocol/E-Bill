@@ -148,6 +148,8 @@ pub trait BillServiceApi: ServiceTraitBounds {
         bill_id: &str,
         current_identity_node_id: &str,
     ) -> Result<Vec<Endorsement>>;
+
+    async fn clear_bill_cache(&self) -> Result<()>;
 }
 
 #[cfg(test)]

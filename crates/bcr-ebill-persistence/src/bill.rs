@@ -19,6 +19,8 @@ pub trait BillStoreApi: Send + Sync {
     async fn save_bill_to_cache(&self, id: &str, bill: &BitcreditBillResult) -> Result<()>;
     /// Invalidates the cached bill
     async fn invalidate_bill_in_cache(&self, id: &str) -> Result<()>;
+    /// clear the bill cache
+    async fn clear_bill_cache(&self) -> Result<()>;
     /// Checks if the given bill exists
     async fn exists(&self, id: &str) -> bool;
     /// Gets all bill ids

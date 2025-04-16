@@ -625,6 +625,12 @@ impl Bill {
         )
         .await
     }
+
+    #[wasm_bindgen]
+    pub async fn clear_bill_cache(&self) -> Result<()> {
+        get_ctx().bill_service.clear_bill_cache().await?;
+        Ok(())
+    }
 }
 
 async fn request_recourse(

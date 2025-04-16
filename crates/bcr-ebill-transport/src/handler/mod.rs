@@ -236,6 +236,7 @@ mod test_utils {
             async fn get_bill_from_cache(&self, id: &str) -> Result<Option<BitcreditBillResult>>;
             async fn save_bill_to_cache(&self, id: &str, bill: &BitcreditBillResult) -> Result<()>;
             async fn invalidate_bill_in_cache(&self, id: &str) -> Result<()>;
+            async fn clear_bill_cache(&self) -> Result<()>;
             async fn exists(&self, id: &str) -> bool;
             async fn get_ids(&self) -> Result<Vec<String>>;
             async fn save_keys(&self, id: &str, keys: &BillKeys) -> Result<()>;

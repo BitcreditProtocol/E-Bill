@@ -90,6 +90,11 @@ impl BillStoreApi for SurrealBillStore {
         Ok(())
     }
 
+    async fn clear_bill_cache(&self) -> Result<()> {
+        let _: Vec<BitcreditBillResultDb> = self.db().await?.delete(Self::CACHE_TABLE).await?;
+        Ok(())
+    }
+
     async fn exists(&self, id: &str) -> bool {
         let db_con = match self.db().await {
             Ok(con) => con,
