@@ -151,9 +151,7 @@ impl BillService {
             requested_to_pay = true;
             time_of_request_to_pay = Some(req_to_pay_block.timestamp);
             paid = self.store.is_paid(&bill.id).await?;
-            if chain.block_with_operation_code_exists(BillOpCode::RejectToPay) {
-                rejected_to_pay = true;
-            }
+            rejected_to_pay = chain.block_with_operation_code_exists(BillOpCode::RejectToPay);
             let deadline_base =
                 get_deadline_base_for_req_to_pay(req_to_pay_block.timestamp, &bill.maturity_date)?;
             if !paid
@@ -252,7 +250,7 @@ impl BillService {
         }
 
         let mut request_to_accept_timed_out = false;
-        let mut rejected_to_accept = false;
+        let rejected_to_accept = chain.block_with_operation_code_exists(BillOpCode::RejectToAccept);
         let accepted = chain.block_with_operation_code_exists(BillOpCode::Accept);
         let mut time_of_request_to_accept = None;
         let mut requested_to_accept = false;
@@ -261,7 +259,6 @@ impl BillService {
         {
             requested_to_accept = true;
             time_of_request_to_accept = Some(req_to_accept_block.timestamp);
-            rejected_to_accept = chain.block_with_operation_code_exists(BillOpCode::RejectToAccept);
 
             if !accepted
                 && !rejected_to_accept
