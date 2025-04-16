@@ -25,6 +25,7 @@ document.getElementById("reject_pay").addEventListener("click", rejectPayBill);
 document.getElementById("reject_buying").addEventListener("click", rejectBuyingBill);
 document.getElementById("reject_recourse").addEventListener("click", rejectRecourseBill);
 document.getElementById("bill_test").addEventListener("click", triggerBill);
+document.getElementById("clear_bill_cache").addEventListener("click", clearBillCache);
 
 async function start() {
   let config = {
@@ -406,6 +407,13 @@ async function fetchBillBalances() {
 async function fetchBillSearch() {
   let measured = measure(async () => {
     return await billApi.search({ filter: { currency: "sat", role: "All" } });
+  });
+  await measured();
+}
+
+async function clearBillCache() {
+  let measured = measure(async () => {
+    return await billApi.clear_bill_cache();
   });
   await measured();
 }

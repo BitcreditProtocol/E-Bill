@@ -883,4 +883,9 @@ impl BillServiceApi for BillService {
 
         Ok(result)
     }
+
+    async fn clear_bill_cache(&self) -> Result<()> {
+        self.store.clear_bill_cache().await?;
+        Ok(())
+    }
 }

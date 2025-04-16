@@ -2,6 +2,8 @@
 
 * Add validation for maturity date
 * Add docs for testing
+* Fix reject to accept not showing correctly without req to accept
+* Add endpoint `clear_bill_cache` to clear the bill cache
 
 # 0.3.5
 
