@@ -1,3 +1,7 @@
+# 0.3.7
+
+* Fix request recourse to accept validation - does not require a request to accept anymore
+
 # 0.3.6
 
 * Add validation for maturity date
